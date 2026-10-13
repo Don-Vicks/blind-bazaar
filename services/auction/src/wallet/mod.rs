@@ -1,5 +1,6 @@
 //! Thin wrappers over zcash_client_sqlite / zcash_client_backend, lifted from zcash-devtool.
 
+pub mod cache;
 pub mod send;
 pub mod sync;
 
@@ -15,10 +16,7 @@ use zcash_client_backend::{
     data_api::{Account, AccountBirthday, WalletRead, WalletWrite, chain::ChainState},
     proto::service::{self, compact_tx_streamer_client::CompactTxStreamerClient},
 };
-use zcash_client_sqlite::{
-    AccountUuid, FsBlockDb, WalletDb, chain::init::init_blockmeta_db, util::SystemClock,
-    wallet::init::init_wallet_db,
-};
+use zcash_client_sqlite::{AccountUuid, WalletDb, util::SystemClock, wallet::init::init_wallet_db};
 use zcash_keys::keys::{UnifiedAddressRequest, UnifiedSpendingKey};
 use zcash_protocol::consensus::{BlockHeight, Network, NetworkUpgrade, Parameters};
 use zip32::AccountId;
@@ -32,14 +30,12 @@ pub fn db_paths(wallet_dir: &Path) -> (PathBuf, PathBuf) {
     (wallet_dir.to_path_buf(), wallet_dir.join(DATA_DB))
 }
 
-pub fn open_dbs(params: Network, wallet_dir: &Path) -> anyhow::Result<(FsBlockDb, Db)> {
+pub fn open_db(params: Network, wallet_dir: &Path) -> anyhow::Result<Db> {
     std::fs::create_dir_all(wallet_dir)?;
-    let (cache_dir, data_path) = db_paths(wallet_dir);
-    let mut db_cache = FsBlockDb::for_path(cache_dir).map_err(|e| anyhow!("{e:?}"))?;
+    let (_, data_path) = db_paths(wallet_dir);
     let mut db_data = WalletDb::for_path(data_path, params, SystemClock, OsRng)?;
-    init_blockmeta_db(&mut db_cache)?;
     init_wallet_db(&mut db_data, None).map_err(|e| anyhow!("{e:?}"))?;
-    Ok((db_cache, db_data))
+    Ok(db_data)
 }
 
 pub async fn connect(url: &str) -> anyhow::Result<Client> {
@@ -175,8 +171,7 @@ pub async fn ensure_operator_account(
 
 /// Orchard-only unified address request so bids never land in Sapling or transparent receivers.
 pub fn orchard_only_request() -> UnifiedAddressRequest {
-    use zcash_keys::keys::ReceiverRequirement::{Omit, Require};
-    UnifiedAddressRequest::unsafe_custom(Require, Omit, Omit)
+    UnifiedAddressRequest::ORCHARD
 }
 
 /// A fresh diversified address for a new auction. Returns (encoded UA, diversifier index hex).

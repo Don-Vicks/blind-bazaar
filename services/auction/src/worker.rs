@@ -32,7 +32,8 @@ pub struct Worker {
 impl Worker {
     pub async fn run(mut self) -> Result<()> {
         let wallet_dir = self.cfg.wallet_dir();
-        let (db_cache, mut db) = wallet::open_dbs(self.params, &wallet_dir)?;
+        let mut db = wallet::open_db(self.params, &wallet_dir)?;
+        let db_cache = wallet::cache::MemBlockCache::default();
         let (_, data_db_path) = wallet::db_paths(&wallet_dir);
         let wallet_ro = ingest::open_wallet_readonly(&data_db_path)?;
 
@@ -84,7 +85,7 @@ impl Worker {
     async fn pass(
         &self,
         client: &mut wallet::Client,
-        db_cache: &zcash_client_sqlite::FsBlockDb,
+        db_cache: &wallet::cache::MemBlockCache,
         db: &mut wallet::Db,
         wallet_ro: &Connection,
         prover: &LocalTxProver,

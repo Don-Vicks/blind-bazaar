@@ -14,16 +14,15 @@ use zcash_client_backend::{
     },
     proto::service::{self, BlockRange, RawTransaction},
 };
-use zcash_client_sqlite::FsBlockDb;
 use zcash_keys::encoding::AddressCodec;
 use zcash_primitives::transaction::{Transaction, TxId};
-use zcash_protocol::consensus::{BlockHeight, BranchId, Network, Parameters};
+use zcash_protocol::consensus::{BlockHeight, BranchId, Network};
 
-use super::{Client, Db};
+use super::{Client, Db, cache::MemBlockCache};
 
 const BATCH_SIZE: u32 = 1_000;
 
-pub async fn sync_once(client: &mut Client, params: &Network, db_cache: &FsBlockDb, db: &mut Db) -> anyhow::Result<()> {
+pub async fn sync_once(client: &mut Client, params: &Network, db_cache: &MemBlockCache, db: &mut Db) -> anyhow::Result<()> {
     zcash_client_backend::sync::run(client, params, db_cache, db, BATCH_SIZE)
         .await
         .map_err(|e| anyhow!("sync failed: {e:?}"))?;

@@ -77,7 +77,7 @@ pub async fn send(
     );
     let input_selector = GreedyInputSelector::new();
 
-    let proposal = propose_transfer(
+    let proposal = propose_transfer::<_, _, _, _, std::convert::Infallible>(
         db,
         params,
         account_id,
@@ -91,7 +91,7 @@ pub async fn send(
     )
     .map_err(|e| anyhow!("propose_transfer: {e:?}"))?;
 
-    let txids = create_proposed_transactions(
+    let txids = create_proposed_transactions::<_, _, std::convert::Infallible, _, std::convert::Infallible, _>(
         db,
         params,
         prover,

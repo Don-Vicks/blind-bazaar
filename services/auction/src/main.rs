@@ -44,12 +44,20 @@ async fn main() -> anyhow::Result<()> {
         status: status.clone(),
         rx,
     };
-    tokio::spawn(async move {
-        if let Err(e) = worker.run().await {
-            tracing::error!("wallet worker exited: {e:#}");
-            std::process::exit(1);
-        }
-    });
+    // The wallet DB and SQLite connections are !Sync, so the worker gets its own OS thread
+    // with a current-thread runtime. This also keeps proving work off the API runtime.
+    std::thread::Builder::new()
+        .name("wallet-worker".into())
+        .spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("worker runtime");
+            if let Err(e) = rt.block_on(worker.run()) {
+                tracing::error!("wallet worker exited: {e:#}");
+                std::process::exit(1);
+            }
+        })?;
 
     let app_state = Arc::new(state::AppState {
         network_name,
