@@ -45,6 +45,15 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 | Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
 | Memo passthrough in Zodl, Zingo, YWallet from a ZIP-321 QR | one bid from each wallet |
 
+## Added Oct 13 night (unit-tested; chain tests pending)
+
+- In-browser verifier: `packages/bb-verify-wasm` recomputes note commitments and decrypts disclosed memos; the
+  verify page per lot loads it from `/wasm` (built by `scripts/build-wasm.sh`)
+- Reserve-met proof: optional per-note encryption key in winning disclosures (`DISCLOSE_WINNING_MEMO`), memo
+  decryption in both verifiers, assertion in the e2e script
+- Refund-latency metric on the result API and page
+- How-it-works page with the architecture diagram and the who-sees-what table
+
 ## Added Oct 13 evening (unit-tested; chain test of uniform mode pending)
 
 - Uniform-price multi-unit lots: top-N win at the lowest winning bid, per-winner settlement and forfeiture with

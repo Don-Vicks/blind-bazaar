@@ -11,8 +11,9 @@ Status key: **done** · **in progress** · **planned**. Dates are targets.
 - done: uniform-price multi-unit mode (the zkSNARKs and Crafts format) with per-winner settlement and forfeiture
 - done: Go Dark as the bid entry path with a written threat model, fresh address per payment, transparent fallback
   with auto-shield, and the source-chain leak stated in the widget
-- planned (from `docs/LANDSCAPE.md`): one completed mainnet lot with a public verify page; refund-latency metric;
-  viewing-key selective disclosure for "reserve met"
+- done: public verify page (browser-side WebAssembly), refund-latency metric, reserve-met proof via per-note key
+  disclosure, how-it-works page
+- planned: one completed mainnet lot, linked from the verify page
 - stretch: Arcium MPC mode for winner selection (bids encrypted to an MXE, Vickrey or uniform clearing in MPC,
   result sealed to the seller, uniform shielded ZEC deposits carrying the Solana receipt hash)
 

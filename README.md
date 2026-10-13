@@ -102,6 +102,13 @@ the seller payout and the standalone verifier. About 15 minutes end to end.
 
 ## Verify a result yourself
 
+In the browser: every result page links to `/a/<id>/verify`, which recomputes each winning note's commitment with
+the Orchard code compiled to WebAssembly and, when a memo key is disclosed, decrypts that one memo locally. Build the
+module with `scripts/build-wasm.sh` (needs `rustup target add wasm32-unknown-unknown` and `cargo install
+wasm-bindgen-cli`); it lands in `apps/web/public/wasm`.
+
+From the command line:
+
 Every closed auction publishes a note-opening disclosure of the winning output. Anyone can check it against the
 chain with only the service binary and a public lightwalletd, no wallet or keys:
 
