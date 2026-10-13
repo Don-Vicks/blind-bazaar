@@ -58,7 +58,13 @@ impl Worker {
             }
         };
         info!("operator address: {operator_addr}");
-        self.status.write().await.operator_address = Some(operator_addr);
+        let (ver, chain, height) = wallet::sync::lightd_info(&mut client).await?;
+        info!("lightwalletd {ver} chain={chain} height={height}");
+        {
+            let mut st = self.status.write().await;
+            st.operator_address = Some(operator_addr);
+            st.lightwalletd_version = Some(format!("{ver} ({chain})"));
+        }
 
         info!("loading prover parameters");
         let prover = LocalTxProver::bundled();
@@ -71,6 +77,10 @@ impl Worker {
                 Some(cmd) = self.rx.recv() => match cmd {
                     WalletCmd::NewAddress { reply } => {
                         let r = wallet::next_auction_address(&mut db, &self.params, operator.account_id);
+                        let _ = reply.send(r);
+                    }
+                    WalletCmd::ScanTx { txid, reply } => {
+                        let r = wallet::sync::scan_txid(&mut client, &self.params, &mut db, &txid).await;
                         let _ = reply.send(r);
                     }
                 },
@@ -103,6 +113,13 @@ impl Worker {
         if enhanced > 0 {
             info!("enhanced {enhanced} transactions");
         }
+        let mempool = match wallet::sync::scan_mempool(client, &self.params, db).await {
+            Ok(n) => n,
+            Err(e) => {
+                warn!("mempool scan failed: {e:#}");
+                0
+            }
+        };
 
         let tip = wallet::chain_tip(client).await.ok();
         let height = wallet::wallet_height(db)?;
@@ -122,6 +139,7 @@ impl Worker {
             s.last_sync_at = Some(store::now());
             s.last_error = None;
             s.balance_zats = balance;
+            s.mempool_seen = mempool;
         }
 
         {

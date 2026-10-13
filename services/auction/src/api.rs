@@ -27,6 +27,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auctions/{id}/result", get(result))
         .route("/auctions/{id}/bid-uri", get(bid_uri))
         .route("/admin/payouts", post(admin_payout).get(admin_list_payouts))
+        .route("/admin/scan-tx", post(admin_scan_tx))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -66,6 +67,8 @@ struct Health {
     last_error: Option<String>,
     operator_address: Option<String>,
     balance_zats: Option<u64>,
+    lightwalletd_version: Option<String>,
+    mempool_seen: usize,
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> ApiResult<Health> {
@@ -79,6 +82,8 @@ async fn health(State(state): State<Arc<AppState>>) -> ApiResult<Health> {
         last_error: s.last_error,
         operator_address: s.operator_address,
         balance_zats: s.balance_zats,
+        lightwalletd_version: s.lightwalletd_version,
+        mempool_seen: s.mempool_seen,
     }))
 }
 
@@ -395,4 +400,26 @@ async fn admin_list_payouts(State(state): State<Arc<AppState>>, headers: HeaderM
     check_admin(&state, &headers)?;
     let conn = state.store.lock().await;
     Ok(Json(store::all_payouts(&conn)?))
+}
+
+#[derive(Deserialize)]
+struct ScanTx {
+    txid: String,
+}
+
+/// Debug aid: fetch a transaction by id and trial-decrypt it into the wallet.
+async fn admin_scan_tx(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<ScanTx>,
+) -> ApiResult<serde_json::Value> {
+    check_admin(&state, &headers)?;
+    let (tx, rx) = oneshot::channel();
+    state
+        .wallet
+        .send(WalletCmd::ScanTx { txid: req.txid.trim().to_lowercase(), reply: tx })
+        .await
+        .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
+    let detail = rx.await.map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??;
+    Ok(Json(serde_json::json!({ "detail": detail })))
 }

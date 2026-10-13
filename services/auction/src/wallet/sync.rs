@@ -19,6 +19,7 @@ use zcash_primitives::transaction::{Transaction, TxId};
 use zcash_protocol::consensus::{BlockHeight, BranchId, Network};
 
 use super::{Client, Db, cache::MemBlockCache};
+use std::time::Duration;
 
 const BATCH_SIZE: u32 = 1_000;
 
@@ -128,4 +129,66 @@ pub async fn enhance(client: &mut Client, params: &Network, db: &mut Db) -> anyh
         }
     }
     Ok(enhanced)
+}
+
+/// Pull the current mempool and trial-decrypt each transaction so bids show up before they are
+/// mined. lightwalletd keeps the stream open until the next block, so we stop after a short window.
+pub async fn scan_mempool(client: &mut Client, params: &Network, db: &mut Db) -> anyhow::Result<usize> {
+    let Some(chain_tip) = db.chain_height()? else {
+        return Ok(0);
+    };
+    let mut stream = client
+        .get_mempool_stream(service::Empty {})
+        .await?
+        .into_inner();
+    let mut seen = 0usize;
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let next = tokio::time::timeout_at(deadline, stream.next()).await;
+        match next {
+            Ok(Some(Ok(raw))) => {
+                let (tx, _) = parse_raw_transaction(params, chain_tip + 1, raw)?;
+                decrypt_and_store_transaction(params, db, &tx, None)?;
+                seen += 1;
+            }
+            Ok(Some(Err(e))) => {
+                debug!("mempool stream error: {e}");
+                break;
+            }
+            Ok(None) | Err(_) => break,
+        }
+    }
+    Ok(seen)
+}
+
+pub async fn lightd_info(client: &mut Client) -> anyhow::Result<(String, String, u64)> {
+    let info = client.get_lightd_info(service::Empty {}).await?.into_inner();
+    Ok((info.version, info.chain_name, info.block_height))
+}
+
+/// Fetch one transaction by display (big-endian hex) txid and trial-decrypt it into the wallet.
+pub async fn scan_txid(client: &mut Client, params: &Network, db: &mut Db, txid_display: &str) -> anyhow::Result<String> {
+    let chain_tip = db.chain_height()?.ok_or_else(|| anyhow!("wallet has no chain height yet"))?;
+    let mut bytes = hex::decode(txid_display)?;
+    bytes.reverse();
+    let txid = TxId::from_bytes(bytes.try_into().map_err(|_| anyhow!("txid must be 32 bytes"))?);
+    match fetch_transaction(client, params, chain_tip, txid).await? {
+        None => Ok("lightwalletd does not know this txid".into()),
+        Some((tx, mined_height)) => {
+            let before = db.get_wallet_summary(zcash_client_backend::data_api::wallet::ConfirmationsPolicy::MIN)?;
+            decrypt_and_store_transaction(params, db, &tx, mined_height)?;
+            let after = db.get_wallet_summary(zcash_client_backend::data_api::wallet::ConfirmationsPolicy::MIN)?;
+            let total = |s: Option<zcash_client_backend::data_api::WalletSummary<zcash_client_sqlite::AccountUuid>>| {
+                s.map(|s| s.account_balances().values().map(|b| u64::from(b.total())).sum::<u64>()).unwrap_or(0)
+            };
+            Ok(format!(
+                "mined_height={mined_height:?} sapling_outputs={} orchard_actions={} ironwood_actions={} balance {} -> {}",
+                tx.sapling_bundle().map(|b| b.shielded_outputs().len()).unwrap_or(0),
+                tx.orchard_bundle().map(|b| b.actions().len()).unwrap_or(0),
+                tx.ironwood_bundle().map(|b| b.actions().len()).unwrap_or(0),
+                total(before),
+                total(after)
+            ))
+        }
+    }
 }

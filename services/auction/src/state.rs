@@ -7,6 +7,11 @@ pub enum WalletCmd {
     NewAddress {
         reply: oneshot::Sender<anyhow::Result<(String, String)>>,
     },
+    /// Fetch a transaction by display txid and trial-decrypt it (debug aid; mined or mempool).
+    ScanTx {
+        txid: String,
+        reply: oneshot::Sender<anyhow::Result<String>>,
+    },
 }
 
 #[derive(Debug, Clone, Default)]
@@ -17,6 +22,8 @@ pub struct SyncStatus {
     pub last_error: Option<String>,
     pub operator_address: Option<String>,
     pub balance_zats: Option<u64>,
+    pub lightwalletd_version: Option<String>,
+    pub mempool_seen: usize,
 }
 
 pub struct AppState {
