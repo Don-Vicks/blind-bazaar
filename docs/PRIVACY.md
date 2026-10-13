@@ -11,12 +11,28 @@
 | Source chain (Go Dark) | A swap from the bidder's wallet to the rail | The Zcash destination memo or bid |
 | Swap rail | Bidder's source address, the ZEC destination address | The bid (it travels in the envelope, not through the rail) |
 
-## Known limitation: operator trust
+## Operator trust and the viewer/spender split
 
-The operator can read bids while the auction is open. Mitigations shipped: receipts
-(sha256 of the bidder's nonce) published as bids arrive, a hash of the full bid ledger
-published at close, and a note-opening disclosure of the winning transaction. v2: split
-the viewing key and the spending key across two operators.
+Whoever holds the auction viewing key can read bids while the auction is open. Mitigations shipped:
+receipts (sha256 of the bidder's nonce) published as bids arrive, a hash of the full bid ledger
+published at close, and a note-opening disclosure of the winning transaction.
+
+The service runs in one of three roles (`ROLE=all|viewer|spender`):
+
+- **viewer** holds only the unified full viewing key. It ingests bids, runs the auction clock,
+  publishes receipts, results and the disclosure, and serves the public API. It cannot move funds.
+- **spender** holds the spending key and its own wallet. It mirrors each auction definition from
+  the viewer exactly once (later changes are ignored), ingests the same bids from its own chain
+  view, recomputes winners and payouts with the same deterministic rules, signs the payouts, and
+  reports the transaction ids back. It never executes a payout the viewer tells it to; only payouts
+  its own ledger derives.
+- **all** runs both in one process (development and the hackathon demo).
+
+With the split on two hosts, a compromised viewer can misreport or censor but cannot steal: every
+refund goes to the address inside the bidder's own encrypted memo, every seller payout is bounded
+by the winning bid the spender decrypted itself, and the seller address is pinned at first sight.
+A compromised spender can steal, which is why the next step is FROST threshold signing so that
+spending needs k-of-n operators.
 
 ## Cross-chain bids use an envelope, not the memo
 

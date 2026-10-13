@@ -99,6 +99,10 @@ compares it with the `cmx` of the named action in the transaction. Losing bids a
 
 ## Operating it
 
+- Run two processes for custody separation: `ROLE=viewer OPERATOR_UFVK=uview…` (no seed on that host)
+  and, elsewhere, `ROLE=spender VIEWER_URL=https://viewer ADMIN_TOKEN=…` with the seed. Get the UFVK with
+  `bb-auction derive --seed-file operator.seed --ufvk`. `docs/PRIVACY.md` explains what each role can do.
+
 - A winner who does not pay within `SETTLEMENT_WINDOW_SECS` (default 24h) forfeits the deposit to the seller; the
   runner-up is offered the lot if their refund has not been sent yet, otherwise the auction ends unsettled.
 - Payouts retry with backoff and are parked as `dead` after 5 attempts; `/health` reports `dead_payouts` and a

@@ -21,7 +21,7 @@ Make the money paths safe before anyone who is not us uses them.
 - done: event log with webhook delivery (bid received, closed, refund sent, settled, paid, forfeited)
 - done: rate limit and origin allow-list on the Go Dark quote proxy; quote expiry enforced in the widget
 - done: Docker images and a Compose file with HTTPS (Caddy) for a single-VPS deployment
-- planned: integration tests against a regtest chain (zeckit) covering every money path
+- in progress: integration tests against a regtest chain (zeckit) covering every money path
 - planned: wallet rescan and reorg handling exercised deliberately; checkpoint backups of both databases
 - planned: structured audit log with no addresses; metrics (sync lag, queue depth, balance) to Prometheus
 - planned: pin to a released librustzcash line once NU7 ships on mainnet (Nov 5 target)
@@ -30,9 +30,10 @@ Make the money paths safe before anyone who is not us uses them.
 
 Remove the single operator who can both read bids and move funds.
 
-- planned: two processes with distinct keys: a **viewer** holding only the UFVK (ingests bids, publishes
-  receipts, decides winners) and a **spender** holding only the spending key (executes payouts it can verify
-  against signed auction rules and the on-chain ledger commitment)
+- done (needs chain test): two processes with distinct keys: a **viewer** holding only the UFVK (ingests bids,
+  publishes receipts, decides winners) and a **spender** holding the spending key that mirrors auction
+  definitions immutably, recomputes outcomes from its own wallet view, and only executes payouts its own ledger
+  derives
 - planned: FROST threshold signing for the spender so refunds and payouts need k-of-n operators
 - planned: bidder-side inclusion proofs: Merkle commitment of the bid ledger at close, per-receipt proof
 - planned: encrypted-to-auction-key bid envelopes for cross-chain entries (rail and relay see ciphertext only)
