@@ -14,9 +14,9 @@ use std::sync::Arc;
 use clap::Parser;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::info;
-use zcash_protocol::consensus::Network;
+use crate::wallet::net::Net as Network;
 
-use crate::config::{Config, NetworkName};
+use crate::config::Config;
 
 /// `bb-auction --verify-disclosure result.json`: fetch the named transaction from lightwalletd and
 /// check that the disclosed note opening matches the on-chain commitment. Needs no wallet.
@@ -24,8 +24,9 @@ async fn verify_disclosure_file(cfg: &Config, path: &std::path::Path) -> anyhow:
     use zcash_client_backend::proto::service;
     let d: disclosure::Disclosure = serde_json::from_str(&std::fs::read_to_string(path)?)?;
     let params = match d.network.as_str() {
-        "main" => Network::MainNetwork,
-        _ => Network::TestNetwork,
+        "main" => Network::Main,
+        "regtest" => cfg.net(),
+        _ => Network::Test,
     };
     let mut client = wallet::connect(&cfg.lightwalletd_url).await?;
     let mut hash = hex::decode(&d.txid)?;
@@ -61,10 +62,7 @@ async fn wallet_cmd(
     wait_balance: Option<u64>,
 ) -> anyhow::Result<()> {
     use zcash_client_backend::data_api::WalletRead;
-    let params = match cfg.network {
-        NetworkName::Test => Network::TestNetwork,
-        NetworkName::Main => Network::MainNetwork,
-    };
+    let params = cfg.net();
     let mut db = wallet::open_db(params, &dir)?;
     let cache = wallet::cache::MemBlockCache::default();
     let mut client = wallet::connect(&cfg.lightwalletd_url).await?;
@@ -141,10 +139,7 @@ async fn main() -> anyhow::Result<()> {
     if let Some(config::Cmd::Derive { seed_file, count, check }) = cfg.cmd.clone() {
         use secrecy::ExposeSecret;
         use zcash_keys::keys::UnifiedSpendingKey;
-        let params = match cfg.network {
-            NetworkName::Test => Network::TestNetwork,
-            NetworkName::Main => Network::MainNetwork,
-        };
+        let params = cfg.net();
         let (seed, _) = wallet::load_or_create_seed(&seed_file)?;
         let usk = UnifiedSpendingKey::from_seed(&params, seed.expose_secret(), zip32::AccountId::ZERO)
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
@@ -186,10 +181,8 @@ async fn main() -> anyhow::Result<()> {
     if let Some(config::Cmd::Wallet { dir, seed_file, pay, wait_balance }) = cfg.cmd.clone() {
         return wallet_cmd(&cfg, dir, seed_file, pay, wait_balance).await;
     }
-    let (params, network_name) = match cfg.network {
-        NetworkName::Test => (Network::TestNetwork, "test"),
-        NetworkName::Main => (Network::MainNetwork, "main"),
-    };
+    let params = cfg.net();
+    let network_name = cfg.network_name();
     std::fs::create_dir_all(&cfg.data_dir)?;
 
     let store = Arc::new(Mutex::new(store::open(&cfg.store_path())?));

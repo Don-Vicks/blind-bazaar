@@ -24,13 +24,13 @@ use zcash_keys::keys::UnifiedSpendingKey;
 use zcash_proofs::prover::LocalTxProver;
 use zcash_protocol::{
     ShieldedPool,
-    consensus::Network,
     memo::{Memo, MemoBytes},
     value::Zatoshis,
 };
 use zip321::{Payment, TransactionRequest};
 
 use super::{Client, Db};
+use super::net::Net as Network;
 
 pub struct Outgoing<'a> {
     pub address: &'a str,

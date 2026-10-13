@@ -8,7 +8,7 @@ use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{error, info, warn};
 use zcash_client_backend::data_api::WalletRead;
 use zcash_proofs::prover::LocalTxProver;
-use zcash_protocol::consensus::Network;
+use crate::wallet::net::Net as Network;
 
 use crate::{
     close,

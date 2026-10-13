@@ -16,7 +16,8 @@ use zcash_client_backend::{
 };
 use zcash_keys::encoding::AddressCodec;
 use zcash_primitives::transaction::{Transaction, TxId};
-use zcash_protocol::consensus::{BlockHeight, BranchId, Network};
+use zcash_protocol::consensus::{BlockHeight, BranchId};
+use super::net::Net as Network;
 
 use super::{Client, Db, cache::MemBlockCache};
 use std::time::Duration;

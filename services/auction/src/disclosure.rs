@@ -12,7 +12,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use zcash_address::unified::{Address as UnifiedAddr, Container, Encoding, Receiver};
 use zcash_primitives::transaction::Transaction;
-use zcash_protocol::consensus::{BlockHeight, BranchId, Network};
+use zcash_protocol::consensus::{BlockHeight, BranchId};
+use crate::wallet::net::Net as Network;
 
 pub const VERSION: &str = "bb-note-opening-1";
 

@@ -6,7 +6,7 @@ use rusqlite::Connection;
 use tracing::info;
 
 use crate::{disclosure, memo, store};
-use zcash_protocol::consensus::Network;
+use crate::wallet::net::Net as Network;
 
 pub struct CloseConfig {
     pub delay_min: u64,
@@ -229,7 +229,7 @@ mod tests {
         let b2 = bid(&store, "aaaaaaaa", "02", 5_000_000, "0000000000000002", "valid");
         let _b3 = bid(&store, "aaaaaaaa", "03", 1_500_000, "0000000000000003", "valid"); // below reserve
         let _bad = bid(&store, "aaaaaaaa", "04", 9_000_000, "0000000000000004", "wrong_deposit");
-        let n = close_due(&store, None, &Network::TestNetwork, "test", &cfg()).unwrap();
+        let n = close_due(&store, None, &Network::Test, "test", &cfg()).unwrap();
         assert_eq!(n, 1);
         let a = store::get_auction(&store, "aaaaaaaa").unwrap().unwrap();
         assert_eq!(a.status, "closed");
@@ -248,7 +248,7 @@ mod tests {
         auction(&store, "bbbbbbbb", store::now() - 1);
         let first = bid(&store, "bbbbbbbb", "11", 4_000_000, "0000000000000011", "valid");
         let _second = bid(&store, "bbbbbbbb", "12", 4_000_000, "0000000000000012", "valid");
-        close_due(&store, None, &Network::TestNetwork, "test", &cfg()).unwrap();
+        close_due(&store, None, &Network::Test, "test", &cfg()).unwrap();
         assert_eq!(store::get_auction(&store, "bbbbbbbb").unwrap().unwrap().winner_bid_id, Some(first));
     }
 
@@ -257,7 +257,7 @@ mod tests {
         let store = store::open_in_memory().unwrap();
         auction(&store, "cccccccc", store::now() - 1);
         bid(&store, "cccccccc", "21", 1_000_000, "0000000000000021", "valid");
-        close_due(&store, None, &Network::TestNetwork, "test", &cfg()).unwrap();
+        close_due(&store, None, &Network::Test, "test", &cfg()).unwrap();
         let a = store::get_auction(&store, "cccccccc").unwrap().unwrap();
         assert_eq!(a.status, "no_sale");
         assert_eq!(store::payouts_for_auction(&store, "cccccccc").unwrap().len(), 1);
@@ -270,7 +270,7 @@ mod tests {
         let b1 = bid(&store, "dddddddd", "31", 3_000_000, "0000000000000031", "valid");
         let b2 = bid(&store, "dddddddd", "32", 5_000_000, "0000000000000032", "valid");
         let c = CloseConfig { settlement_window_secs: -1, ..cfg() }; // deadline already passed
-        close_due(&store, None, &Network::TestNetwork, "test", &c).unwrap();
+        close_due(&store, None, &Network::Test, "test", &c).unwrap();
         assert_eq!(store::get_auction(&store, "dddddddd").unwrap().unwrap().winner_bid_id, Some(b2));
 
         // Winner b2 never pays: forfeit, and b1's queued refund is cancelled for a second chance.

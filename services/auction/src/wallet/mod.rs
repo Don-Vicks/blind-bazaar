@@ -1,6 +1,7 @@
 //! Thin wrappers over zcash_client_sqlite / zcash_client_backend, lifted from zcash-devtool.
 
 pub mod cache;
+pub mod net;
 pub mod send;
 pub mod sync;
 
@@ -19,7 +20,8 @@ use zcash_client_backend::{
 };
 use zcash_client_sqlite::{AccountUuid, WalletDb, util::SystemClock, wallet::init::init_wallet_db};
 use zcash_keys::keys::{UnifiedAddressRequest, UnifiedSpendingKey};
-use zcash_protocol::consensus::{BlockHeight, Network, NetworkUpgrade, Parameters};
+use zcash_protocol::consensus::{BlockHeight, NetworkUpgrade, Parameters};
+use net::Net as Network;
 use zip32::AccountId;
 
 pub type Client = CompactTxStreamerClient<Channel>;

@@ -6,6 +6,7 @@ use clap::{Parser, Subcommand};
 pub enum NetworkName {
     Test,
     Main,
+    Regtest,
 }
 
 impl std::str::FromStr for NetworkName {
@@ -14,6 +15,7 @@ impl std::str::FromStr for NetworkName {
         match s {
             "test" | "testnet" => Ok(NetworkName::Test),
             "main" | "mainnet" => Ok(NetworkName::Main),
+            "regtest" | "local" => Ok(NetworkName::Regtest),
             other => Err(format!("unsupported network {other}; use test or main")),
         }
     }
@@ -56,9 +58,18 @@ pub struct Config {
     #[command(subcommand)]
     pub cmd: Option<Cmd>,
 
-    /// `test` or `main`
+    /// `test`, `main` or `regtest`
     #[arg(long, env = "NETWORK", default_value = "test")]
     pub network: NetworkName,
+
+    /// Regtest only: block height at which NU5 and every later upgrade activate (pre-NU5 upgrades
+    /// activate at height 1). Must match the local zebrad configuration.
+    #[arg(long, env = "REGTEST_NU_HEIGHT", default_value_t = 1)]
+    pub regtest_nu_height: u32,
+
+    /// Regtest only: latest active network upgrade (nu5, nu6, nu6_1, nu6_2, nu6_3, nu7).
+    #[arg(long, env = "REGTEST_LATEST_NU", default_value = "nu6_1")]
+    pub regtest_latest_nu: String,
 
     /// lightwalletd gRPC endpoint, e.g. https://testnet.zec.rocks:443
     #[arg(long, env = "LIGHTWALLETD_URL", default_value = "https://testnet.zec.rocks:443")]
@@ -125,6 +136,7 @@ impl Config {
         self.data_dir.join(match self.network {
             NetworkName::Test => "wallet-test",
             NetworkName::Main => "wallet-main",
+            NetworkName::Regtest => "wallet-regtest",
         })
     }
 
@@ -132,6 +144,26 @@ impl Config {
         self.data_dir.join(match self.network {
             NetworkName::Test => "bb-test.sqlite",
             NetworkName::Main => "bb-main.sqlite",
+            NetworkName::Regtest => "bb-regtest.sqlite",
         })
+    }
+}
+
+impl Config {
+    pub fn net(&self) -> crate::wallet::net::Net {
+        use crate::wallet::net::Net;
+        match self.network {
+            NetworkName::Test => Net::Test,
+            NetworkName::Main => Net::Main,
+            NetworkName::Regtest => Net::regtest(self.regtest_nu_height, &self.regtest_latest_nu),
+        }
+    }
+
+    pub fn network_name(&self) -> &'static str {
+        match self.network {
+            NetworkName::Test => "test",
+            NetworkName::Main => "main",
+            NetworkName::Regtest => "regtest",
+        }
     }
 }
