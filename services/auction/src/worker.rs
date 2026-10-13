@@ -44,15 +44,21 @@ impl Worker {
             wallet::ensure_operator_account(&mut db, &mut client, &self.params, &seed, self.cfg.birthday_height)
                 .await?;
 
-        // Make sure the operator has at least one address so the health endpoint can show it.
-        if wallet::operator_address(&db, &self.params, operator.account_id)?.is_none() {
-            let (addr, _) = wallet::next_auction_address(&mut db, &self.params, operator.account_id)?;
-            info!("operator address: {addr}");
-        }
-        {
-            let mut s = self.status.write().await;
-            s.operator_address = wallet::operator_address(&db, &self.params, operator.account_id)?;
-        }
+        // A dedicated receive address for the operator (tips, Go Dark demo, funding), persisted so
+        // it is stable across restarts and never confused with an auction address.
+        let operator_addr = {
+            let store = self.store.lock().await;
+            match store::get_meta(&store, "operator_address")? {
+                Some(a) => a,
+                None => {
+                    let (addr, _) = wallet::next_auction_address(&mut db, &self.params, operator.account_id)?;
+                    store::set_meta(&store, "operator_address", &addr)?;
+                    addr
+                }
+            }
+        };
+        info!("operator address: {operator_addr}");
+        self.status.write().await.operator_address = Some(operator_addr);
 
         info!("loading prover parameters");
         let prover = LocalTxProver::bundled();

@@ -187,14 +187,6 @@ pub fn next_auction_address(
     Ok((ua.encode(params), hex::encode(di.as_bytes())))
 }
 
-/// The operator's default address (used for the Go Dark receiver demo and health output).
-pub fn operator_address(db: &Db, params: &Network, account_id: AccountUuid) -> anyhow::Result<Option<String>> {
-    Ok(db
-        .get_last_generated_address_matching(account_id, orchard_only_request())
-        .map_err(|e| anyhow!("{e:?}"))?
-        .map(|ua| ua.encode(params)))
-}
-
 pub fn wallet_height(db: &Db) -> anyhow::Result<Option<u32>> {
     Ok(db.chain_height()?.map(u32::from))
 }
