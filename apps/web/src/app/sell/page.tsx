@@ -5,7 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { Button, Card, Field, inputClass } from "@/components/ui";
+import { Button, Eyebrow, Field, Panel, inputClass } from "@/components/ui";
 
 const TOKEN_KEY = "bb.adminToken";
 
@@ -83,15 +83,24 @@ export default function SellPage() {
         : null;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">List a lot</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          The service derives a fresh shielded address for the auction. Bidders pay the deposit to it with their
-          sealed bid in the memo. You only ever learn the winning amount.
-        </p>
+    <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
+      <div className="rise flex flex-col gap-8 sm:col-span-5">
+        <div>
+          <Eyebrow>Sell</Eyebrow>
+          <h1 className="serif mt-4 text-[44px] leading-[1.02] sm:text-[56px]">List a lot.</h1>
+          <p className="mt-6 max-w-[40ch] text-[16px] leading-relaxed text-muted-foreground">
+            The service derives a fresh shielded address for the auction. Bidders pay the deposit to it with their
+            sealed bid in the memo. You learn the winning amount and nothing else.
+          </p>
+        </div>
+        <dl className="hairline-t grid gap-4 pt-6 text-[14px]">
+          <div><dt className="text-foreground">Reserve</dt><dd className="text-muted-foreground">The lowest bid you will accept. Published.</dd></div>
+          <div><dt className="text-foreground">Deposit</dt><dd className="text-muted-foreground">Paid by every bidder to bid. Returned to losers, credited to the winner.</dd></div>
+          <div><dt className="text-foreground">Payout address</dt><dd className="text-muted-foreground">Your unified address. The winning amount arrives shielded.</dd></div>
+        </dl>
       </div>
-      <Card>
+      <div className="rise rise-2 sm:col-span-7">
+      <Panel>
         <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
           <Field label="Title" htmlFor="title" error={errors.title}>
             <input id="title" name="title" type="text" autoComplete="off" className={inputClass} value={title} onChange={(e) => setTitle(e.target.value)} aria-invalid={!!errors.title} />
@@ -101,20 +110,20 @@ export default function SellPage() {
           </Field>
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label="Reserve (ZEC)" htmlFor="reserve" error={errors.reserve} hint="Lowest bid you will accept.">
-              <input id="reserve" name="reserve" type="text" inputMode="decimal" autoComplete="off" placeholder="0.5" className={`${inputClass} font-mono`} value={reserve} onChange={(e) => setReserve(e.target.value)} aria-invalid={!!errors.reserve} />
+              <input id="reserve" name="reserve" type="text" inputMode="decimal" autoComplete="off" placeholder="0.5" className={`${inputClass} num`} value={reserve} onChange={(e) => setReserve(e.target.value)} aria-invalid={!!errors.reserve} />
             </Field>
             <Field label="Deposit (ZEC)" htmlFor="deposit" error={errors.deposit} hint="Every bidder pays this to bid. Losers get it back.">
-              <input id="deposit" name="deposit" type="text" inputMode="decimal" autoComplete="off" placeholder="0.05" className={`${inputClass} font-mono`} value={deposit} onChange={(e) => setDeposit(e.target.value)} aria-invalid={!!errors.deposit} />
+              <input id="deposit" name="deposit" type="text" inputMode="decimal" autoComplete="off" placeholder="0.05" className={`${inputClass} num`} value={deposit} onChange={(e) => setDeposit(e.target.value)} aria-invalid={!!errors.deposit} />
             </Field>
           </div>
           <Field label="Payout address" htmlFor="seller" error={errors.seller} hint="Your unified address. The winning amount is sent here shielded.">
-            <input id="seller" name="seller" type="text" autoComplete="off" spellCheck={false} placeholder="u1…" className={`${inputClass} font-mono`} value={seller} onChange={(e) => setSeller(e.target.value)} aria-invalid={!!errors.seller} />
+            <input id="seller" name="seller" type="text" autoComplete="off" spellCheck={false} placeholder="u1…" className={`${inputClass} num`} value={seller} onChange={(e) => setSeller(e.target.value)} aria-invalid={!!errors.seller} />
           </Field>
           <Field label="Open for (hours)" htmlFor="hours" error={errors.hours}>
-            <input id="hours" name="hours" type="number" min="0.1" max="336" step="0.1" className={`${inputClass} font-mono`} value={hours} onChange={(e) => setHours(e.target.value)} aria-invalid={!!errors.hours} />
+            <input id="hours" name="hours" type="number" min="0.1" max="336" step="0.1" className={`${inputClass} num`} value={hours} onChange={(e) => setHours(e.target.value)} aria-invalid={!!errors.hours} />
           </Field>
           <Field label="Admin token" htmlFor="token" error={errors.token} hint="Set by the operator running the service. Kept in this tab only.">
-            <input id="token" name="token" type="password" autoComplete="off" className={`${inputClass} font-mono`} value={token} onChange={(e) => setToken(e.target.value)} aria-invalid={!!errors.token} />
+            <input id="token" name="token" type="password" autoComplete="off" className={`${inputClass} num`} value={token} onChange={(e) => setToken(e.target.value)} aria-invalid={!!errors.token} />
           </Field>
           {serverError && (
             <p className="text-sm text-danger" role="alert">
@@ -125,7 +134,8 @@ export default function SellPage() {
             {create.isPending ? "Creating…" : "Create auction"}
           </Button>
         </form>
-      </Card>
+      </Panel>
+      </div>
     </div>
   );
 }

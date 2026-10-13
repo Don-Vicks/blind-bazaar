@@ -1,15 +1,44 @@
 # Brand — Blind Bazaar
 
-_Status: deferred_
+_Status: active (Oct 13, 2026)_
 
-The user chose to defer brand setup. This project is currently using shadcn's default neutral palette and no custom typography. The `frontend-design-guidelines` skill will quietly use defaults and will not prompt again.
+Direction: luxury, refined, dark-native. A private auction house, not a dashboard.
 
-To set up a real brand palette, typography, and voice at any time, run:
+## Palette (warm monochrome + one accent)
 
-    /brand-design
+| Token | Dark | Light | Role |
+|---|---|---|---|
+| background | #121110 | #F6F3EE | page |
+| surface | #181715 | #FFFDFA | raised panels (bid panel, result) |
+| foreground | #EDE8DF | #1A1816 | text |
+| muted-foreground | #9A9288 | #6A635A | secondary text |
+| hairline | rgba(237,232,223,0.10) | rgba(26,24,22,0.12) | dividers, input borders |
+| accent | #C9A961 (brass) | #8B6D2B | live state, links, focus, countdown |
+| danger | #E07A6B | #B4382A | errors |
+| success | #8FBF9A | #2F7A4A | received / sent |
 
-or say: "pick brand colors"
+Accent appears on at most one element per view. Never gradients. Never pure black.
 
-When `brand-design` runs, it will detect this deferred state, skip the "confirm overwrite" step, and proceed directly to the full brand setup. The resulting palette will be applied to `app/globals.css` and this file will be replaced with the real brand documentation.
+## Typography
 
-_Deferred at: 2026-10-13T00:00:00Z_
+- Display and lot titles: Instrument Serif (next/font), tracking -0.01em, weights 400 only.
+- UI: Geist Sans, 3 weights (400, 500, 600).
+- Numbers, addresses, receipts, memos: Geist Mono, `tabular-nums`.
+- Micro-labels: 11px uppercase, tracking 0.14em, muted.
+- Scale: 11 / 13 / 15 / 18 / 28 / 44 / 72px.
+
+## Layout
+
+- Max width 1120px, 24px gutters, 8px grid. Sections separated by hairlines, 48 to 96px apart.
+- Lot page is asymmetric: 7/12 narrative, 5/12 sticky facts and bid column.
+- Radius: 2px on inputs and buttons, 6px on panels, full on dots only.
+- Shadows: none. Depth comes from surface shade and hairlines.
+
+## Motion
+
+- 180ms ease-out for state changes, 300ms fade-up on first mount, nothing on exit beyond 120ms.
+- Respect `prefers-reduced-motion`.
+
+## Voice
+
+Specific, calm, no hype. Say what the chain does. "Losing bids are never revealed" beats "military-grade privacy".

@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { API_BASE } from "@/lib/api";
 import { dateTime, zec } from "@/lib/format";
+import { Eyebrow } from "@/components/ui";
 
 interface Event {
   id: number;
@@ -12,7 +13,7 @@ interface Event {
 }
 
 const LABELS: Record<string, (p: Record<string, unknown>) => string> = {
-  created: () => "Auction listed",
+  created: () => "Lot listed",
   bid_received: () => "Sealed bid received",
   closed: (p) => `Closed. Winning bid ${zec(p.winning_amount_zats as number)}`,
   no_sale: () => "Closed with no bid at reserve",
@@ -20,7 +21,7 @@ const LABELS: Record<string, (p: Record<string, unknown>) => string> = {
   second_chance: (p) => `Winner forfeited. Offered to the next bid at ${zec(p.winning_amount_zats as number)}`,
   forfeited: () => "Winner did not pay in time. Deposit forfeited to seller",
   forfeit_paid: () => "Forfeited deposit paid to seller",
-  unsettled: () => "No eligible bidder left. Auction ended unsettled",
+  unsettled: () => "No eligible bidder left. Ended unsettled",
   settled: () => "Winner paid the balance",
   seller_paid: () => "Seller paid, shielded",
 };
@@ -37,16 +38,13 @@ export function EventTimeline({ auctionId }: { auctionId: string }) {
   });
   if (!data || data.length === 0) return null;
   return (
-    <section aria-labelledby="timeline-heading" className="flex flex-col gap-3">
-      <h2 id="timeline-heading" className="text-sm font-medium">
-        Timeline
-      </h2>
-      <ol className="flex flex-col gap-2 border-l border-border pl-4 text-sm">
-        {data.map((e) => (
-          <li key={e.id} className="relative">
-            <span aria-hidden className="absolute -left-[21px] top-1.5 size-2 rounded-full bg-accent" />
-            <p>{(LABELS[e.kind] ?? (() => e.kind.replace(/_/g, " ")))(e.payload)}</p>
-            <p className="text-xs text-muted-foreground">{dateTime(e.created_at)}</p>
+    <section aria-labelledby="timeline-heading" className="flex flex-col gap-4">
+      <Eyebrow id="timeline-heading">Timeline</Eyebrow>
+      <ol className="flex flex-col">
+        {data.map((e, i) => (
+          <li key={e.id} className={`grid grid-cols-[150px_1fr] gap-4 py-3 text-[14px] ${i > 0 ? "hairline-t" : ""}`}>
+            <span className="num text-[12px] text-muted-foreground">{dateTime(e.created_at)}</span>
+            <span>{(LABELS[e.kind] ?? (() => e.kind.replace(/_/g, " ")))(e.payload)}</span>
           </li>
         ))}
       </ol>

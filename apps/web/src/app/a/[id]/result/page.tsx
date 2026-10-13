@@ -1,16 +1,11 @@
 import { Suspense } from "react";
-import { ResultClient } from "@/components/result-client";
 import { Skeleton } from "@/components/ui";
+import { ParamsClient } from "./params-client";
 
-async function Resolved({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  return <ResultClient id={id} />;
-}
-
-export default function Page({ params }: { params: Promise<{ id: string }> }) {
+export default function Page() {
   return (
     <Suspense fallback={<Skeleton className="h-64" />}>
-      <Resolved params={params} />
+      <ParamsClient />
     </Suspense>
   );
 }

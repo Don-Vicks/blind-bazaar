@@ -1,13 +1,12 @@
 "use client";
 
 import { looksLikeShieldedAddress, parseZec, prepareBid, type PreparedBid } from "@blind-bazaar/sdk";
+import { GoDark } from "@blind-bazaar/go-dark";
 import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
-import type { AuctionView } from "@/lib/api";
+import { API_BASE, type AuctionView } from "@/lib/api";
 import { zec } from "@/lib/format";
-import { Button, Card, Field, Mono, inputClass } from "@/components/ui";
-import { GoDark } from "@blind-bazaar/go-dark";
-import { API_BASE } from "@/lib/api";
+import { Button, Eyebrow, Field, Mono, Panel, inputClass } from "@/components/ui";
 
 const RECEIPTS_KEY = "bb.receipts";
 
@@ -35,11 +34,11 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
     let bidZats = 0n;
     try {
       bidZats = parseZec(amount);
-      if (bidZats < BigInt(auction.reserve_zats)) next.amount = `Bid must be at least ${zec(auction.reserve_zats)}.`;
+      if (bidZats < BigInt(auction.reserve_zats)) next.amount = `At least ${zec(auction.reserve_zats)}.`;
     } catch {
-      next.amount = "Enter an amount in ZEC, up to 8 decimals.";
+      next.amount = "An amount in ZEC, up to 8 decimals.";
     }
-    if (!looksLikeShieldedAddress(refund.trim())) next.refund = "Enter a unified address (starts with u1 or utest1).";
+    if (!looksLikeShieldedAddress(refund.trim())) next.refund = "A unified address, starting with u1 or utest1.";
     if (!confirmed) next.confirm = "Confirm the refund address is yours.";
     setErrors(next);
     if (Object.keys(next).length) return;
@@ -60,34 +59,27 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
 
   if (prepared) {
     return (
-      <Card className="flex flex-col gap-5">
+      <Panel className="flex flex-col gap-7">
         <div>
-          <h2 className="text-lg font-medium">Pay the deposit to place your bid</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Scan with Zodl, Zingo or YWallet. Your bid of <span className="font-mono">{zec(prepared.bid.bidZats)}</span>{" "}
-            travels inside the encrypted memo. Only the auction can read it.
+          <Eyebrow>Your sealed bid</Eyebrow>
+          <p className="serif mt-2 text-[34px] leading-none">{zec(prepared.bid.bidZats)}</p>
+          <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
+            Pay the <span className="num text-foreground">{zec(prepared.depositZats)}</span> deposit from Zodl, Zingo or
+            YWallet. The bid travels inside the encrypted memo; only the auction can read it.
           </p>
         </div>
-        <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
-          <div className="rounded-lg bg-white p-3">
-            <QRCodeSVG value={prepared.uri} size={208} level="M" aria-label="Payment QR code" />
+        <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
+          <div className="rounded-[2px] bg-qr p-3">
+            <QRCodeSVG value={prepared.uri} size={176} level="M" bgColor="transparent" fgColor="#1a1816" aria-label="Payment QR code" />
           </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-3 text-sm">
-            <div>
-              <p className="text-muted-foreground">Deposit</p>
-              <p className="font-mono text-base">{zec(prepared.depositZats)}</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground">Payment URI</p>
-              <Mono className="text-muted-foreground">{prepared.uri}</Mono>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <a
-                href={prepared.uri}
-                className="inline-flex min-h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              >
-                Open in wallet
-              </a>
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+            <a
+              href={prepared.uri}
+              className="inline-flex min-h-11 items-center justify-center rounded-[2px] bg-foreground px-5 text-[13px] font-medium tracking-[0.02em] text-background hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            >
+              Open in wallet
+            </a>
+            <div className="grid grid-cols-2 gap-2">
               <Button variant="secondary" onClick={() => copy(prepared.uri, "uri")}>
                 {copied === "uri" ? "Copied" : "Copy URI"}
               </Button>
@@ -97,18 +89,18 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
             </div>
           </div>
         </div>
-        <div className="rounded-md border border-border bg-muted p-4 text-sm">
-          <p className="font-medium">Keep your receipt</p>
-          <Mono className="mt-1 block">{prepared.receipt}</Mono>
-          <p className="mt-2 text-xs text-muted-foreground">
-            It appears on the status page once your bid lands. It reveals nothing about your bid. Saved in this browser.
+        <div className="hairline-t pt-5">
+          <Eyebrow>Receipt · keep this</Eyebrow>
+          <Mono className="mt-2 block">{prepared.receipt}</Mono>
+          <p className="mt-2 text-[13px] text-muted-foreground">
+            Appears on the status page once your bid lands. Reveals nothing about the bid. Saved in this browser.
           </p>
         </div>
-        <div className="rounded-md border border-border p-4">
-          <p className="text-sm font-medium">No ZEC? Enter from Solana or Ethereum</p>
-          <p className="mb-3 mt-1 text-xs text-muted-foreground">
-            Go Dark swaps the deposit into shielded ZEC at the auction address and relays your sealed bid to the
-            auction. The rail never sees the bid.
+        <div className="hairline-t pt-5">
+          <Eyebrow>No ZEC?</Eyebrow>
+          <p className="mb-4 mt-2 text-[13px] leading-relaxed text-muted-foreground">
+            Go Dark swaps the deposit from Solana or Ethereum into shielded ZEC at the auction address and relays your
+            sealed bid. The rail never sees the bid.
           </p>
           <GoDark
             to={auction.address}
@@ -117,43 +109,41 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
             envelope={{ auctionApi: API_BASE, auctionId: auction.id, payload: prepared.memo }}
           />
         </div>
-        <Button variant="secondary" onClick={() => setPrepared(null)} className="self-start">
+        <Button variant="ghost" onClick={() => setPrepared(null)} className="self-start px-0">
           Start over
         </Button>
-      </Card>
+      </Panel>
     );
   }
 
   return (
-    <Card>
-      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+    <Panel>
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
         <div>
-          <h2 className="text-lg font-medium">Place a sealed bid</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            You pay the fixed deposit now. If you win, you pay the difference. If you lose, the deposit comes back
-            shielded to the address below.
+          <Eyebrow>Place a sealed bid</Eyebrow>
+          <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
+            You pay the fixed deposit now. Win, and you pay the difference. Lose, and the deposit returns shielded to the
+            address below.
           </p>
         </div>
-        <Field label="Your bid (ZEC)" htmlFor="bid-amount" error={errors.amount} hint={`Reserve is ${zec(auction.reserve_zats)}.`}>
-          <input
-            id="bid-amount"
-            name="bid"
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder="0.00"
-            className={`${inputClass} font-mono`}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            aria-invalid={!!errors.amount}
-          />
+        <Field label="Your bid" htmlFor="bid-amount" error={errors.amount} hint={`Reserve ${zec(auction.reserve_zats)}`}>
+          <div className="relative">
+            <input
+              id="bid-amount"
+              name="bid"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="0.00"
+              className={`${inputClass} num pr-14 text-[22px]`}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              aria-invalid={!!errors.amount}
+            />
+            <span className="num pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-muted-foreground">ZEC</span>
+          </div>
         </Field>
-        <Field
-          label="Refund address"
-          htmlFor="refund"
-          error={errors.refund}
-          hint="A unified address from your wallet. Refunds and nothing else go here."
-        >
+        <Field label="Refund address" htmlFor="refund" error={errors.refund} hint="From your wallet. Refunds and nothing else go here.">
           <input
             id="refund"
             name="refund"
@@ -161,18 +151,18 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
             autoComplete="off"
             spellCheck={false}
             placeholder="u1…"
-            className={`${inputClass} font-mono`}
+            className={`${inputClass} num text-[13px]`}
             value={refund}
             onChange={(e) => setRefund(e.target.value)}
             aria-invalid={!!errors.refund}
           />
         </Field>
         <div className="flex flex-col gap-1.5">
-          <label className="flex min-h-10 items-center gap-3 text-sm">
+          <label className="flex min-h-11 items-center gap-3 text-[14px]">
             <input
               type="checkbox"
               name="confirm"
-              className="size-4 accent-accent"
+              className="size-4 accent-[var(--accent)]"
               checked={confirmed}
               onChange={(e) => setConfirmed(e.target.checked)}
               aria-invalid={!!errors.confirm}
@@ -180,15 +170,15 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
             I control this refund address.
           </label>
           {errors.confirm && (
-            <p className="text-xs text-danger" role="alert">
+            <p className="text-[13px] text-danger" role="alert">
               {errors.confirm}
             </p>
           )}
         </div>
-        <Button type="submit" className="self-start">
+        <Button type="submit" className="w-full">
           Create payment request
         </Button>
       </form>
-    </Card>
+    </Panel>
   );
 }

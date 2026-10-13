@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
 import { Providers } from "./providers";
@@ -7,47 +7,46 @@ import { HealthBadge } from "@/components/health-badge";
 
 const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
+const instrument = Instrument_Serif({ variable: "--font-instrument-serif", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
 
 export const metadata: Metadata = {
   title: "Blind Bazaar",
   description: "Sealed-bid auctions where every bid is a shielded Zcash transaction.",
 };
 
+const nav =
+  "rounded-[2px] py-2 text-[13px] text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent";
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} ${instrument.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
         <Providers>
-          <header className="border-b border-border">
-            <div className="mx-auto flex max-w-4xl items-center justify-between gap-4 px-4 py-4">
+          <header className="hairline-b">
+            <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-6 px-6 py-5">
               <Link
                 href="/"
-                className="rounded font-semibold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="serif rounded-[2px] text-[22px] leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 Blind Bazaar
               </Link>
-              <nav className="flex items-center gap-4 text-sm text-muted-foreground">
-                <Link
-                  href="/sell"
-                  className="rounded py-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
+              <nav className="flex items-center gap-6">
+                <Link href="/sell" className={nav}>
                   Sell
                 </Link>
-                <Link
-                  href="/embed"
-                  className="rounded py-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
+                <Link href="/embed" className={nav}>
                   Go Dark
                 </Link>
                 <HealthBadge />
               </nav>
             </div>
           </header>
-          <main className="mx-auto w-full max-w-4xl flex-1 px-4 py-8">{children}</main>
-          <footer className="border-t border-border">
-            <p className="mx-auto max-w-4xl px-4 py-6 text-xs text-muted-foreground">
-              Every bid is a shielded Zcash transaction. Losing bids are never revealed. MIT licensed.
-            </p>
+          <main className="mx-auto w-full max-w-[1120px] flex-1 px-6 pb-24 pt-10 sm:pt-14">{children}</main>
+          <footer className="hairline-t">
+            <div className="mx-auto flex max-w-[1120px] flex-col gap-2 px-6 py-8 text-[13px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+              <p>Every bid is a shielded Zcash transaction. Losing bids are never revealed.</p>
+              <p className="num text-[12px]">MIT · open source</p>
+            </div>
           </footer>
         </Providers>
       </body>
