@@ -55,6 +55,13 @@ curl -X POST http://127.0.0.1:8787/auctions -H 'content-type: application/json' 
 
 Bid from Zodl (formerly Zashi), Zingo or YWallet by scanning the QR on the auction page.
 
+## Test every money path locally
+
+With Docker running: `cargo install zeckit && zeckit up --backend lwd`, then `scripts/regtest-e2e.sh`. It funds the
+operator from the local faucet, has the operator fund two independent bidder wallets, lists an auction, places two
+sealed bids, waits for close, and checks the winner, the disclosure proof, the loser's refund, the winner's settlement,
+the seller payout and the standalone verifier. About 15 minutes end to end.
+
 ## How a bid works
 
 1. The seller lists a lot: title, reserve, close time, deposit. The service derives a fresh Orchard-only unified

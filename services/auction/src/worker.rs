@@ -34,7 +34,6 @@ impl Worker {
     pub async fn run(mut self) -> Result<()> {
         let wallet_dir = self.cfg.wallet_dir();
         let mut db = wallet::open_db(self.params, &wallet_dir)?;
-        let db_cache = wallet::cache::MemBlockCache::default();
         let (_, data_db_path) = wallet::db_paths(&wallet_dir);
         let wallet_ro = ingest::open_wallet_readonly(&data_db_path)?;
 
@@ -58,6 +57,10 @@ impl Worker {
             return Err(anyhow::anyhow!("ROLE=spender needs VIEWER_URL"));
         }
         info!("running as {:?}", self.cfg.role);
+
+        // Address derivation records the exposure height, so the wallet must know the chain tip first.
+        let db_cache = wallet::cache::MemBlockCache::default();
+        wallet::sync::sync_once(&mut client, &self.params, &db_cache, &mut db).await?;
 
         // A dedicated receive address for the operator (tips, Go Dark demo, funding), persisted so
         // it is stable across restarts and never confused with an auction address.

@@ -10,3 +10,8 @@ license = "MIT"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Vendored with a one-spot patch (see vendor/zcash_client_backend/src/sync.rs): tolerate servers
+# that do not serve Ironwood subtree roots. Drop once upstream gates the request on NU6.3 activation.
+[patch.crates-io]
+zcash_client_backend = { path = "vendor/zcash_client_backend" }

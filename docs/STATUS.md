@@ -1,4 +1,4 @@
-# Build status (Oct 13, 2026)
+# Build status (Oct 13, 2026, evening)
 
 What is verified, what is written but unverified, and what does not exist yet. Updated as milestones land.
 
@@ -15,16 +15,31 @@ What is verified, what is written but unverified, and what does not exist yet. U
 | Go Dark quote routes | live Maya quote ETH→`u1`, live 1Click dry quote USDC→`u1` |
 | Widget builds (ESM + IIFE) and typechecks | `packages/go-dark/dist` |
 
+## Verified on a real chain (zeckit regtest, `scripts/regtest-e2e.sh`, Oct 13)
+
+Every money path below ran against a local Zebra regtest with lightwalletd and passed:
+
+| Step | Evidence |
+|---|---|
+| Faucet note detected from compact blocks, balance credited | `operator sees funds` |
+| Service builds, proves and broadcasts shielded sends | two 1 ZEC fundings to independent bidder wallets |
+| Independent wallets pay a ZIP-321 bid URI with the memo | `b1/b2 paid the deposit with its sealed bid` |
+| Memos decrypted after enhancement, bids parsed and validated, receipts published | `both bids ingested from encrypted memos` |
+| Close picks the highest bid at or above reserve; ledger hash published | winner 0.3 ZEC over 0.25 |
+| Note-opening disclosure built and self-verified | `verified_against_chain: true` |
+| Loser refunded shielded to the memo's refund address | `loser refund sent` |
+| Settlement memo matched to the winner's nonce | `settlement detected` |
+| Seller paid the winning amount | `seller payout sent`, auction `paid` |
+| Standalone `--verify-disclosure` reproduces the commitment from the opening | `OK: note opening matches action 3` |
+| Late bid (arrived after close) auto-refunded | run 3, bid 2 `late` with refund sent |
+
+Not yet exercised on chain: forfeiture and second chance (unit-tested), Go Dark envelope matching, the
+viewer/spender split (compiles; needs a two-process run), and anything on testnet or mainnet.
+
 ## Written, not yet exercised against the chain
 
 | Piece | What would prove it |
 |---|---|
-| Memo ingest from real received notes (`v_tx_outputs` query, txid byte order, `to_address`) | a bid landing in `bids` table |
-| Receipt publication | `/auctions/{id}/receipts` listing a real receipt |
-| Close, winner selection, ledger hash | a short auction closing with two bids |
-| Refunds via `propose_transfer` + `create_proposed_transactions` (fallback change pool, fees, confirmations) | a refund txid in `payouts` and the bidder wallet seeing it |
-| Settlement memo `BB1S` matching and seller payout | winner pays balance, seller receives |
-| Disclosure build (`orchard_received_notes` join, note version, cmx match) and `--verify-disclosure` | `verified_against_chain: true` and CLI printing OK |
 | Envelope matching for Go Dark bids | a swap whose destination txid matches a received note |
 | Go Dark send paths (Phantom USDC/SOL, MetaMask ETH/USDC via Maya router) | one real small swap each on mainnet |
 | Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
@@ -61,6 +76,9 @@ outputs in compact blocks; the first received testnet note answers it.
 
 ## Known risks in the code
 
-- `ShieldedPool::Orchard` is passed as the fallback change pool in `wallet/send.rs`; post-Ironwood the strategy should redirect change, but this is unverified until the first send.
+- `ShieldedPool::Orchard` is the fallback change pool in `wallet/send.rs`; verified on a pre-Ironwood regtest, still
+  to be confirmed on an Ironwood chain (mainnet).
+- The vendored `zcash_client_backend` carries a one-spot patch so servers without Ironwood subtree roots do not
+  abort sync; drop it when upstream gates the request on NU6.3 activation.
 - Ingest treats every received non-change output as a potential bid; operator funding deposits with no memo stay unprocessed (harmless) and operator self-transfers are excluded.
 - The service holds the spending key for refunds and the viewing key in one process (documented limitation).

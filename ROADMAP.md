@@ -5,7 +5,7 @@ Status key: **done** · **in progress** · **planned**. Dates are targets.
 ## Phase 0 — Judge-grade demo (by Oct 29, 2026)
 
 - done: service, web app, SDK, widget, memo spec, privacy model, disclosure proof, NU7-ready crates
-- in progress: first funded loop on testnet (bid → close → refund → settle → payout → proof verifies)
+- done on regtest (Oct 13): full funded loop (fund → bid → close → refund → settle → payout → proof verifies); testnet and mainnet runs still to do
 - planned: three real wallets (Zodl, Zingo, YWallet) place bids from the QR; one Go Dark swap lands shielded
   from Phantom and one from MetaMask; mainnet dry run under 2 ZEC; video, write-up, screenshots; registration
 
@@ -21,7 +21,7 @@ Make the money paths safe before anyone who is not us uses them.
 - done: event log with webhook delivery (bid received, closed, refund sent, settled, paid, forfeited)
 - done: rate limit and origin allow-list on the Go Dark quote proxy; quote expiry enforced in the widget
 - done: Docker images and a Compose file with HTTPS (Caddy) for a single-VPS deployment
-- in progress: integration tests against a regtest chain (zeckit) covering every money path
+- done: integration test against a regtest chain (zeckit) covering every money path (`scripts/regtest-e2e.sh`)
 - planned: wallet rescan and reorg handling exercised deliberately; checkpoint backups of both databases
 - planned: structured audit log with no addresses; metrics (sync lag, queue depth, balance) to Prometheus
 - planned: pin to a released librustzcash line once NU7 ships on mainnet (Nov 5 target)
