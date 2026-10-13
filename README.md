@@ -80,6 +80,19 @@ Bid from Zodl (formerly Zashi), Zingo or YWallet by scanning the QR on the aucti
 | POST | `/auctions/{id}/envelopes` | Go Dark bid envelope `{deposit_address, rail, payload, destination_txid?}` |
 | GET | `/auctions/{id}/result` | winner, ledger hash, refunds, disclosure |
 
+## Verify a result yourself
+
+Every closed auction publishes a note-opening disclosure of the winning output. Anyone can check it against the
+chain with only the service binary and a public lightwalletd, no wallet or keys:
+
+```bash
+curl -s http://127.0.0.1:8787/auctions/<id>/result | jq .disclosure > disclosure.json
+cargo run --release -- --verify-disclosure disclosure.json --lightwalletd-url https://testnet.zec.rocks:443
+```
+
+It rebuilds the Orchard note from the disclosed opening (recipient, value, rho, rseed), computes its commitment and
+compares it with the `cmx` of the named action in the transaction. Losing bids are never disclosed.
+
 ## Zcash primitives used
 
 Ironwood-pool shielded transactions to Orchard receivers, 512-byte encrypted memos, unified full viewing keys

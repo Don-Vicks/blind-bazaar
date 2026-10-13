@@ -2,11 +2,15 @@ import { Suspense } from "react";
 import { AuctionClient } from "@/components/auction-client";
 import { Skeleton } from "@/components/ui";
 
-export default async function AuctionPage({ params }: { params: Promise<{ id: string }> }) {
+async function Resolved({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  return <AuctionClient id={id} />;
+}
+
+export default function Page({ params }: { params: Promise<{ id: string }> }) {
   return (
     <Suspense fallback={<Skeleton className="h-64" />}>
-      <AuctionClient id={id} />
+      <Resolved params={params} />
     </Suspense>
   );
 }
