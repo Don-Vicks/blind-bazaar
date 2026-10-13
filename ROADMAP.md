@@ -2,12 +2,17 @@
 
 Status key: **done** · **in progress** · **planned**. Dates are targets.
 
-## Phase 0 — Judge-grade demo (by Oct 29, 2026)
+## Phase 0 — Judge-grade demo (submissions due Oct 28, 2026)
 
 - done: service, web app, SDK, widget, memo spec, privacy model, disclosure proof, NU7-ready crates
 - done on regtest (Oct 13): full funded loop (fund → bid → close → refund → settle → payout → proof verifies); testnet and mainnet runs still to do
 - planned: three real wallets (Zodl, Zingo, YWallet) place bids from the QR; one Go Dark swap lands shielded
   from Phantom and one from MetaMask; mainnet dry run under 2 ZEC; video, write-up, screenshots; registration
+- planned (from `docs/LANDSCAPE.md`): one completed mainnet lot with a public verify page; uniform-price multi-unit
+  mode (the zkSNARKs and Crafts format) with automatic refunds and a refund-latency metric; Go Dark as the bid entry
+  path with a written threat model for the source-chain leg; viewing-key selective disclosure for "reserve met"
+- stretch: Arcium MPC mode for winner selection (bids encrypted to an MXE, Vickrey or uniform clearing in MPC,
+  result sealed to the seller, uniform shielded ZEC deposits carrying the Solana receipt hash)
 
 ## Phase 1 — Hardening (Nov 2026)
 

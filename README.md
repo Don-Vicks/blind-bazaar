@@ -19,6 +19,7 @@ Built for ZECATHON 2026. MIT licensed.
 | `packages/go-dark` | The widget (`<GoDark/>` React component and `GoDark.mount` script bundle) |
 | `docs/MEMO_SPEC.md` | The memo format |
 | `docs/PRIVACY.md` | Who sees what, known limits, rail findings |
+| `docs/LANDSCAPE.md` | Arcium, comparable hackathon winners, the organiser's own auction, what we change |
 
 ## Run it locally (testnet)
 
