@@ -2,9 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, type Auction } from "@/lib/api";
 import { countdown, zec } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
+import { LotImage } from "@/components/lot-plate";
 import { Button, Eyebrow, Skeleton, StatusDot } from "@/components/ui";
 
 export default function Home() {
@@ -16,111 +17,117 @@ export default function Home() {
   const now = useNow();
   const open = data?.filter((a) => a.status === "open") ?? [];
   const closed = data?.filter((a) => a.status !== "open") ?? [];
+  const featured = open[0];
 
   return (
-    <div className="flex flex-col gap-16 sm:gap-24">
-      <section className="grid gap-10 sm:grid-cols-12 sm:gap-8">
-        <div className="sm:col-span-8">
+    <div className="flex flex-col gap-20 sm:gap-28">
+      <section className="grid gap-10 sm:grid-cols-12 sm:gap-10">
+        <div className="sm:col-span-7">
           <Eyebrow className="rise">Sealed-bid auctions on Zcash</Eyebrow>
-          <h1 className="serif rise rise-2 mt-4 text-[44px] leading-[1.02] sm:text-[72px]">
+          <h1 className="serif rise rise-2 mt-4 text-[48px] leading-[0.98] sm:text-[84px]">
             Bid in the dark.
             <br />
             <span className="italic text-muted-foreground">Only the result comes to light.</span>
           </h1>
-        </div>
-        <div className="rise rise-3 flex flex-col gap-5 text-[15px] leading-relaxed text-muted-foreground sm:col-span-4 sm:pt-3">
-          <p>
-            Each bid is one shielded transaction. The amount travels inside its encrypted memo, readable only by the
-            auction. Other bidders never learn what you bid, or that you bid at all.
+          <p className="dropcap rise rise-3 mt-10 max-w-[46ch] text-[17px] leading-[1.6] text-muted-foreground">
+            Every auction on Ethereum leaks every bid, every bidder and every losing amount, forever. Here a bid is one
+            shielded transaction, the amount sealed inside its encrypted memo. Other bidders never learn what you bid,
+            or that you bid at all. Losers are refunded shielded; the winner is proven on chain; nothing else is ever
+            revealed.
           </p>
-          <p>Losers are refunded shielded. The winner is proven on chain. Nothing else is ever revealed.</p>
-          <Link
-            href="/embed"
-            className="text-foreground underline decoration-hairline-strong underline-offset-4 transition-colors duration-150 hover:decoration-accent"
-          >
-            No ZEC? Enter from Solana or Ethereum
-          </Link>
+        </div>
+        <div className="rise rise-3 sm:col-span-5">
+          {featured ? (
+            <Link href={`/a/${featured.id}`} className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+              <div className="plate">
+                <LotImage id={featured.id} src={featured.image_url} alt={featured.title} ratio="4/5" className="transition-transform duration-500 ease-out group-hover:scale-[1.02]" />
+              </div>
+              <div className="mt-4 flex items-baseline justify-between gap-4">
+                <p className="serif text-[22px] leading-tight group-hover:text-accent">{featured.title}</p>
+                <p className="num shrink-0 text-[13px] text-muted-foreground">{now === null ? "…" : countdown(featured.close_at - now)}</p>
+              </div>
+              <Eyebrow className="mt-1">Featured lot · reserve {zec(featured.reserve_zats)}</Eyebrow>
+            </Link>
+          ) : (
+            <div className="plate">
+              <LotImage id="blind-bazaar" alt="" ratio="4/5" />
+            </div>
+          )}
         </div>
       </section>
 
-      <section aria-labelledby="open-heading" className="rise rise-4 flex flex-col">
+      <section aria-labelledby="open-heading" className="rise rise-4 flex flex-col gap-8">
         <div className="hairline-b flex items-baseline justify-between pb-4">
-          <h2 id="open-heading" className="serif text-[28px]">
+          <h2 id="open-heading" className="serif text-[32px]">
             Open lots
           </h2>
           {data && <span className="num text-[13px] text-muted-foreground">{open.length}</span>}
         </div>
         {isPending ? (
-          <div className="flex flex-col gap-px pt-px">
-            <Skeleton className="h-20" />
-            <Skeleton className="h-20" />
+          <div className="grid gap-10 sm:grid-cols-2">
+            <Skeleton className="aspect-[4/3]" />
+            <Skeleton className="aspect-[4/3]" />
           </div>
         ) : isError ? (
-          <div className="flex flex-col items-start gap-4 py-10">
+          <div className="flex flex-col items-start gap-4 py-6">
             <p className="text-muted-foreground">The auction service is unreachable.</p>
             <Button variant="secondary" onClick={() => refetch()}>
               Retry
             </Button>
           </div>
         ) : open.length === 0 ? (
-          <p className="py-10 text-muted-foreground">
-            Nothing is open right now. The next lot appears here the moment a seller lists it.
-          </p>
+          <p className="py-6 text-muted-foreground">Nothing is open right now. The next lot appears here the moment a seller lists it.</p>
         ) : (
-          <LotList lots={open} now={now} />
+          <Gallery lots={open} now={now} />
         )}
       </section>
 
       {closed.length > 0 && (
-        <section aria-labelledby="closed-heading" className="flex flex-col">
+        <section aria-labelledby="closed-heading" className="flex flex-col gap-8">
           <div className="hairline-b flex items-baseline justify-between pb-4">
-            <h2 id="closed-heading" className="serif text-[28px]">
+            <h2 id="closed-heading" className="serif text-[32px]">
               Closed
             </h2>
             <span className="num text-[13px] text-muted-foreground">{closed.length}</span>
           </div>
-          <LotList lots={closed} now={now} />
+          <Gallery lots={closed} now={now} compact />
         </section>
       )}
     </div>
   );
 }
 
-function LotList({
-  lots,
-  now,
-}: {
-  lots: { id: string; title: string; reserve_zats: number; deposit_zats: number; close_at: number; status: string }[];
-  now: number | null;
-}) {
+function Gallery({ lots, now, compact = false }: { lots: Auction[]; now: number | null; compact?: boolean }) {
   return (
-    <ul>
+    <ul className={`grid gap-x-10 gap-y-12 ${compact ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
       {lots.map((a) => (
-        <li key={a.id} className="hairline-b">
-          <Link
-            href={`/a/${a.id}`}
-            className="group grid items-baseline gap-2 py-6 transition-colors duration-150 hover:bg-foreground/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:grid-cols-12 sm:gap-6 sm:px-2"
-          >
-            <div className="sm:col-span-6">
-              <p className="serif text-[22px] leading-tight transition-colors duration-150 group-hover:text-accent sm:text-[26px]">
-                {a.title}
-              </p>
-              <div className="mt-1.5">
-                <StatusDot status={a.status} />
+        <li key={a.id}>
+          <Link href={`/a/${a.id}`} className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+            <div className="plate">
+              <LotImage id={a.id} src={a.image_url} alt={a.title} className="transition-transform duration-500 ease-out group-hover:scale-[1.02]" />
+            </div>
+            <div className="mt-4 flex items-start justify-between gap-6">
+              <div>
+                <p className={`serif leading-tight transition-colors duration-150 group-hover:text-accent ${compact ? "text-[20px]" : "text-[26px]"}`}>{a.title}</p>
+                <div className="mt-1.5">
+                  <StatusDot status={a.status} />
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <Eyebrow>{a.status === "open" ? "Closes in" : "Closed"}</Eyebrow>
+                <p className="num mt-1 text-[14px]">{now === null ? "…" : countdown(a.close_at - now)}</p>
               </div>
             </div>
-            <div className="sm:col-span-2">
-              <Eyebrow>Reserve</Eyebrow>
-              <p className="num mt-1">{zec(a.reserve_zats)}</p>
-            </div>
-            <div className="sm:col-span-2">
-              <Eyebrow>Deposit</Eyebrow>
-              <p className="num mt-1">{zec(a.deposit_zats)}</p>
-            </div>
-            <div className="sm:col-span-2 sm:text-right">
-              <Eyebrow>{a.status === "open" ? "Closes in" : "Closed"}</Eyebrow>
-              <p className="num mt-1">{now === null ? "…" : countdown(a.close_at - now)}</p>
-            </div>
+            <dl className="mt-3 flex gap-8 text-[13px]">
+              <div>
+                <dt className="eyebrow">Reserve</dt>
+                <dd className="num mt-0.5">{zec(a.reserve_zats)}</dd>
+              </div>
+              <div>
+                <dt className="eyebrow">Deposit</dt>
+                <dd className="num mt-0.5">{zec(a.deposit_zats)}</dd>
+              </div>
+            </dl>
           </Link>
         </li>
       ))}

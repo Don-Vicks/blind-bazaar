@@ -14,6 +14,7 @@ export interface Auction {
   ledger_hash: string | null;
   settlement_txid: string | null;
   payout_txid: string | null;
+  image_url?: string | null;
 }
 
 export interface AuctionView extends Auction {

@@ -7,6 +7,7 @@ import { countdown, dateTime, zec } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { Eyebrow, Fact, LinkButton, Mono, Panel, Skeleton, StatusDot } from "@/components/ui";
 import { BidPanel } from "@/components/bid-panel";
+import { LotImage } from "@/components/lot-plate";
 import { EventTimeline } from "@/components/event-timeline";
 
 export function AuctionClient({ id }: { id: string }) {
@@ -44,6 +45,10 @@ export function AuctionClient({ id }: { id: string }) {
   const open = data.status === "open" && remaining > 0;
 
   return (
+    <div className="flex flex-col gap-10 sm:gap-14">
+      <div className="plate rise">
+        <LotImage id={data.id} src={data.image_url} alt={data.title} ratio="16/7" />
+      </div>
     <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
       <div className="flex flex-col gap-10 sm:col-span-7">
         <div className="rise">
@@ -52,7 +57,7 @@ export function AuctionClient({ id }: { id: string }) {
             <StatusDot status={open ? "open" : data.status === "open" ? "closing" : data.status} />
           </div>
           <h1 className="serif mt-4 text-[40px] leading-[1.05] sm:text-[56px]">{data.title}</h1>
-          {data.description && <p className="mt-6 max-w-[52ch] text-[16px] leading-relaxed text-muted-foreground">{data.description}</p>}
+          {data.description && <p className="dropcap mt-6 max-w-[52ch] text-[17px] leading-[1.6] text-muted-foreground">{data.description}</p>}
         </div>
 
         <div className="rise rise-2 grid grid-cols-2 gap-8 sm:grid-cols-3">
@@ -119,6 +124,7 @@ export function AuctionClient({ id }: { id: string }) {
           </Panel>
         )}
       </aside>
+    </div>
     </div>
   );
 }

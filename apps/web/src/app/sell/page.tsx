@@ -18,6 +18,7 @@ export default function SellPage() {
   const [deposit, setDeposit] = useState("");
   const [seller, setSeller] = useState("");
   const [hours, setHours] = useState("24");
+  const [imageUrl, setImageUrl] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function SellPage() {
     if (!looksLikeShieldedAddress(seller.trim())) next.seller = "Enter a unified address (u1… or utest1…).";
     const h = Number(hours);
     if (!(h > 0 && h <= 24 * 14)) next.hours = "Between 0.1 and 336 hours.";
+    if (imageUrl.trim() && !/^https:\/\/\S+$/.test(imageUrl.trim())) next.image = "An https image URL.";
     setErrors(next);
     if (Object.keys(next).length) return;
     try {
@@ -70,6 +72,7 @@ export default function SellPage() {
       deposit_zats: Number(depositZats),
       seller_address: seller.trim(),
       duration_secs: Math.round(h * 3600),
+      image_url: imageUrl.trim() || undefined,
     });
   }
 
@@ -118,6 +121,9 @@ export default function SellPage() {
           </div>
           <Field label="Payout address" htmlFor="seller" error={errors.seller} hint="Your unified address. The winning amount is sent here shielded.">
             <input id="seller" name="seller" type="text" autoComplete="off" spellCheck={false} placeholder="u1…" className={`${inputClass} num`} value={seller} onChange={(e) => setSeller(e.target.value)} aria-invalid={!!errors.seller} />
+          </Field>
+          <Field label="Cover image" htmlFor="image" error={errors.image} hint="Optional https URL. Without one the lot gets a generated plate.">
+            <input id="image" name="image" type="url" autoComplete="off" spellCheck={false} placeholder="https://…" className={`${inputClass} num text-[13px]`} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} aria-invalid={!!errors.image} />
           </Field>
           <Field label="Open for (hours)" htmlFor="hours" error={errors.hours}>
             <input id="hours" name="hours" type="number" min="0.1" max="336" step="0.1" className={`${inputClass} num`} value={hours} onChange={(e) => setHours(e.target.value)} aria-invalid={!!errors.hours} />
