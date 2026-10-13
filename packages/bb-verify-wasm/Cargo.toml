@@ -1,0 +1,19 @@
+[package]
+name = "bb-verify-wasm"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+hex = "0.4"
+orchard = { version = "0.16", default-features = false }
+chacha20poly1305 = "0.10"
+getrandom = { version = "0.2", features = ["js"] }
+
+[profile.release]
+opt-level = "s"

@@ -37,6 +37,10 @@ pub struct Disclosure {
     /// ciphertext from the transaction and read the memo, which carries the bid. Nothing else.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub enc_key: Option<String>,
+    /// The note's 580-byte ciphertext as it appears in the transaction (hex), included with `enc_key` so a
+    /// browser can decrypt without a node. Cross-check it against the transaction on an explorer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enc_ciphertext: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reserve_zats: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -115,6 +119,15 @@ pub fn decrypt_note_with_key(tx: &Transaction, action_index: u32, pool: &str, ke
         rseed: hex::encode(&plaintext[20..52]),
         memo,
     })
+}
+
+fn action_ciphertext_hex(tx: &Transaction, action_index: u32, pool: &str) -> Option<String> {
+    let idx = action_index as usize;
+    let enc: &[u8] = match pool {
+        "ironwood" => tx.ironwood_bundle()?.actions().get(idx)?.encrypted_note().enc_ciphertext.as_ref(),
+        _ => tx.orchard_bundle()?.actions().get(idx)?.encrypted_note().enc_ciphertext.as_ref(),
+    };
+    Some(hex::encode(enc))
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -269,6 +282,7 @@ pub fn build(
         cmx: String::new(),
         verified_against_chain: false,
         enc_key: None,
+        enc_ciphertext: None,
         reserve_zats: None,
         bid_zats: None,
     };
@@ -285,6 +299,7 @@ pub fn build(
             d.bid_zats = memo_bid_matches(&d, &note)?;
             d.reserve_zats = Some(reserve);
             d.enc_key = Some(hex::encode(key));
+            d.enc_ciphertext = action_ciphertext_hex(&tx, action_index, &d.pool);
         }
     }
     Ok(d)
@@ -312,6 +327,7 @@ mod tests {
             cmx: String::new(),
             verified_against_chain: false,
             enc_key: None,
+            enc_ciphertext: None,
             reserve_zats: None,
             bid_zats: None,
         };

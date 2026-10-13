@@ -271,6 +271,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bb-verify-wasm"
+version = "0.1.0"
+dependencies = [
+ "chacha20poly1305 0.10.1",
+ "getrandom 0.2.17",
+ "hex",
+ "orchard",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "bech32"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

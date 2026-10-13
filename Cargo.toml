@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["services/auction"]
+members = ["services/auction", "packages/bb-verify-wasm"]
 
 [workspace.package]
 edition = "2024"
