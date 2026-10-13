@@ -26,6 +26,10 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("install rustls crypto provider");
+
     let cfg = Config::parse();
     let (params, network_name) = match cfg.network {
         NetworkName::Test => (Network::TestNetwork, "test"),
