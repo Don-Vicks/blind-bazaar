@@ -148,6 +148,14 @@ pub async fn scan_mempool(client: &mut Client, params: &Network, db: &mut Db) ->
         match next {
             Ok(Some(Ok(raw))) => {
                 let (tx, _) = parse_raw_transaction(params, chain_tip + 1, raw)?;
+                info!(
+                    "mempool tx {} version {:?} sapling_out={} orchard={} ironwood={}",
+                    tx.txid(),
+                    tx.version(),
+                    tx.sapling_bundle().map(|b| b.shielded_outputs().len()).unwrap_or(0),
+                    tx.orchard_bundle().map(|b| b.actions().len()).unwrap_or(0),
+                    tx.ironwood_bundle().map(|b| b.actions().len()).unwrap_or(0),
+                );
                 decrypt_and_store_transaction(params, db, &tx, None)?;
                 seen += 1;
             }
@@ -191,4 +199,46 @@ pub async fn scan_txid(client: &mut Client, params: &Network, db: &mut Db, txid_
             ))
         }
     }
+}
+
+/// Debug: compare what lightwalletd puts in the compact block at `height` with the full block.
+pub async fn inspect_block(client: &mut Client, params: &Network, height: u32) -> anyhow::Result<serde_json::Value> {
+    let block = client
+        .get_block(service::BlockId { height: height as u64, ..Default::default() })
+        .await?
+        .into_inner();
+    let compact: Vec<serde_json::Value> = block
+        .vtx
+        .iter()
+        .map(|t| {
+            serde_json::json!({
+                "index": t.index,
+                "txid": hex::encode(t.hash.iter().rev().copied().collect::<Vec<_>>()),
+                "sapling_outputs": t.outputs.len(),
+                "orchard_actions": t.actions.len(),
+                "ironwood_actions": t.ironwood_actions.len(),
+            })
+        })
+        .collect();
+    // Fetch each compact tx in full to see the real version and bundle sizes.
+    let mut full = Vec::new();
+    for t in &block.vtx {
+        let req = service::TxFilter { hash: t.hash.clone(), ..Default::default() };
+        match client.get_transaction(req).await {
+            Ok(r) => {
+                let raw = r.into_inner();
+                match parse_raw_transaction(params, BlockHeight::from_u32(height), raw) {
+                    Ok((tx, _)) => full.push(serde_json::json!({
+                        "txid": tx.txid().to_string(),
+                        "version": format!("{:?}", tx.version()),
+                        "orchard_actions": tx.orchard_bundle().map(|b| b.actions().len()).unwrap_or(0),
+                        "ironwood_actions": tx.ironwood_bundle().map(|b| b.actions().len()).unwrap_or(0),
+                    })),
+                    Err(e) => full.push(serde_json::json!({ "error": e.to_string() })),
+                }
+            }
+            Err(e) => full.push(serde_json::json!({ "error": e.to_string() })),
+        }
+    }
+    Ok(serde_json::json!({ "height": height, "compact_tx_count": block.vtx.len(), "compact": compact, "full": full }))
 }

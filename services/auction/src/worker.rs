@@ -83,6 +83,10 @@ impl Worker {
                         let r = wallet::sync::scan_txid(&mut client, &self.params, &mut db, &txid).await;
                         let _ = reply.send(r);
                     }
+                    WalletCmd::InspectBlock { height, reply } => {
+                        let r = wallet::sync::inspect_block(&mut client, &self.params, height).await;
+                        let _ = reply.send(r);
+                    }
                 },
                 _ = interval.tick() => {
                     if let Err(e) = self.pass(&mut client, &db_cache, &mut db, &wallet_ro, &prover, &operator).await {

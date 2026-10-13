@@ -12,6 +12,10 @@ pub enum WalletCmd {
         txid: String,
         reply: oneshot::Sender<anyhow::Result<String>>,
     },
+    InspectBlock {
+        height: u32,
+        reply: oneshot::Sender<anyhow::Result<serde_json::Value>>,
+    },
 }
 
 #[derive(Debug, Clone, Default)]

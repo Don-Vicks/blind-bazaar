@@ -138,6 +138,51 @@ async fn main() -> anyhow::Result<()> {
     if let Some(path) = &cfg.verify_disclosure {
         return verify_disclosure_file(&cfg, path).await;
     }
+    if let Some(config::Cmd::Derive { seed_file, count, check }) = cfg.cmd.clone() {
+        use secrecy::ExposeSecret;
+        use zcash_keys::keys::UnifiedSpendingKey;
+        let params = match cfg.network {
+            NetworkName::Test => Network::TestNetwork,
+            NetworkName::Main => Network::MainNetwork,
+        };
+        let (seed, _) = wallet::load_or_create_seed(&seed_file)?;
+        let usk = UnifiedSpendingKey::from_seed(&params, seed.expose_secret(), zip32::AccountId::ZERO)
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        let ufvk = usk.to_unified_full_viewing_key();
+        let mut j = zip32::DiversifierIndex::new();
+        for _ in 0..count {
+            let (ua, idx) = ufvk
+                .find_address(j, wallet::orchard_only_request())
+                .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+            println!("{} {}", hex::encode(idx.as_bytes()), ua.encode(&params));
+            j = idx;
+            j.increment().map_err(|_| anyhow::anyhow!("diversifier overflow"))?;
+        }
+        if !check.is_empty() {
+            use zcash_address::unified::{Address as UA, Container, Encoding, Receiver};
+            use orchard::keys::Scope;
+            let ivk = ufvk
+                .orchard()
+                .ok_or_else(|| anyhow::anyhow!("no orchard key"))?
+                .to_ivk(Scope::External);
+            for ua in check {
+                let (_, _, decoded) = UA::decode(&ua).map_err(|e| anyhow::anyhow!("{e}"))?;
+                let recv = decoded.items().into_iter().find_map(|r| match r {
+                    Receiver::Orchard(b) => Some(b),
+                    _ => None,
+                });
+                let owned = recv
+                    .and_then(|b| Option::from(orchard::Address::from_raw_address_bytes(&b)))
+                    .and_then(|a| ivk.diversifier_index(&a));
+                println!(
+                    "{}… owned_by_this_key={}",
+                    &ua[..14],
+                    owned.map(|i| hex::encode(i.as_bytes())).unwrap_or_else(|| "NO".into())
+                );
+            }
+        }
+        return Ok(());
+    }
     if let Some(config::Cmd::Wallet { dir, seed_file, pay, wait_balance }) = cfg.cmd.clone() {
         return wallet_cmd(&cfg, dir, seed_file, pay, wait_balance).await;
     }

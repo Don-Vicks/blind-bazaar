@@ -21,6 +21,16 @@ impl std::str::FromStr for NetworkName {
 
 #[derive(Debug, Subcommand, Clone)]
 pub enum Cmd {
+    /// Print the first N Orchard-only unified addresses derived from a seed file (no chain access).
+    Derive {
+        #[arg(long)]
+        seed_file: PathBuf,
+        #[arg(long, default_value_t = 8)]
+        count: u32,
+        /// Unified addresses to test for ownership by this seed's Orchard incoming viewing key.
+        #[arg(long)]
+        check: Vec<String>,
+    },
     /// Act as a standalone wallet: sync, print address and balance, optionally pay a ZIP-321 URI.
     /// Used for testing bids without a mobile wallet.
     Wallet {

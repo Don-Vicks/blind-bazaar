@@ -28,6 +28,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auctions/{id}/bid-uri", get(bid_uri))
         .route("/admin/payouts", post(admin_payout).get(admin_list_payouts))
         .route("/admin/scan-tx", post(admin_scan_tx))
+        .route("/admin/block/{height}", get(admin_block))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -422,4 +423,19 @@ async fn admin_scan_tx(
         .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
     let detail = rx.await.map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??;
     Ok(Json(serde_json::json!({ "detail": detail })))
+}
+
+async fn admin_block(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(height): Path<u32>,
+) -> ApiResult<serde_json::Value> {
+    check_admin(&state, &headers)?;
+    let (tx, rx) = oneshot::channel();
+    state
+        .wallet
+        .send(WalletCmd::InspectBlock { height, reply: tx })
+        .await
+        .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
+    Ok(Json(rx.await.map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??))
 }
