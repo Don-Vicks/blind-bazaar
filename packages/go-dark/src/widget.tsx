@@ -18,25 +18,30 @@ function zec(zats: string | bigint): string {
 }
 
 const css = `
-.gd{font:14px/1.45 system-ui,sans-serif;color:#1a1714;--gd-accent:#b4551a;--gd-border:#e2dcd0;--gd-muted:#6b645a;--gd-bg:#fff}
-@media(prefers-color-scheme:dark){.gd{color:#ece7dd;--gd-accent:#e8824a;--gd-border:#2a2722;--gd-muted:#a39b8e;--gd-bg:#15130f}}
+.gd{font:14px/1.5 ui-sans-serif,system-ui,sans-serif;color:#231b14;--gd-accent:#a8542c;--gd-border:rgba(35,27,20,.3);--gd-hair:rgba(35,27,20,.12);--gd-muted:#6e6153;--gd-bg:#faf4ea;--gd-ink:#231b14;--gd-paper:#f3ebdf}
+@media(prefers-color-scheme:dark){.gd{color:#f1e7d8;--gd-accent:#d99a5b;--gd-border:rgba(241,231,216,.3);--gd-hair:rgba(241,231,216,.11);--gd-muted:#a69583;--gd-bg:#231b16;--gd-ink:#f1e7d8;--gd-paper:#1b1511}}
 .gd *{box-sizing:border-box}
-.gd-btn{display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 16px;border-radius:8px;border:1px solid var(--gd-border);background:var(--gd-bg);color:inherit;font:inherit;font-weight:500;cursor:pointer}
+.gd-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 20px;border-radius:2px;border:1px solid var(--gd-border);background:transparent;color:inherit;font:inherit;font-size:13px;font-weight:500;letter-spacing:.02em;cursor:pointer;transition:opacity .15s ease-out,background-color .15s ease-out}
+.gd-btn:hover{background:rgba(127,127,127,.08)}
 .gd-btn:focus-visible{outline:2px solid var(--gd-accent);outline-offset:2px}
-.gd-btn[disabled]{opacity:.5;cursor:not-allowed}
-.gd-btn.primary{background:var(--gd-accent);border-color:var(--gd-accent);color:#fff}
-.gd-panel{margin-top:12px;padding:16px;border:1px solid var(--gd-border);border-radius:12px;background:var(--gd-bg);max-width:420px;display:flex;flex-direction:column;gap:12px}
+.gd-btn[disabled]{opacity:.4;cursor:not-allowed}
+.gd-btn.primary{background:var(--gd-ink);border-color:var(--gd-ink);color:var(--gd-paper)}
+.gd-btn.primary:hover{opacity:.9;background:var(--gd-ink)}
+.gd-panel{margin-top:12px;padding:24px;border:1px solid var(--gd-hair);border-radius:6px;background:var(--gd-bg);max-width:440px;display:flex;flex-direction:column;gap:16px}
 .gd-row{display:flex;gap:8px;flex-wrap:wrap}
-.gd-muted{color:var(--gd-muted);font-size:12px}
-.gd-mono{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;word-break:break-all}
-.gd-seg{display:flex;gap:4px;padding:4px;border:1px solid var(--gd-border);border-radius:8px}
-.gd-seg button{flex:1;min-height:36px;border:0;border-radius:6px;background:transparent;color:inherit;font:inherit;cursor:pointer}
-.gd-seg button[aria-pressed=true]{background:var(--gd-accent);color:#fff}
-.gd-seg button:focus-visible{outline:2px solid var(--gd-accent)}
-.gd-table{width:100%;border-collapse:collapse;font-size:12px}
-.gd-table td{padding:4px 0;vertical-align:top;border-top:1px solid var(--gd-border)}
-.gd-table td:first-child{color:var(--gd-muted);width:38%}
-.gd-err{color:#b42318}
+.gd-eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--gd-muted)}
+.gd-muted{color:var(--gd-muted);font-size:13px;line-height:1.5}
+.gd-mono{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;word-break:break-all;font-variant-numeric:tabular-nums}
+.gd-seg{display:flex;gap:0;border:1px solid var(--gd-border);border-radius:2px;overflow:hidden}
+.gd-seg button{flex:1;min-height:40px;border:0;background:transparent;color:var(--gd-muted);font:inherit;font-size:13px;cursor:pointer;transition:background-color .15s ease-out,color .15s ease-out}
+.gd-seg button+button{border-left:1px solid var(--gd-hair)}
+.gd-seg button[aria-pressed=true]{background:var(--gd-ink);color:var(--gd-paper)}
+.gd-seg button:focus-visible{outline:2px solid var(--gd-accent);outline-offset:-2px}
+.gd-table{width:100%;border-collapse:collapse;font-size:13px}
+.gd-table td{padding:8px 0;vertical-align:top;border-top:1px solid var(--gd-hair)}
+.gd-table td:first-child{color:var(--gd-muted);width:38%;font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding-top:10px}
+.gd-err{color:#b4382a}
+.gd-title{font-size:18px;line-height:1.25}
 `;
 
 export function GoDark(opts: GoDarkOptions) {
@@ -175,7 +180,8 @@ export function GoDark(opts: GoDarkOptions) {
       ) : (
         <div className="gd-panel" role="dialog" aria-label="Go Dark: pay privately in ZEC">
           <div>
-            <strong>Pay privately</strong>
+            <div className="gd-eyebrow">Go Dark</div>
+            <div className="gd-title">Pay privately.</div>
             <div className="gd-muted">
               Deliver {zec(opts.amountZats)} shielded to <span className="gd-mono">{opts.to.slice(0, 12)}…</span>
             </div>

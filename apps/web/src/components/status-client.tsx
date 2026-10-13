@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { Eyebrow, Field, LinkButton, Mono, Panel, Skeleton, inputClass } from "@/components/ui";
+import { LotImage } from "@/components/lot-plate";
 
 export function StatusClient({ id }: { id: string }) {
   const [receipt, setReceipt] = useState("");
@@ -22,15 +23,21 @@ export function StatusClient({ id }: { id: string }) {
     refetchInterval: 10_000,
   });
 
+  const lot = useQuery({ queryKey: ["auction", id], queryFn: () => api.auction(id) });
   const lookup = receipt.trim().toLowerCase();
   const found = data?.receipts.includes(lookup);
 
   return (
+    <div className="flex flex-col gap-10 sm:gap-14">
+    <div className="plate rise">
+      <LotImage id={id} src={lot.data?.image_url} alt={lot.data?.title ?? ""} ratio="16/5" />
+    </div>
     <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
       <div className="flex flex-col gap-8 sm:col-span-7">
         <div className="rise">
           <Eyebrow>Lot {id}</Eyebrow>
-          <h1 className="serif mt-4 text-[40px] leading-[1.05] sm:text-[56px]">Was my bid received?</h1>
+          {lot.data && <p className="serif mt-4 text-[22px] text-muted-foreground">{lot.data.title}</p>}
+          <h1 className="serif mt-2 text-[40px] leading-[1.05] sm:text-[56px]">Was my bid received?</h1>
           <p className="mt-6 max-w-[52ch] text-[16px] leading-relaxed text-muted-foreground">
             The auction publishes the receipt of every bid it has decrypted. A receipt is a hash of the nonce your
             browser generated; it reveals nothing about the amount or the bidder.
@@ -98,6 +105,7 @@ export function StatusClient({ id }: { id: string }) {
           </LinkButton>
         </Panel>
       </aside>
+    </div>
     </div>
   );
 }
