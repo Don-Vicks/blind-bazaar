@@ -68,6 +68,8 @@ async fn wallet_cmd(
     let mut db = wallet::open_db(params, &dir)?;
     let cache = wallet::cache::MemBlockCache::default();
     let mut client = wallet::connect(&cfg.lightwalletd_url).await?;
+    let (ver, chain, height) = wallet::sync::lightd_info(&mut client).await?;
+    println!("server: {ver} chain={chain} height={height}");
     let (seed, _) = wallet::load_or_create_seed(&seed_file)?;
     let me = wallet::ensure_operator_account(&mut db, &mut client, &params, &seed, cfg.birthday_height).await?;
     let address = match db.get_last_generated_address_matching(me.account_id, wallet::orchard_only_request())? {
