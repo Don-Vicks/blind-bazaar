@@ -80,7 +80,7 @@ wait_for 720 "auction closed" bash -c "curl -sf $API/auctions/$ID/result | grep 
 R=$(curl -s $API/auctions/$ID/result)
 [ "$(echo "$R" | j 'd["winning_amount_zats"]')" = "30000000" ] || fail "wrong winner: $R"
 pass "winner is the 0.3 bid; ledger hash $(echo "$R" | j 'd["ledger_hash"][:16]')…"
-[ "$(echo "$R" | j 'd["disclosure"]["verified_against_chain"]')" = "True" ] || fail "disclosure not verified: $R"
+[ "$(echo "$R" | j 'all(x["verified_against_chain"] for x in d["disclosure"])')" = "True" ] || fail "disclosure not verified: $R"
 pass "note-opening disclosure verified against the chain"
 
 wait_for 420 "loser refunded" bash -c "curl -sf $API/auctions/$ID/result | grep -q '\"kind\":\"refund\",\"status\":\"sent\"'"

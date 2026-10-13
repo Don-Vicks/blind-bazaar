@@ -109,8 +109,9 @@ function Gallery({ lots, now, compact = false }: { lots: Auction[]; now: number 
             <div className="mt-4 flex items-start justify-between gap-6">
               <div>
                 <p className={`serif leading-tight transition-colors duration-150 group-hover:text-accent ${compact ? "text-[20px]" : "text-[26px]"}`}>{a.title}</p>
-                <div className="mt-1.5">
+                <div className="mt-1.5 flex items-center gap-3">
                   <StatusDot status={a.status} />
+                  {a.units > 1 && <span className="eyebrow">Edition of {a.units}</span>}
                 </div>
               </div>
               <div className="shrink-0 text-right">

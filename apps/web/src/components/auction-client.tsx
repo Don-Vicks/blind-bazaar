@@ -53,7 +53,10 @@ export function AuctionClient({ id }: { id: string }) {
       <div className="flex flex-col gap-10 sm:col-span-7">
         <div className="rise">
           <div className="flex items-center gap-4">
-            <Eyebrow>Lot {data.id}</Eyebrow>
+            <Eyebrow>
+              Lot {data.id}
+              {data.units > 1 ? ` · edition of ${data.units} · uniform price` : ""}
+            </Eyebrow>
             <StatusDot status={open ? "open" : data.status === "open" ? "closing" : data.status} />
           </div>
           <h1 className="serif mt-4 text-[40px] leading-[1.05] sm:text-[56px]">{data.title}</h1>
@@ -90,8 +93,10 @@ export function AuctionClient({ id }: { id: string }) {
               payment of the deposit.
             </p>
             <p>
-              <span className="text-foreground">2. Close.</span> Highest bid at or above reserve wins. A hash of the bid
-              ledger is published.
+              <span className="text-foreground">2. Close.</span>{" "}
+              {data.units > 1
+                ? `The top ${data.units} bids at or above reserve win and every winner pays the lowest winning bid. A hash of the bid ledger is published.`
+                : "Highest bid at or above reserve wins. A hash of the bid ledger is published."}
             </p>
             <p>
               <span className="text-foreground">3. Settle.</span> Losers are refunded shielded. The winner pays the balance.

@@ -15,6 +15,9 @@ export interface Auction {
   settlement_txid: string | null;
   payout_txid: string | null;
   image_url?: string | null;
+  units: number;
+  format: "first_price" | "uniform";
+  clearing_zats: number | null;
 }
 
 export interface AuctionView extends Auction {
@@ -30,8 +33,14 @@ export interface Receipts {
 export interface AuctionResult {
   auction_id: string;
   status: string;
+  format: "first_price" | "uniform";
+  units: number;
+  units_sold: number;
+  units_settled: number;
+  clearing_zats: number | null;
   winning_amount_zats: number | null;
   winning_txid: string | null;
+  winning_txids: string[];
   ledger_hash: string | null;
   valid_bid_count: number;
   settlement_txid: string | null;

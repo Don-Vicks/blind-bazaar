@@ -2,12 +2,13 @@
 
 use std::path::Path;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use rusqlite::{Connection, OpenFlags};
 use tracing::{info, warn};
 use zcash_protocol::memo::{Memo, MemoBytes};
 
 use crate::{
+    close,
     memo::{self, Parsed},
     store::{self, NewBid},
 };
@@ -173,7 +174,7 @@ fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str
             nb.status = "settlement";
             let auction = store::get_auction(store, &s.auction_id)?;
             let id = match &auction {
-                Some(a) if a.status == "closed" => {
+                Some(a) if a.status == "closed" || a.status == "settled" => {
                     nb.auction_id = Some(&s.auction_id);
                     let id = store::insert_bid(store, &nb)?;
                     settle(store, a, &s.nonce, out, id)?;
@@ -194,41 +195,19 @@ fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str
 }
 
 fn settle(store: &Connection, auction: &store::Auction, nonce: &str, out: &ReceivedOutput, _row_id: i64) -> Result<()> {
-    let winner_id = auction
-        .winner_bid_id
-        .ok_or_else(|| anyhow!("closed auction without winner"))?;
-    let winner = store::get_bid(store, winner_id)?.ok_or_else(|| anyhow!("winner bid missing"))?;
-    if winner.nonce.as_deref() != Some(nonce) {
-        warn!("settlement nonce mismatch for auction {}", auction.id);
+    let bids = store::bids_for_auction(store, &auction.id)?;
+    let Some(winner) = bids.iter().find(|b| b.status == "won" && b.nonce.as_deref() == Some(nonce)) else {
+        warn!("settlement for {} does not match an unpaid winner", auction.id);
         return Ok(());
-    }
-    let bid_zats = winner.bid_zats.unwrap_or(0);
-    let owed = bid_zats.saturating_sub(auction.deposit_zats);
+    };
+    let price = winner.price_zats.unwrap_or(0);
+    let owed = price.saturating_sub(winner.value_zats);
     if out.value_zats < owed {
-        warn!(
-            "settlement for {} underpaid: got {} need {}",
-            auction.id, out.value_zats, owed
-        );
+        warn!("settlement for {} underpaid: got {} need {}", auction.id, out.value_zats, owed);
         return Ok(());
     }
-    store::set_auction_settled(store, &auction.id, &out.txid)?;
-    store::insert_event(
-        store,
-        Some(&auction.id),
-        "settled",
-        &serde_json::json!({ "settlement_txid": out.txid, "winning_amount_zats": bid_zats }),
-    )?;
-    let memo_text = format!("BB1P|{}", auction.id);
-    store::queue_payout(
-        store,
-        Some(&auction.id),
-        Some(winner_id),
-        "seller",
-        &auction.seller_address,
-        bid_zats,
-        Some(&memo_text),
-        store::now() + 30,
-    )?;
-    info!("auction {} settled by {}", auction.id, out.txid);
+    close::settle_winner(store, auction, winner.id, price, winner.value_zats + out.value_zats, &out.txid)?;
+    store::set_auction_settled_txid(store, &auction.id, &out.txid)?;
+    info!("auction {} bid {} settled by {}", auction.id, winner.id, out.txid);
     Ok(())
 }

@@ -21,8 +21,27 @@ use crate::config::Config;
 /// `bb-auction --verify-disclosure result.json`: fetch the named transaction from lightwalletd and
 /// check that the disclosed note opening matches the on-chain commitment. Needs no wallet.
 async fn verify_disclosure_file(cfg: &Config, path: &std::path::Path) -> anyhow::Result<()> {
+    let text = std::fs::read_to_string(path)?;
+    let list: Vec<disclosure::Disclosure> = match serde_json::from_str::<serde_json::Value>(&text)? {
+        serde_json::Value::Array(_) => serde_json::from_str(&text)?,
+        _ => vec![serde_json::from_str(&text)?],
+    };
+    let mut failures = 0;
+    for d in &list {
+        if !verify_one(cfg, d).await? {
+            failures += 1;
+        }
+    }
+    if failures > 0 {
+        println!("FAIL: {failures} of {} disclosures did not match", list.len());
+        std::process::exit(2);
+    }
+    println!("OK: all {} disclosure(s) match the chain", list.len());
+    Ok(())
+}
+
+async fn verify_one(cfg: &Config, d: &disclosure::Disclosure) -> anyhow::Result<bool> {
     use zcash_client_backend::proto::service;
-    let d: disclosure::Disclosure = serde_json::from_str(&std::fs::read_to_string(path)?)?;
     let params = match d.network.as_str() {
         "main" => Network::Main,
         "regtest" => cfg.net(),
@@ -37,18 +56,16 @@ async fn verify_disclosure_file(cfg: &Config, path: &std::path::Path) -> anyhow:
         .into_inner();
     let mined = (raw.height > 0).then_some(raw.height as u32);
     let tx = disclosure::read_tx(&params, &raw.data, mined)?;
-    let cmx = hex::encode(disclosure::compute_cmx(&d)?);
-    match disclosure::verify_against_tx(&d, &tx)? {
+    let cmx = hex::encode(disclosure::compute_cmx(d)?);
+    match disclosure::verify_against_tx(d, &tx)? {
         Some(pool) => {
-            println!("OK: note opening matches action {} of {} in the {pool} pool", d.action_index, d.txid);
-            println!("    recipient {}", d.recipient_address);
-            println!("    value     {} zatoshis", d.value_zats);
-            println!("    cmx       {cmx}");
-            Ok(())
+            println!("ok   action {} of {} ({pool} pool): {} zatoshis to {}", d.action_index, d.txid, d.value_zats, &d.recipient_address[..20]);
+            println!("     cmx {cmx}");
+            Ok(true)
         }
         None => {
-            println!("FAIL: computed cmx {cmx} does not match any action at index {}", d.action_index);
-            std::process::exit(2);
+            println!("FAIL action {} of {}: computed cmx {cmx} does not match", d.action_index, d.txid);
+            Ok(false)
         }
     }
 }

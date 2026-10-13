@@ -19,6 +19,7 @@ export default function SellPage() {
   const [seller, setSeller] = useState("");
   const [hours, setHours] = useState("24");
   const [imageUrl, setImageUrl] = useState("");
+  const [units, setUnits] = useState("1");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -58,6 +59,8 @@ export default function SellPage() {
     const h = Number(hours);
     if (!(h > 0 && h <= 24 * 14)) next.hours = "Between 0.1 and 336 hours.";
     if (imageUrl.trim() && !/^https:\/\/\S+$/.test(imageUrl.trim())) next.image = "An https image URL.";
+    const u = Number(units);
+    if (!(Number.isInteger(u) && u >= 1 && u <= 10000)) next.units = "A whole number from 1 to 10000.";
     setErrors(next);
     if (Object.keys(next).length) return;
     try {
@@ -73,6 +76,7 @@ export default function SellPage() {
       seller_address: seller.trim(),
       duration_secs: Math.round(h * 3600),
       image_url: imageUrl.trim() || undefined,
+      units: Number(units),
     });
   }
 
@@ -99,6 +103,7 @@ export default function SellPage() {
         <dl className="hairline-t grid gap-4 pt-6 text-[14px]">
           <div><dt className="text-foreground">Reserve</dt><dd className="text-muted-foreground">The lowest bid you will accept. Published.</dd></div>
           <div><dt className="text-foreground">Deposit</dt><dd className="text-muted-foreground">Paid by every bidder to bid. Returned to losers, credited to the winner.</dd></div>
+          <div><dt className="text-foreground">Editions</dt><dd className="text-muted-foreground">Set units above 1 for identical items. Uniform price: everyone who wins pays the same, the lowest winning bid.</dd></div>
           <div><dt className="text-foreground">Payout address</dt><dd className="text-muted-foreground">Your unified address. The winning amount arrives shielded.</dd></div>
         </dl>
       </div>
@@ -121,6 +126,9 @@ export default function SellPage() {
           </div>
           <Field label="Payout address" htmlFor="seller" error={errors.seller} hint="Your unified address. The winning amount is sent here shielded.">
             <input id="seller" name="seller" type="text" autoComplete="off" spellCheck={false} placeholder="u1…" className={`${inputClass} num`} value={seller} onChange={(e) => setSeller(e.target.value)} aria-invalid={!!errors.seller} />
+          </Field>
+          <Field label="Units" htmlFor="units" error={errors.units} hint="1 for a single lot. More than 1 makes it an edition: the top N bids win and every winner pays the lowest winning bid.">
+            <input id="units" name="units" type="number" min="1" max="10000" step="1" className={`${inputClass} num`} value={units} onChange={(e) => setUnits(e.target.value)} aria-invalid={!!errors.units} />
           </Field>
           <Field label="Cover image" htmlFor="image" error={errors.image} hint="Optional https URL. Without one the lot gets a generated plate.">
             <input id="image" name="image" type="url" autoComplete="off" spellCheck={false} placeholder="https://…" className={`${inputClass} num text-[13px]`} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} aria-invalid={!!errors.image} />

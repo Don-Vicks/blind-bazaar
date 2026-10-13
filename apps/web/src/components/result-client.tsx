@@ -38,8 +38,11 @@ export function ResultClient({ id }: { id: string }) {
 
   const sent = data.refunds.filter((r) => r.kind === "refund" && r.status === "sent").length;
   const pending = data.refunds.filter((r) => r.kind === "refund" && r.status !== "sent").length;
-  const disclosure = data.disclosure as { verified_against_chain?: boolean; cmx?: string; action_index?: number } | null;
+  const disclosure = (Array.isArray(data.disclosure) ? data.disclosure[0] : data.disclosure) as { verified_against_chain?: boolean; cmx?: string; action_index?: number } | null;
   const sold = data.winning_amount_zats !== null;
+  const uniform = data.format === "uniform";
+  const disclosures = Array.isArray(data.disclosure) ? (data.disclosure as { verified_against_chain?: boolean }[]) : data.disclosure ? [data.disclosure as { verified_against_chain?: boolean }] : [];
+  const verifiedCount = disclosures.filter((d) => d.verified_against_chain).length;
 
   return (
     <div className="flex flex-col gap-10 sm:gap-14">
@@ -63,7 +66,9 @@ export function ResultClient({ id }: { id: string }) {
             <h1 className="serif mt-2 text-[56px] leading-[0.95] sm:text-[96px]">{sold ? zec(data.winning_amount_zats!) : "No sale."}</h1>
             <p className="dropcap mt-8 max-w-[52ch] text-[17px] leading-[1.6] text-muted-foreground">
               {sold
-                ? `The highest of ${data.valid_bid_count} sealed bids. The losing amounts and bidders are never revealed, not even to the seller. Every losing deposit returns shielded to the address its bidder sealed into the memo.`
+                ? uniform
+                  ? `${data.units_sold} of ${data.units} units sold at one price, the lowest winning bid among ${data.valid_bid_count} sealed bids. Winners above the clearing price pay only the clearing price. Losing amounts and bidders are never revealed. Every losing deposit returns shielded to the address its bidder sealed into the memo.`
+                  : `The highest of ${data.valid_bid_count} sealed bids. The losing amounts and bidders are never revealed, not even to the seller. Every losing deposit returns shielded to the address its bidder sealed into the memo.`
                 : "No bid met the reserve. Every deposit is being returned shielded to the address its bidder sealed into the memo. Nobody learns who bid, or how much."}
             </p>
           </div>
@@ -71,25 +76,43 @@ export function ResultClient({ id }: { id: string }) {
             <Fact label="Sealed bids" large>
               {data.valid_bid_count}
             </Fact>
+            {uniform && (
+              <Fact label="Units sold" large>
+                {data.units_sold}
+                <span className="text-muted-foreground"> / {data.units}</span>
+              </Fact>
+            )}
             <Fact label="Refunds" large>
               {sent}
               {pending > 0 && <span className="text-muted-foreground"> +{pending}</span>}
             </Fact>
-            <Fact label="Settlement">{data.payout_txid ? "Seller paid" : data.settlement_txid ? "Winner paid" : sold ? "Awaiting winner" : "—"}</Fact>
+            <Fact label="Settlement">
+              {data.payout_txid
+                ? "Seller paid"
+                : sold
+                  ? `${data.units_settled} of ${data.units_sold} paid`
+                  : "—"}
+            </Fact>
           </div>
           <div className="rise rise-3 hairline-t flex flex-col gap-6 pt-8">
-            {data.winning_txid && (
+            {data.winning_txids.length > 0 && (
               <div>
-                <Eyebrow>Winning transaction</Eyebrow>
-                <a
-                  href={explorerTxUrl(network, data.winning_txid)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="num mt-2 block break-all text-[13px] underline decoration-hairline-strong underline-offset-4 hover:decoration-accent"
-                >
-                  {data.winning_txid}
-                </a>
-                <p className="mt-1 text-[13px] text-muted-foreground">Indistinguishable on the explorer from any other shielded transaction. Only the proof below ties it to this lot.</p>
+                <Eyebrow>{data.winning_txids.length > 1 ? "Winning transactions" : "Winning transaction"}</Eyebrow>
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {data.winning_txids.map((t) => (
+                    <li key={t}>
+                      <a
+                        href={explorerTxUrl(network, t)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="num block break-all text-[13px] underline decoration-hairline-strong underline-offset-4 hover:decoration-accent"
+                      >
+                        {t}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-[13px] text-muted-foreground">Indistinguishable on the explorer from any other shielded transaction. Only the proof ties them to this lot.</p>
               </div>
             )}
             <div>
@@ -104,7 +127,15 @@ export function ResultClient({ id }: { id: string }) {
             <div>
               <Eyebrow>Proof</Eyebrow>
               <p className="serif mt-2 text-[32px] leading-tight">
-                {disclosure ? (disclosure.verified_against_chain ? "Verified on chain." : "Published.") : sold ? "Pending." : "Nothing to prove."}
+                {disclosures.length > 0
+                  ? verifiedCount === disclosures.length
+                    ? disclosures.length > 1
+                      ? `All ${disclosures.length} verified on chain.`
+                      : "Verified on chain."
+                    : `${verifiedCount} of ${disclosures.length} verified.`
+                  : sold
+                    ? "Pending."
+                    : "Nothing to prove."}
               </p>
             </div>
             <p className="text-[14px] leading-relaxed text-muted-foreground">
@@ -112,10 +143,10 @@ export function ResultClient({ id }: { id: string }) {
               on-chain commitment. Anyone can check it with the service binary and a public lightwalletd. Losing bids
               stay sealed.
             </p>
-            {disclosure && (
+            {disclosures.length > 0 && (
               <div className="hairline-t pt-4">
-                <Eyebrow>Commitment · action {disclosure.action_index}</Eyebrow>
-                <Mono className="mt-2 block text-muted-foreground">{disclosure.cmx}</Mono>
+                <Eyebrow>{disclosures.length > 1 ? `${disclosures.length} note openings` : `Commitment · action ${disclosure?.action_index}`}</Eyebrow>
+                {disclosures.length === 1 && <Mono className="mt-2 block text-muted-foreground">{disclosure?.cmx}</Mono>}
                 <details className="mt-4 text-[13px]">
                   <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Full disclosure JSON</summary>
                   <pre className="num mt-3 overflow-x-auto text-[11px] leading-relaxed text-muted-foreground">{JSON.stringify(data.disclosure, null, 2)}</pre>

@@ -323,7 +323,13 @@ impl Worker {
                     store::mark_payout_sent(&store, p.id, &txid)?;
                     if p.kind == "seller" {
                         if let Some(aid) = &p.auction_id {
-                            store::set_auction_payout(&store, aid, &txid)?;
+                            if store::pending_seller_payouts(&store, aid)? == 0 {
+                                if let Some(a) = store::get_auction(&store, aid)? {
+                                    if a.status == "settled" {
+                                        store::set_auction_payout(&store, aid, &txid)?;
+                                    }
+                                }
+                            }
                         }
                     }
                     store::insert_event(

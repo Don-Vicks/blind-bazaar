@@ -125,6 +125,10 @@ struct CreateAuction {
     duration_secs: Option<i64>,
     /// Optional https image for the lot.
     image_url: Option<String>,
+    /// Number of identical units (default 1). More than one implies the uniform-price format.
+    units: Option<u32>,
+    /// `first_price` (default for one unit) or `uniform` (top-N win, all pay the lowest winning bid).
+    format: Option<String>,
 }
 
 fn check_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
@@ -184,6 +188,17 @@ async fn create_auction(
     if close_at <= store::now() {
         return Err(bad("close_at must be in the future"));
     }
+    let units = req.units.unwrap_or(1).clamp(1, 10_000);
+    let format = match req.format.as_deref() {
+        None => if units > 1 { "uniform" } else { "first_price" },
+        Some("uniform") => "uniform",
+        Some("first_price") if units == 1 => "first_price",
+        Some("first_price") => return Err(bad("first_price needs units = 1")),
+        Some(_) => return Err(bad("format must be first_price or uniform")),
+    };
+    if req.deposit_zats > req.reserve_zats {
+        return Err(bad("deposit_zats must not exceed reserve_zats"));
+    }
     let image_url = match req.image_url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(u) if u.starts_with("https://") && u.len() < 2048 => Some(u.to_string()),
         Some(_) => return Err(bad("image_url must be an https URL")),
@@ -216,6 +231,8 @@ async fn create_auction(
             close_at,
             seller_id,
             image_url: image_url.as_deref(),
+            units,
+            format,
         },
     )?;
     store::insert_event(&conn, Some(&id), "created", &serde_json::json!({ "title": req.title.trim(), "close_at": close_at }))?;
@@ -305,8 +322,14 @@ async fn post_envelope(
 struct ResultView {
     auction_id: String,
     status: String,
+    format: String,
+    units: u32,
+    units_sold: usize,
+    units_settled: usize,
+    clearing_zats: Option<u64>,
     winning_amount_zats: Option<u64>,
     winning_txid: Option<String>,
+    winning_txids: Vec<String>,
     ledger_hash: Option<String>,
     valid_bid_count: usize,
     settlement_txid: Option<String>,
@@ -328,10 +351,10 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
     if auction.status == "open" {
         return Err(bad("auction is still open"));
     }
-    let winner = match auction.winner_bid_id {
-        Some(wid) => store::get_bid(&conn, wid)?,
-        None => None,
-    };
+    let bids = store::bids_for_auction(&conn, &id)?;
+    let winners: Vec<&store::Bid> = bids.iter().filter(|b| matches!(b.status.as_str(), "won" | "settled")).collect();
+    let winner = winners.first().copied().cloned();
+    let units_settled = winners.iter().filter(|b| b.status == "settled").count();
     let valid_bid_count = store::receipts_for_auction(&conn, &id)?.len();
     let refunds = store::payouts_for_auction(&conn, &id)?
         .into_iter()
@@ -346,8 +369,14 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
     Ok(Json(ResultView {
         auction_id: id,
         status: auction.status,
-        winning_amount_zats: winner.as_ref().and_then(|w| w.bid_zats),
+        format: auction.format.clone(),
+        units: auction.units,
+        units_sold: winners.len(),
+        units_settled,
+        clearing_zats: auction.clearing_zats,
+        winning_amount_zats: auction.clearing_zats,
         winning_txid: winner.as_ref().map(|w| w.txid.clone()),
+        winning_txids: winners.iter().map(|w| w.txid.clone()).collect(),
         ledger_hash: auction.ledger_hash,
         valid_bid_count,
         settlement_txid: auction.settlement_txid,

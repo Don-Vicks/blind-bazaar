@@ -41,7 +41,10 @@ fn init_schema(conn: &Connection) -> Result<()> {
             payout_txid TEXT,
             settle_by INTEGER,
             seller_id INTEGER,
-            image_url TEXT
+            image_url TEXT,
+            units INTEGER NOT NULL DEFAULT 1,
+            format TEXT NOT NULL DEFAULT 'first_price',
+            clearing_zats INTEGER
          );
          CREATE TABLE IF NOT EXISTS bids (
             id INTEGER PRIMARY KEY,
@@ -59,6 +62,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
             status TEXT NOT NULL,
             source TEXT NOT NULL DEFAULT 'memo',
             received_at INTEGER NOT NULL,
+            price_zats INTEGER,
+            settle_by INTEGER,
             UNIQUE (txid, output_index)
          );
          CREATE INDEX IF NOT EXISTS bids_auction ON bids (auction_id, status);
@@ -107,6 +112,11 @@ fn init_schema(conn: &Connection) -> Result<()> {
         "ALTER TABLE auctions ADD COLUMN settle_by INTEGER",
         "ALTER TABLE auctions ADD COLUMN seller_id INTEGER",
         "ALTER TABLE auctions ADD COLUMN image_url TEXT",
+        "ALTER TABLE auctions ADD COLUMN units INTEGER NOT NULL DEFAULT 1",
+        "ALTER TABLE auctions ADD COLUMN format TEXT NOT NULL DEFAULT 'first_price'",
+        "ALTER TABLE auctions ADD COLUMN clearing_zats INTEGER",
+        "ALTER TABLE bids ADD COLUMN price_zats INTEGER",
+        "ALTER TABLE bids ADD COLUMN settle_by INTEGER",
     ] {
         // Ignore "duplicate column" on databases that already have it.
         let _ = conn.execute(stmt, []);
@@ -164,11 +174,24 @@ pub struct Auction {
     pub seller_id: Option<i64>,
     #[serde(default)]
     pub image_url: Option<String>,
+    #[serde(default = "one")]
+    pub units: u32,
+    #[serde(default = "first_price")]
+    pub format: String,
+    #[serde(default)]
+    pub clearing_zats: Option<u64>,
+}
+
+fn one() -> u32 {
+    1
+}
+fn first_price() -> String {
+    "first_price".into()
 }
 
 const AUCTION_COLS: &str = "id, title, description, reserve_zats, deposit_zats, seller_address, address,
     created_at, close_at, status, closed_at, winner_bid_id, ledger_hash, settlement_txid, payout_txid,
-    settle_by, seller_id, image_url";
+    settle_by, seller_id, image_url, units, format, clearing_zats";
 
 fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
     Ok(Auction {
@@ -190,6 +213,9 @@ fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
         settle_by: r.get(15)?,
         seller_id: r.get(16)?,
         image_url: r.get(17)?,
+        units: r.get::<_, i64>(18)? as u32,
+        format: r.get(19)?,
+        clearing_zats: r.get::<_, Option<i64>>(20)?.map(|v| v as u64),
     })
 }
 
@@ -205,13 +231,15 @@ pub struct NewAuction<'a> {
     pub close_at: i64,
     pub seller_id: Option<i64>,
     pub image_url: Option<&'a str>,
+    pub units: u32,
+    pub format: &'a str,
 }
 
 pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
     conn.execute(
         "INSERT INTO auctions (id, title, description, reserve_zats, deposit_zats, seller_address,
-            address, diversifier_index, created_at, close_at, status, seller_id, image_url)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, ?12)",
+            address, diversifier_index, created_at, close_at, status, seller_id, image_url, units, format)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, ?12, ?13, ?14)",
         params![
             a.id,
             a.title,
@@ -224,7 +252,9 @@ pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
             now(),
             a.close_at,
             a.seller_id,
-            a.image_url
+            a.image_url,
+            a.units as i64,
+            a.format
         ],
     )?;
     Ok(())
@@ -273,10 +303,12 @@ pub struct Bid {
     pub status: String,
     pub source: String,
     pub received_at: i64,
+    pub price_zats: Option<u64>,
+    pub settle_by: Option<i64>,
 }
 
 const BID_COLS: &str = "id, auction_id, txid, output_index, pool, mined_height, value_zats, memo,
-    bid_zats, refund_address, nonce, receipt, status, source, received_at";
+    bid_zats, refund_address, nonce, receipt, status, source, received_at, price_zats, settle_by";
 
 fn row_to_bid(r: &rusqlite::Row<'_>) -> rusqlite::Result<Bid> {
     Ok(Bid {
@@ -295,6 +327,8 @@ fn row_to_bid(r: &rusqlite::Row<'_>) -> rusqlite::Result<Bid> {
         status: r.get(12)?,
         source: r.get(13)?,
         received_at: r.get(14)?,
+        price_zats: r.get::<_, Option<i64>>(15)?.map(|v| v as u64),
+        settle_by: r.get(16)?,
     })
 }
 
@@ -350,7 +384,7 @@ pub fn bid_exists(conn: &Connection, txid: &str, output_index: u32) -> Result<bo
 
 pub fn nonce_used(conn: &Connection, auction_id: &str, nonce: &str) -> Result<bool> {
     let n: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM bids WHERE auction_id = ?1 AND nonce = ?2 AND status = 'valid'",
+        "SELECT COUNT(*) FROM bids WHERE auction_id = ?1 AND nonce = ?2 AND status IN ('valid', 'won', 'settled', 'forfeited')",
         params![auction_id, nonce],
         |r| r.get(0),
     )?;
@@ -373,7 +407,8 @@ pub fn get_bid(conn: &Connection, id: i64) -> Result<Option<Bid>> {
 
 pub fn receipts_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT receipt FROM bids WHERE auction_id = ?1 AND status = 'valid' AND receipt IS NOT NULL
+        "SELECT receipt FROM bids WHERE auction_id = ?1 AND status IN ('valid', 'won', 'settled', 'forfeited')
+           AND receipt IS NOT NULL
          ORDER BY receipt ASC",
     )?;
     let rows = stmt.query_map([auction_id], |r| r.get::<_, String>(0))?;
@@ -563,6 +598,7 @@ pub fn mark_payout_failed(conn: &Connection, id: i64, error: &str, retry_at: i64
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn close_auction(
     conn: &Connection,
     id: &str,
@@ -570,13 +606,54 @@ pub fn close_auction(
     winner_bid_id: Option<i64>,
     ledger_hash: &str,
     settle_by: Option<i64>,
+    clearing_zats: Option<u64>,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE auctions SET status = ?2, winner_bid_id = ?3, ledger_hash = ?4, closed_at = ?5, settle_by = ?6
+        "UPDATE auctions SET status = ?2, winner_bid_id = ?3, ledger_hash = ?4, closed_at = ?5, settle_by = ?6,
+            clearing_zats = ?7
          WHERE id = ?1",
-        params![id, status, winner_bid_id, ledger_hash, now(), settle_by],
+        params![id, status, winner_bid_id, ledger_hash, now(), settle_by, clearing_zats.map(|v| v as i64)],
     )?;
     Ok(())
+}
+
+/// Mark a bid as a winner owing `price_zats` (total, deposit included) by `settle_by`.
+pub fn set_bid_won(conn: &Connection, bid_id: i64, price_zats: u64, settle_by: i64) -> Result<()> {
+    conn.execute(
+        "UPDATE bids SET status = 'won', price_zats = ?2, settle_by = ?3 WHERE id = ?1",
+        params![bid_id, price_zats as i64, settle_by],
+    )?;
+    Ok(())
+}
+
+/// Winners whose settlement deadline has passed.
+pub fn overdue_winners(conn: &Connection, now: i64) -> Result<Vec<Bid>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {BID_COLS} FROM bids WHERE status = 'won' AND settle_by IS NOT NULL AND settle_by <= ?1"
+    ))?;
+    let rows = stmt.query_map([now], row_to_bid)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn count_bids_with_status(conn: &Connection, auction_id: &str, status: &str) -> Result<i64> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM bids WHERE auction_id = ?1 AND status = ?2",
+        params![auction_id, status],
+        |r| r.get(0),
+    )?)
+}
+
+pub fn set_auction_status(conn: &Connection, id: &str, status: &str) -> Result<()> {
+    conn.execute("UPDATE auctions SET status = ?2 WHERE id = ?1", params![id, status])?;
+    Ok(())
+}
+
+pub fn pending_seller_payouts(conn: &Connection, auction_id: &str) -> Result<i64> {
+    Ok(conn.query_row(
+        "SELECT COUNT(*) FROM payouts WHERE auction_id = ?1 AND kind = 'seller' AND status != 'sent'",
+        [auction_id],
+        |r| r.get(0),
+    )?)
 }
 
 /// Auctions awaiting settlement whose deadline has passed.
@@ -745,11 +822,8 @@ pub fn totals(conn: &Connection) -> Result<Totals> {
     Ok(t)
 }
 
-pub fn set_auction_settled(conn: &Connection, id: &str, settlement_txid: &str) -> Result<()> {
-    conn.execute(
-        "UPDATE auctions SET status = 'settled', settlement_txid = ?2 WHERE id = ?1",
-        params![id, settlement_txid],
-    )?;
+pub fn set_auction_settled_txid(conn: &Connection, id: &str, settlement_txid: &str) -> Result<()> {
+    conn.execute("UPDATE auctions SET settlement_txid = ?2 WHERE id = ?1", params![id, settlement_txid])?;
     Ok(())
 }
 
@@ -784,11 +858,11 @@ pub fn get_disclosure(conn: &Connection, id: &str) -> Result<Option<String>> {
 pub fn mirror_auction(conn: &Connection, a: &Auction) -> Result<bool> {
     let n = conn.execute(
         "INSERT OR IGNORE INTO auctions (id, title, description, reserve_zats, deposit_zats, seller_address,
-            address, created_at, close_at, status, image_url)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', ?10)",
+            address, created_at, close_at, status, image_url, units, format)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', ?10, ?11, ?12)",
         params![
             a.id, a.title, a.description, a.reserve_zats as i64, a.deposit_zats as i64,
-            a.seller_address, a.address, a.created_at, a.close_at, a.image_url
+            a.seller_address, a.address, a.created_at, a.close_at, a.image_url, a.units as i64, a.format
         ],
     )?;
     Ok(n > 0)
