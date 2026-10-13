@@ -90,6 +90,11 @@ export function GoDark(opts: GoDarkOptions) {
 
   async function pay() {
     if (!quote || !account) return;
+    if (quote.expiresAt * 1000 < Date.now() + 15_000) {
+      setError("That quote expired. Fetching a fresh one.");
+      await connectAndQuote();
+      return;
+    }
     setBusy(true);
     setStep("sending");
     try {
@@ -222,6 +227,10 @@ export function GoDark(opts: GoDarkOptions) {
                   <tr>
                     <td>Recipient gets</td>
                     <td className="gd-mono">{zec(quote.amountOutZats)} shielded</td>
+                  </tr>
+                  <tr>
+                    <td>Quote valid</td>
+                    <td>{Math.max(0, Math.round((quote.expiresAt * 1000 - Date.now()) / 60000))} min</td>
                   </tr>
                   <tr>
                     <td>Rail</td>

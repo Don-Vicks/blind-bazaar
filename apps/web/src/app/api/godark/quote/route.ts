@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
+import { allow, clientKey, originAllowed } from "@/lib/rate-limit";
 import { getQuote, isAcceptableZcashAddress, type QuoteRequest } from "@/lib/rails";
 
 export async function POST(req: Request) {
+  if (!originAllowed(req)) return NextResponse.json({ error: "origin not allowed" }, { status: 403 });
+  if (!allow(clientKey(req))) return NextResponse.json({ error: "too many requests" }, { status: 429 });
   let body: QuoteRequest;
   try {
     body = (await req.json()) as QuoteRequest;

@@ -84,6 +84,22 @@ pub struct Config {
     #[arg(long)]
     pub verify_disclosure: Option<PathBuf>,
 
+    /// Seconds a winner has to pay the balance after close before forfeiting the deposit.
+    #[arg(long, env = "SETTLEMENT_WINDOW_SECS", default_value_t = 86_400)]
+    pub settlement_window_secs: i64,
+
+    /// Optional URL that receives a JSON POST for every auction event.
+    #[arg(long, env = "WEBHOOK_URL")]
+    pub webhook_url: Option<String>,
+
+    /// Allowed browser origin for the API (CORS). Default allows any origin, for development.
+    #[arg(long, env = "CORS_ORIGIN")]
+    pub cors_origin: Option<String>,
+
+    /// Zatoshis the operator keeps in reserve for fees; `/health` warns below pending payouts + this.
+    #[arg(long, env = "FEE_RESERVE_ZATS", default_value_t = 1_000_000)]
+    pub fee_reserve_zats: u64,
+
     /// Confirmations required before a received note can be spent (applies to trusted and
     /// untrusted notes alike). Default policy is 3 trusted / 10 untrusted.
     #[arg(long, env = "MIN_CONFIRMATIONS")]

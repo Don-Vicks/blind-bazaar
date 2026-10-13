@@ -18,6 +18,13 @@ use crate::{
 };
 
 pub fn router(state: Arc<AppState>) -> Router {
+    let cors = match state.cors_origin.as_deref() {
+        Some(origin) => CorsLayer::new()
+            .allow_origin(origin.parse::<axum::http::HeaderValue>().expect("CORS_ORIGIN must be a valid origin"))
+            .allow_methods([axum::http::Method::GET, axum::http::Method::POST])
+            .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::HeaderName::from_static("x-admin-token"), axum::http::HeaderName::from_static("x-seller-key")]),
+        None => CorsLayer::permissive(),
+    };
     Router::new()
         .route("/health", get(health))
         .route("/auctions", get(list_auctions).post(create_auction))
@@ -29,7 +36,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/admin/payouts", post(admin_payout).get(admin_list_payouts))
         .route("/admin/scan-tx", post(admin_scan_tx))
         .route("/admin/block/{height}", get(admin_block))
-        .layer(CorsLayer::permissive())
+        .route("/admin/sellers", post(admin_create_seller))
+        .route("/admin/payouts/{id}/retry", post(admin_retry_payout))
+        .route("/admin/reconcile", get(admin_reconcile))
+        .route("/auctions/{id}/events", get(auction_events))
+        .layer(cors)
         .with_state(state)
 }
 
@@ -70,6 +81,9 @@ struct Health {
     balance_zats: Option<u64>,
     lightwalletd_version: Option<String>,
     mempool_seen: usize,
+    pending_payouts_zats: u64,
+    dead_payouts: i64,
+    low_balance: bool,
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> ApiResult<Health> {
@@ -85,6 +99,9 @@ async fn health(State(state): State<Arc<AppState>>) -> ApiResult<Health> {
         balance_zats: s.balance_zats,
         lightwalletd_version: s.lightwalletd_version,
         mempool_seen: s.mempool_seen,
+        pending_payouts_zats: s.pending_payouts_zats,
+        dead_payouts: s.dead_payouts,
+        low_balance: s.low_balance,
     }))
 }
 
@@ -119,12 +136,33 @@ fn check_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
     }
 }
 
+fn key_hash(key: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(key.trim().as_bytes()))
+}
+
+/// Either the admin token or a seller key authorises listing. Returns the seller id if a key was used.
+async fn authorise_seller(state: &AppState, headers: &HeaderMap) -> Result<Option<i64>, ApiError> {
+    if check_admin(state, headers).is_ok() {
+        return Ok(None);
+    }
+    let key = headers
+        .get("x-seller-key")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "admin token or seller key required".into()))?;
+    let conn = state.store.lock().await;
+    match store::seller_by_key_hash(&conn, &key_hash(key))? {
+        Some((id, _)) => Ok(Some(id)),
+        None => Err(ApiError(StatusCode::UNAUTHORIZED, "unknown seller key".into())),
+    }
+}
+
 async fn create_auction(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(req): Json<CreateAuction>,
 ) -> ApiResult<store::Auction> {
-    check_admin(&state, &headers)?;
+    let seller_id = authorise_seller(&state, &headers).await?;
     if req.title.trim().is_empty() {
         return Err(bad("title required"));
     }
@@ -167,8 +205,10 @@ async fn create_auction(
             address: &address,
             diversifier_index: Some(&di),
             close_at,
+            seller_id,
         },
     )?;
+    store::insert_event(&conn, Some(&id), "created", &serde_json::json!({ "title": req.title.trim(), "close_at": close_at }))?;
     let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
     Ok(Json(auction))
 }
@@ -438,4 +478,79 @@ async fn admin_block(
         .await
         .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
     Ok(Json(rx.await.map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??))
+}
+
+#[derive(Deserialize)]
+struct CreateSeller {
+    name: String,
+}
+
+/// Admin creates a seller; the key is returned once and stored hashed.
+async fn admin_create_seller(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<CreateSeller>,
+) -> ApiResult<serde_json::Value> {
+    check_admin(&state, &headers)?;
+    if req.name.trim().is_empty() {
+        return Err(bad("name required"));
+    }
+    let mut raw = [0u8; 24];
+    rand::Rng::fill_bytes(&mut rand::rng(), &mut raw);
+    let key = format!("bbs_{}", hex::encode(raw));
+    let conn = state.store.lock().await;
+    let id = store::insert_seller(&conn, req.name.trim(), &key_hash(&key))?;
+    Ok(Json(serde_json::json!({ "seller_id": id, "name": req.name.trim(), "key": key })))
+}
+
+async fn admin_retry_payout(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<i64>,
+) -> ApiResult<serde_json::Value> {
+    check_admin(&state, &headers)?;
+    let conn = state.store.lock().await;
+    if store::requeue_payout(&conn, id)? {
+        Ok(Json(serde_json::json!({ "ok": true })))
+    } else {
+        Err(bad("payout is not in a retryable state"))
+    }
+}
+
+#[derive(Serialize)]
+struct Reconcile {
+    #[serde(flatten)]
+    totals: store::Totals,
+    wallet_balance_zats: Option<u64>,
+    /// deposits + settlements - payouts sent; fees make the wallet slightly lower than this.
+    expected_balance_zats: i64,
+    discrepancy_zats: Option<i64>,
+}
+
+async fn admin_reconcile(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiResult<Reconcile> {
+    check_admin(&state, &headers)?;
+    let totals = {
+        let conn = state.store.lock().await;
+        store::totals(&conn)?
+    };
+    let balance = state.status.read().await.balance_zats;
+    let expected = totals.deposits_received_zats as i64 + totals.settlements_received_zats as i64
+        - totals.payouts_sent_zats as i64;
+    Ok(Json(Reconcile {
+        discrepancy_zats: balance.map(|b| b as i64 - expected),
+        totals,
+        wallet_balance_zats: balance,
+        expected_balance_zats: expected,
+    }))
+}
+
+async fn auction_events(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> ApiResult<Vec<store::Event>> {
+    let conn = state.store.lock().await;
+    store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+    // Public view: hide receipts of rejected bids and payout ids.
+    let events = store::events_for_auction(&conn, &id)?
+        .into_iter()
+        .filter(|e| !matches!(e.kind.as_str(), "bid_rejected" | "payout_dead"))
+        .collect();
+    Ok(Json(events))
 }

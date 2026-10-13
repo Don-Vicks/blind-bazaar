@@ -146,6 +146,12 @@ fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str
                 "bid {} for auction {} status {} ({} zats, {})",
                 id, bid.auction_id, nb.status, out.value_zats, out.txid
             );
+            store::insert_event(
+                store,
+                nb.auction_id,
+                if nb.status == "valid" { "bid_received" } else { "bid_rejected" },
+                &serde_json::json!({ "receipt": receipt, "status": nb.status, "source": source }),
+            )?;
             // Anything that is not a valid bid but has a refund address gets its deposit back.
             if nb.status != "valid" {
                 let memo_text = format!("BB1R|{}", bid.auction_id);
@@ -206,6 +212,12 @@ fn settle(store: &Connection, auction: &store::Auction, nonce: &str, out: &Recei
         return Ok(());
     }
     store::set_auction_settled(store, &auction.id, &out.txid)?;
+    store::insert_event(
+        store,
+        Some(&auction.id),
+        "settled",
+        &serde_json::json!({ "settlement_txid": out.txid, "winning_amount_zats": bid_zats }),
+    )?;
     let memo_text = format!("BB1P|{}", auction.id);
     store::queue_payout(
         store,

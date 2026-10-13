@@ -12,9 +12,14 @@ pub fn open(path: &Path) -> Result<Connection> {
     }
     let conn = Connection::open(path)?;
     conn.busy_timeout(std::time::Duration::from_secs(10))?;
+    conn.execute_batch("PRAGMA journal_mode = WAL;")?;
+    init_schema(&conn)?;
+    Ok(conn)
+}
+
+fn init_schema(conn: &Connection) -> Result<()> {
     conn.execute_batch(
-        "PRAGMA journal_mode = WAL;
-         PRAGMA foreign_keys = ON;
+        "PRAGMA foreign_keys = ON;
          CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
          CREATE TABLE IF NOT EXISTS auctions (
             id TEXT PRIMARY KEY,
@@ -33,7 +38,9 @@ pub fn open(path: &Path) -> Result<Connection> {
             ledger_hash TEXT,
             disclosure_json TEXT,
             settlement_txid TEXT,
-            payout_txid TEXT
+            payout_txid TEXT,
+            settle_by INTEGER,
+            seller_id INTEGER
          );
          CREATE TABLE IF NOT EXISTS bids (
             id INTEGER PRIMARY KEY,
@@ -63,6 +70,21 @@ pub fn open(path: &Path) -> Result<Connection> {
             created_at INTEGER NOT NULL,
             matched_bid_id INTEGER
          );
+         CREATE TABLE IF NOT EXISTS sellers (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            key_hash TEXT NOT NULL UNIQUE,
+            created_at INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY,
+            auction_id TEXT,
+            kind TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            delivered_at INTEGER,
+            attempts INTEGER NOT NULL DEFAULT 0
+         );
          CREATE TABLE IF NOT EXISTS payouts (
             id INTEGER PRIMARY KEY,
             auction_id TEXT,
@@ -80,6 +102,19 @@ pub fn open(path: &Path) -> Result<Connection> {
             sent_at INTEGER
          );",
     )?;
+    for stmt in [
+        "ALTER TABLE auctions ADD COLUMN settle_by INTEGER",
+        "ALTER TABLE auctions ADD COLUMN seller_id INTEGER",
+    ] {
+        // Ignore "duplicate column" on databases that already have it.
+        let _ = conn.execute(stmt, []);
+    }
+    Ok(())
+}
+
+pub fn open_in_memory() -> Result<Connection> {
+    let conn = Connection::open_in_memory()?;
+    init_schema(&conn)?;
     Ok(conn)
 }
 
@@ -121,10 +156,14 @@ pub struct Auction {
     pub ledger_hash: Option<String>,
     pub settlement_txid: Option<String>,
     pub payout_txid: Option<String>,
+    pub settle_by: Option<i64>,
+    #[serde(skip)]
+    pub seller_id: Option<i64>,
 }
 
 const AUCTION_COLS: &str = "id, title, description, reserve_zats, deposit_zats, seller_address, address,
-    created_at, close_at, status, closed_at, winner_bid_id, ledger_hash, settlement_txid, payout_txid";
+    created_at, close_at, status, closed_at, winner_bid_id, ledger_hash, settlement_txid, payout_txid,
+    settle_by, seller_id";
 
 fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
     Ok(Auction {
@@ -143,6 +182,8 @@ fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
         ledger_hash: r.get(12)?,
         settlement_txid: r.get(13)?,
         payout_txid: r.get(14)?,
+        settle_by: r.get(15)?,
+        seller_id: r.get(16)?,
     })
 }
 
@@ -156,13 +197,14 @@ pub struct NewAuction<'a> {
     pub address: &'a str,
     pub diversifier_index: Option<&'a str>,
     pub close_at: i64,
+    pub seller_id: Option<i64>,
 }
 
 pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
     conn.execute(
         "INSERT INTO auctions (id, title, description, reserve_zats, deposit_zats, seller_address,
-            address, diversifier_index, created_at, close_at, status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open')",
+            address, diversifier_index, created_at, close_at, status, seller_id)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11)",
         params![
             a.id,
             a.title,
@@ -173,7 +215,8 @@ pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
             a.address,
             a.diversifier_index,
             now(),
-            a.close_at
+            a.close_at,
+            a.seller_id
         ],
     )?;
     Ok(())
@@ -518,13 +561,180 @@ pub fn close_auction(
     status: &str,
     winner_bid_id: Option<i64>,
     ledger_hash: &str,
+    settle_by: Option<i64>,
 ) -> Result<()> {
     conn.execute(
-        "UPDATE auctions SET status = ?2, winner_bid_id = ?3, ledger_hash = ?4, closed_at = ?5
+        "UPDATE auctions SET status = ?2, winner_bid_id = ?3, ledger_hash = ?4, closed_at = ?5, settle_by = ?6
          WHERE id = ?1",
-        params![id, status, winner_bid_id, ledger_hash, now()],
+        params![id, status, winner_bid_id, ledger_hash, now(), settle_by],
     )?;
     Ok(())
+}
+
+/// Auctions awaiting settlement whose deadline has passed.
+pub fn settlement_overdue(conn: &Connection, now: i64) -> Result<Vec<Auction>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {AUCTION_COLS} FROM auctions WHERE status = 'closed' AND settle_by IS NOT NULL AND settle_by <= ?1"
+    ))?;
+    let rows = stmt.query_map([now], row_to_auction)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn set_winner(conn: &Connection, id: &str, winner_bid_id: Option<i64>, status: &str, settle_by: Option<i64>) -> Result<()> {
+    conn.execute(
+        "UPDATE auctions SET winner_bid_id = ?2, status = ?3, settle_by = ?4 WHERE id = ?1",
+        params![id, winner_bid_id, status, settle_by],
+    )?;
+    Ok(())
+}
+
+pub fn set_bid_status(conn: &Connection, bid_id: i64, status: &str) -> Result<()> {
+    conn.execute("UPDATE bids SET status = ?2 WHERE id = ?1", params![bid_id, status])?;
+    Ok(())
+}
+
+/// Cancel a queued (not yet sent) payout for a bid. Returns true if one was cancelled.
+pub fn cancel_queued_payout_for_bid(conn: &Connection, bid_id: i64) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE payouts SET status = 'cancelled' WHERE bid_id = ?1 AND kind = 'refund' AND status IN ('queued', 'failed')",
+        [bid_id],
+    )?;
+    Ok(n > 0)
+}
+
+pub fn mark_payout_dead(conn: &Connection, id: i64, error: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE payouts SET status = 'dead', error = ?2, attempts = attempts + 1 WHERE id = ?1",
+        params![id, error],
+    )?;
+    Ok(())
+}
+
+pub fn requeue_payout(conn: &Connection, id: i64) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE payouts SET status = 'queued', attempts = 0, error = NULL, not_before = ?2
+         WHERE id = ?1 AND status IN ('dead', 'failed', 'cancelled')",
+        params![id, now()],
+    )?;
+    Ok(n > 0)
+}
+
+// ---- sellers ----
+
+pub fn insert_seller(conn: &Connection, name: &str, key_hash: &str) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO sellers (name, key_hash, created_at) VALUES (?1, ?2, ?3)",
+        params![name, key_hash, now()],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn seller_by_key_hash(conn: &Connection, key_hash: &str) -> Result<Option<(i64, String)>> {
+    Ok(conn
+        .query_row(
+            "SELECT id, name FROM sellers WHERE key_hash = ?1",
+            [key_hash],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?)
+}
+
+// ---- events ----
+
+pub fn insert_event(conn: &Connection, auction_id: Option<&str>, kind: &str, payload: &serde_json::Value) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO events (auction_id, kind, payload, created_at) VALUES (?1, ?2, ?3, ?4)",
+        params![auction_id, kind, payload.to_string(), now()],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Event {
+    pub id: i64,
+    pub auction_id: Option<String>,
+    pub kind: String,
+    pub payload: serde_json::Value,
+    pub created_at: i64,
+}
+
+pub fn undelivered_events(conn: &Connection, max_attempts: i64) -> Result<Vec<Event>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, auction_id, kind, payload, created_at FROM events
+         WHERE delivered_at IS NULL AND attempts < ?1 ORDER BY id ASC LIMIT 50",
+    )?;
+    let rows = stmt.query_map([max_attempts], |r| {
+        Ok(Event {
+            id: r.get(0)?,
+            auction_id: r.get(1)?,
+            kind: r.get(2)?,
+            payload: serde_json::from_str(&r.get::<_, String>(3)?).unwrap_or(serde_json::Value::Null),
+            created_at: r.get(4)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn mark_event_delivered(conn: &Connection, id: i64, ok: bool) -> Result<()> {
+    if ok {
+        conn.execute("UPDATE events SET delivered_at = ?2, attempts = attempts + 1 WHERE id = ?1", params![id, now()])?;
+    } else {
+        conn.execute("UPDATE events SET attempts = attempts + 1 WHERE id = ?1", [id])?;
+    }
+    Ok(())
+}
+
+pub fn events_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<Event>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, auction_id, kind, payload, created_at FROM events WHERE auction_id = ?1 ORDER BY id ASC",
+    )?;
+    let rows = stmt.query_map([auction_id], |r| {
+        Ok(Event {
+            id: r.get(0)?,
+            auction_id: r.get(1)?,
+            kind: r.get(2)?,
+            payload: serde_json::from_str(&r.get::<_, String>(3)?).unwrap_or(serde_json::Value::Null),
+            created_at: r.get(4)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+// ---- reconciliation ----
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct Totals {
+    pub deposits_received_zats: u64,
+    pub settlements_received_zats: u64,
+    pub payouts_sent_zats: u64,
+    pub payouts_pending_zats: u64,
+    pub payouts_dead: i64,
+}
+
+pub fn totals(conn: &Connection) -> Result<Totals> {
+    let mut t = Totals::default();
+    t.deposits_received_zats = conn.query_row(
+        "SELECT COALESCE(SUM(value_zats), 0) FROM bids WHERE status NOT IN ('settlement', 'unexpected_settlement')",
+        [],
+        |r| r.get::<_, i64>(0),
+    )? as u64;
+    t.settlements_received_zats = conn.query_row(
+        "SELECT COALESCE(SUM(value_zats), 0) FROM bids WHERE status = 'settlement'",
+        [],
+        |r| r.get::<_, i64>(0),
+    )? as u64;
+    t.payouts_sent_zats = conn.query_row(
+        "SELECT COALESCE(SUM(value_zats), 0) FROM payouts WHERE status = 'sent'",
+        [],
+        |r| r.get::<_, i64>(0),
+    )? as u64;
+    t.payouts_pending_zats = conn.query_row(
+        "SELECT COALESCE(SUM(value_zats), 0) FROM payouts WHERE status IN ('queued', 'failed')",
+        [],
+        |r| r.get::<_, i64>(0),
+    )? as u64;
+    t.payouts_dead = conn.query_row("SELECT COUNT(*) FROM payouts WHERE status = 'dead'", [], |r| r.get(0))?;
+    Ok(t)
 }
 
 pub fn set_auction_settled(conn: &Connection, id: &str, settlement_txid: &str) -> Result<()> {

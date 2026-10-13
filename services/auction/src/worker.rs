@@ -152,17 +152,53 @@ impl Worker {
             if n > 0 {
                 info!("ingested {n} new outputs");
             }
-            close::close_due(
-                &store,
-                wallet_ro,
-                &self.params,
-                self.network_name,
-                self.cfg.refund_delay_min_secs,
-                self.cfg.refund_delay_max_secs,
-            )?;
+            let close_cfg = close::CloseConfig {
+                delay_min: self.cfg.refund_delay_min_secs,
+                delay_max: self.cfg.refund_delay_max_secs,
+                settlement_window_secs: self.cfg.settlement_window_secs,
+            };
+            close::close_due(&store, Some(wallet_ro), &self.params, self.network_name, &close_cfg)?;
+            close::enforce_settlement_deadlines(&store, &close_cfg)?;
         }
 
         self.process_payouts(client, db, prover, operator).await?;
+        self.deliver_events().await?;
+        {
+            let store = self.store.lock().await;
+            let t = store::totals(&store)?;
+            let mut s = self.status.write().await;
+            s.pending_payouts_zats = t.payouts_pending_zats;
+            s.dead_payouts = t.payouts_dead;
+            s.low_balance = match s.balance_zats {
+                Some(b) => b < t.payouts_pending_zats + self.cfg.fee_reserve_zats,
+                None => false,
+            };
+        }
+        Ok(())
+    }
+
+    async fn deliver_events(&self) -> Result<()> {
+        let Some(url) = &self.cfg.webhook_url else { return Ok(()) };
+        let pending = {
+            let store = self.store.lock().await;
+            store::undelivered_events(&store, 8)?
+        };
+        if pending.is_empty() {
+            return Ok(());
+        }
+        let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?;
+        for ev in pending {
+            let body = serde_json::json!({
+                "id": ev.id, "kind": ev.kind, "auction_id": ev.auction_id,
+                "payload": ev.payload, "created_at": ev.created_at,
+            });
+            let ok = client.post(url).json(&body).send().await.map(|r| r.status().is_success()).unwrap_or(false);
+            let store = self.store.lock().await;
+            store::mark_event_delivered(&store, ev.id, ok)?;
+            if !ok {
+                warn!("webhook delivery failed for event {}", ev.id);
+            }
+        }
         Ok(())
     }
 
@@ -204,11 +240,27 @@ impl Worker {
                             store::set_auction_payout(&store, aid, &txid)?;
                         }
                     }
+                    store::insert_event(
+                        &store,
+                        p.auction_id.as_deref(),
+                        match p.kind.as_str() { "seller" => "seller_paid", "forfeit" => "forfeit_paid", _ => "refund_sent" },
+                        &serde_json::json!({ "payout_id": p.id, "txid": txid, "value_zats": p.value_zats }),
+                    )?;
                 }
                 Err(e) => {
                     warn!("payout {} failed: {e:#}", p.id);
-                    let backoff = 60 * (1 << p.attempts.min(5));
-                    store::mark_payout_failed(&store, p.id, &format!("{e:#}"), store::now() + backoff)?;
+                    if p.attempts + 1 >= MAX_PAYOUT_ATTEMPTS {
+                        store::mark_payout_dead(&store, p.id, &format!("{e:#}"))?;
+                        store::insert_event(
+                            &store,
+                            p.auction_id.as_deref(),
+                            "payout_dead",
+                            &serde_json::json!({ "payout_id": p.id, "error": format!("{e:#}") }),
+                        )?;
+                    } else {
+                        let backoff = 60 * (1 << p.attempts.min(5));
+                        store::mark_payout_failed(&store, p.id, &format!("{e:#}"), store::now() + backoff)?;
+                    }
                 }
             }
         }

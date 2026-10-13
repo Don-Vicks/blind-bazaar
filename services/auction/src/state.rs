@@ -28,11 +28,15 @@ pub struct SyncStatus {
     pub balance_zats: Option<u64>,
     pub lightwalletd_version: Option<String>,
     pub mempool_seen: usize,
+    pub pending_payouts_zats: u64,
+    pub dead_payouts: i64,
+    pub low_balance: bool,
 }
 
 pub struct AppState {
     pub network_name: &'static str,
     pub admin_token: String,
+    pub cors_origin: Option<String>,
     pub store: Arc<Mutex<Connection>>,
     pub wallet: mpsc::Sender<WalletCmd>,
     pub status: Arc<RwLock<SyncStatus>>,

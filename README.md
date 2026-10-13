@@ -73,7 +73,11 @@ Bid from Zodl (formerly Zashi), Zingo or YWallet by scanning the QR on the aucti
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/health` | sync lag, operator address, balance |
-| POST | `/auctions` | `x-admin-token` header |
+| POST | `/auctions` | `x-admin-token` or `x-seller-key` header |
+| GET | `/auctions/{id}/events` | public event log (created, bid received, closed, refund sent, settled, paid, forfeited) |
+| POST | `/admin/sellers` | create a seller key (returned once, stored hashed) |
+| GET | `/admin/reconcile` | deposits and settlements in, payouts out, expected vs wallet balance |
+| POST | `/admin/payouts/{id}/retry` | requeue a dead or failed payout |
 | GET | `/auctions`, `/auctions/{id}` | |
 | GET | `/auctions/{id}/receipts` | receipts of received bids |
 | GET | `/auctions/{id}/bid-uri?bid_zats=&refund_address=&nonce=` | server-side ZIP-321 builder |
@@ -92,6 +96,16 @@ cargo run --release -- --verify-disclosure disclosure.json --lightwalletd-url ht
 
 It rebuilds the Orchard note from the disclosed opening (recipient, value, rho, rseed), computes its commitment and
 compares it with the `cmx` of the named action in the transaction. Losing bids are never disclosed.
+
+## Operating it
+
+- A winner who does not pay within `SETTLEMENT_WINDOW_SECS` (default 24h) forfeits the deposit to the seller; the
+  runner-up is offered the lot if their refund has not been sent yet, otherwise the auction ends unsettled.
+- Payouts retry with backoff and are parked as `dead` after 5 attempts; `/health` reports `dead_payouts` and a
+  `low_balance` flag when the wallet cannot cover queued payouts plus `FEE_RESERVE_ZATS`.
+- Set `WEBHOOK_URL` to receive every event as a JSON POST (retried up to 8 times).
+- Set `CORS_ORIGIN` in production; the default allows any origin for development.
+- See `deploy/` for Docker images, a Compose file with HTTPS, and env templates.
 
 ## Zcash primitives used
 

@@ -1,0 +1,10 @@
+{$SITE_HOST} {
+    encode zstd gzip
+    handle /bb/* {
+        uri strip_prefix /bb
+        reverse_proxy auction:8787
+    }
+    handle {
+        reverse_proxy web:3000
+    }
+}

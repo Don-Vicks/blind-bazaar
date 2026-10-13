@@ -15,6 +15,7 @@ anyhow = "1"
 async-trait = "0.1"
 thiserror = "2"
 axum = { version = "0.8", features = ["macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 tokio = { version = "1", features = ["full"] }
 tonic = { version = "0.14", features = ["gzip", "tls-webpki-roots"] }

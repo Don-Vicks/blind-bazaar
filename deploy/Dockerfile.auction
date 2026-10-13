@@ -1,0 +1,17 @@
+# Build
+FROM rust:1.90-bookworm AS build
+WORKDIR /src
+COPY Cargo.toml Cargo.lock ./
+COPY services/auction ./services/auction
+RUN cargo build --release -p bb-auction
+
+# Run
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/* \
+    && useradd -r -u 10001 bb
+COPY --from=build /src/target/release/bb-auction /usr/local/bin/bb-auction
+USER bb
+VOLUME ["/data"]
+ENV DATA_DIR=/data OPERATOR_SEED_FILE=/data/operator.seed BIND=0.0.0.0:8787
+EXPOSE 8787
+ENTRYPOINT ["bb-auction"]

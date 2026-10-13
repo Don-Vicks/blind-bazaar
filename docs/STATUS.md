@@ -30,9 +30,16 @@ What is verified, what is written but unverified, and what does not exist yet. U
 | Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
 | Memo passthrough in Zodl, Zingo, YWallet from a ZIP-321 QR | one bid from each wallet |
 
+## Hardening added Oct 13 (unit-tested, not yet exercised on chain)
+
+- Settlement deadline with forfeiture and second-chance offer to the runner-up
+- Payout retries with dead-letter state and admin retry
+- Seller API keys (hashed), event log with webhook delivery, reconciliation endpoint, low-balance flag
+- Rate limit and origin allow-list on the Go Dark proxy; quote expiry enforced in the widget
+- Docker, Compose and Caddy deployment files
+
 ## Not built yet
 
-- Seller listing UI (`/sell`); auctions are created with curl and the admin token.
 - In-browser receiver wallet generation for Go Dark (24-word seed + unified address, Zodl/Zingo import).
 - Transparent-receiver fallback with auto-shield if 1Click cannot deliver to `u1` from Solana.
 - Rotation of per-payment addresses inside the widget (currently one `to` address per mount).

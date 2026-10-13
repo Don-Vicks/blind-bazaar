@@ -1,0 +1,30 @@
+# Single-VPS deployment: Caddy terminates TLS, web app proxies rails, service holds the wallet.
+services:
+  auction:
+    build: { context: .., dockerfile: deploy/Dockerfile.auction }
+    restart: unless-stopped
+    env_file: auction.env
+    volumes: ["auction-data:/data"]
+    expose: ["8787"]
+
+  web:
+    build: { context: .., dockerfile: deploy/Dockerfile.web }
+    restart: unless-stopped
+    env_file: web.env
+    depends_on: [auction]
+    expose: ["3000"]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [web, auction]
+
+volumes:
+  auction-data:
+  caddy-data:
+  caddy-config:

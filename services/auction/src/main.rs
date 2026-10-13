@@ -222,6 +222,7 @@ async fn main() -> anyhow::Result<()> {
     let app_state = Arc::new(state::AppState {
         network_name,
         admin_token: cfg.admin_token.clone(),
+        cors_origin: cfg.cors_origin.clone(),
         store,
         wallet: tx,
         status,
