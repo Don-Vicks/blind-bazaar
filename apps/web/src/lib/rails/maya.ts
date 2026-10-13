@@ -38,10 +38,12 @@ export async function mayaQuote(req: QuoteRequest): Promise<Quote> {
   let amountIn = (probeIn * want * 1015n) / (probeOut * 1000n);
   const minIn = BigInt(probe.recommended_min_amount_in);
   if (amountIn < minIn) amountIn = minIn;
-  const final = await quoteExactIn(asset, amountIn, req.recipient);
-  if (BigInt(final.expected_amount_out) < want) {
+  let final = await quoteExactIn(asset, amountIn, req.recipient);
+  for (let i = 0; i < 2 && BigInt(final.expected_amount_out) < want; i++) {
     amountIn = (amountIn * 1030n) / 1000n;
+    final = await quoteExactIn(asset, amountIn, req.recipient);
   }
+  if (BigInt(final.expected_amount_out) < want) throw new Error("Maya cannot quote the requested output");
   // Convert 1e8 units to native base units: ETH 18dp, USDC 6dp.
   const native = asset === "ETH.ETH" ? amountIn * 10_000_000_000n : amountIn / 100n;
   const formatted = asset === "ETH.ETH" ? `${Number(amountIn) / 1e8} ETH` : `${Number(amountIn) / 1e8} USDC`;
