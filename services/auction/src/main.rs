@@ -109,7 +109,7 @@ async fn wallet_cmd(
             &mut client,
             &prover,
             me.account_id,
-            &me.usk,
+            me.usk.as_ref().expect("wallet subcommand always has a seed"),
             request,
             cfg.min_confirmations,
         )
@@ -136,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
     if let Some(path) = &cfg.verify_disclosure {
         return verify_disclosure_file(&cfg, path).await;
     }
-    if let Some(config::Cmd::Derive { seed_file, count, check }) = cfg.cmd.clone() {
+    if let Some(config::Cmd::Derive { seed_file, count, check, ufvk: print_ufvk }) = cfg.cmd.clone() {
         use secrecy::ExposeSecret;
         use zcash_keys::keys::UnifiedSpendingKey;
         let params = cfg.net();
@@ -144,6 +144,9 @@ async fn main() -> anyhow::Result<()> {
         let usk = UnifiedSpendingKey::from_seed(&params, seed.expose_secret(), zip32::AccountId::ZERO)
             .map_err(|e| anyhow::anyhow!("{e:?}"))?;
         let ufvk = usk.to_unified_full_viewing_key();
+        if print_ufvk {
+            println!("ufvk: {}", ufvk.encode(&params).map_err(|e| anyhow::anyhow!("{e:?}"))?);
+        }
         let mut j = zip32::DiversifierIndex::new();
         for _ in 0..count {
             let (ua, idx) = ufvk

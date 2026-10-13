@@ -12,7 +12,7 @@ use crate::wallet::net::Net as Network;
 
 use crate::{
     close,
-    config::Config,
+    config::{Config, Role},
     ingest,
     state::{SyncStatus, WalletCmd},
     store,
@@ -39,10 +39,25 @@ impl Worker {
         let wallet_ro = ingest::open_wallet_readonly(&data_db_path)?;
 
         let mut client = wallet::connect(&self.cfg.lightwalletd_url).await?;
-        let (seed, _created) = wallet::load_or_create_seed(&self.cfg.operator_seed_file)?;
-        let operator =
-            wallet::ensure_operator_account(&mut db, &mut client, &self.params, &seed, self.cfg.birthday_height)
-                .await?;
+        let operator = match self.cfg.role {
+            Role::Viewer => {
+                let ufvk = self
+                    .cfg
+                    .operator_ufvk
+                    .as_deref()
+                    .ok_or_else(|| anyhow::anyhow!("ROLE=viewer needs OPERATOR_UFVK"))?;
+                wallet::ensure_viewer_account(&mut db, &mut client, &self.params, ufvk, self.cfg.birthday_height).await?
+            }
+            Role::All | Role::Spender => {
+                let (seed, _created) = wallet::load_or_create_seed(&self.cfg.operator_seed_file)?;
+                wallet::ensure_operator_account(&mut db, &mut client, &self.params, &seed, self.cfg.birthday_height)
+                    .await?
+            }
+        };
+        if self.cfg.role == Role::Spender && self.cfg.viewer_url.is_none() {
+            return Err(anyhow::anyhow!("ROLE=spender needs VIEWER_URL"));
+        }
+        info!("running as {:?}", self.cfg.role);
 
         // A dedicated receive address for the operator (tips, Go Dark demo, funding), persisted so
         // it is stable across restarts and never confused with an auction address.
@@ -66,8 +81,12 @@ impl Worker {
             st.lightwalletd_version = Some(format!("{ver} ({chain})"));
         }
 
-        info!("loading prover parameters");
-        let prover = LocalTxProver::bundled();
+        let prover = if self.cfg.role == Role::Viewer {
+            None
+        } else {
+            info!("loading prover parameters");
+            Some(LocalTxProver::bundled())
+        };
 
         let mut interval = tokio::time::interval(Duration::from_secs(self.cfg.sync_interval_secs));
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -89,7 +108,7 @@ impl Worker {
                     }
                 },
                 _ = interval.tick() => {
-                    if let Err(e) = self.pass(&mut client, &db_cache, &mut db, &wallet_ro, &prover, &operator).await {
+                    if let Err(e) = self.pass(&mut client, &db_cache, &mut db, &wallet_ro, prover.as_ref(), &operator).await {
                         error!("pass failed: {e:#}");
                         self.status.write().await.last_error = Some(format!("{e:#}"));
                         // Reconnect on the next tick in case the channel died.
@@ -109,9 +128,12 @@ impl Worker {
         db_cache: &wallet::cache::MemBlockCache,
         db: &mut wallet::Db,
         wallet_ro: &Connection,
-        prover: &LocalTxProver,
+        prover: Option<&LocalTxProver>,
         operator: &wallet::Operator,
     ) -> Result<()> {
+        if self.cfg.role == Role::Spender {
+            self.mirror_auctions().await?;
+        }
         wallet::sync::sync_once(client, &self.params, db_cache, db).await?;
         let enhanced = wallet::sync::enhance(client, &self.params, db).await?;
         if enhanced > 0 {
@@ -161,7 +183,12 @@ impl Worker {
             close::enforce_settlement_deadlines(&store, &close_cfg)?;
         }
 
-        self.process_payouts(client, db, prover, operator).await?;
+        if let (Some(prover), Some(usk)) = (prover, operator.usk.as_ref()) {
+            self.process_payouts(client, db, prover, operator.account_id, usk).await?;
+        }
+        if self.cfg.role == Role::Spender {
+            self.report_payouts().await?;
+        }
         self.deliver_events().await?;
         {
             let store = self.store.lock().await;
@@ -202,12 +229,68 @@ impl Worker {
         Ok(())
     }
 
+    /// Spender: adopt auction definitions from the viewer (first sight wins; never updated).
+    async fn mirror_auctions(&self) -> Result<()> {
+        let base = self.cfg.viewer_url.as_deref().unwrap_or_default();
+        let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?;
+        let auctions: Vec<store::Auction> = client
+            .get(format!("{base}/admin/auctions"))
+            .header("x-admin-token", &self.cfg.admin_token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let store = self.store.lock().await;
+        for a in &auctions {
+            if store::mirror_auction(&store, a)? {
+                info!("mirrored auction {} ({})", a.id, a.title);
+            }
+        }
+        Ok(())
+    }
+
+    /// Spender: tell the viewer which payouts went out so its public state matches.
+    async fn report_payouts(&self) -> Result<()> {
+        let base = self.cfg.viewer_url.as_deref().unwrap_or_default();
+        let (after, batch) = {
+            let store = self.store.lock().await;
+            let after: i64 = store::get_meta(&store, "reported_payout_id")?.and_then(|v| v.parse().ok()).unwrap_or(0);
+            (after, store::sent_payouts_after(&store, after)?)
+        };
+        if batch.is_empty() {
+            return Ok(());
+        }
+        let body: Vec<serde_json::Value> = batch
+            .iter()
+            .map(|(p, bid_txid)| {
+                serde_json::json!({
+                    "auction_id": p.auction_id, "kind": p.kind, "bid_txid": bid_txid,
+                    "to_address": p.to_address, "value_zats": p.value_zats, "txid": p.txid,
+                })
+            })
+            .collect();
+        let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?;
+        client
+            .post(format!("{base}/admin/payouts/sync"))
+            .header("x-admin-token", &self.cfg.admin_token)
+            .json(&body)
+            .send()
+            .await?
+            .error_for_status()?;
+        let last = batch.iter().map(|(p, _)| p.id).max().unwrap_or(after);
+        let store = self.store.lock().await;
+        store::set_meta(&store, "reported_payout_id", &last.to_string())?;
+        Ok(())
+    }
+
     async fn process_payouts(
         &self,
         client: &mut wallet::Client,
         db: &mut wallet::Db,
         prover: &LocalTxProver,
-        operator: &wallet::Operator,
+        account_id: zcash_client_sqlite::AccountUuid,
+        usk: &zcash_keys::keys::UnifiedSpendingKey,
     ) -> Result<()> {
         let due = {
             let store = self.store.lock().await;
@@ -225,8 +308,8 @@ impl Worker {
                 &self.params,
                 client,
                 prover,
-                operator.account_id,
-                &operator.usk,
+                account_id,
+                usk,
                 &out,
                 self.cfg.min_confirmations,
             )

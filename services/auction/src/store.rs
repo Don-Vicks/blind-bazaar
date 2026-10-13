@@ -137,27 +137,28 @@ pub fn set_meta(conn: &Connection, key: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct Auction {
     pub id: String,
     pub title: String,
     pub description: String,
     pub reserve_zats: u64,
     pub deposit_zats: u64,
-    #[serde(skip)]
+    #[serde(default, skip_serializing)]
     pub seller_address: String,
     pub address: String,
     pub created_at: i64,
     pub close_at: i64,
     pub status: String,
     pub closed_at: Option<i64>,
-    #[serde(skip)]
+    #[serde(default, skip_serializing)]
     pub winner_bid_id: Option<i64>,
     pub ledger_hash: Option<String>,
     pub settlement_txid: Option<String>,
     pub payout_txid: Option<String>,
+    #[serde(default)]
     pub settle_by: Option<i64>,
-    #[serde(skip)]
+    #[serde(default, skip_serializing)]
     pub seller_id: Option<i64>,
 }
 
@@ -770,4 +771,68 @@ pub fn get_disclosure(conn: &Connection, id: &str) -> Result<Option<String>> {
         )
         .optional()?
         .flatten())
+}
+
+/// Spender: adopt an auction definition from the viewer exactly once; later changes are ignored.
+pub fn mirror_auction(conn: &Connection, a: &Auction) -> Result<bool> {
+    let n = conn.execute(
+        "INSERT OR IGNORE INTO auctions (id, title, description, reserve_zats, deposit_zats, seller_address,
+            address, created_at, close_at, status)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open')",
+        params![
+            a.id, a.title, a.description, a.reserve_zats as i64, a.deposit_zats as i64,
+            a.seller_address, a.address, a.created_at, a.close_at
+        ],
+    )?;
+    Ok(n > 0)
+}
+
+/// Payouts the spender has sent since `after_id`, with the bid txid so the viewer can match them.
+pub fn sent_payouts_after(conn: &Connection, after_id: i64) -> Result<Vec<(Payout, Option<String>)>> {
+    let mut stmt = conn.prepare(
+        "SELECT p.id, p.auction_id, p.bid_id, p.kind, p.to_address, p.value_zats, p.memo, p.not_before, p.txid,
+                p.status, p.attempts, p.error, b.txid
+         FROM payouts p LEFT JOIN bids b ON b.id = p.bid_id
+         WHERE p.status = 'sent' AND p.id > ?1 ORDER BY p.id ASC LIMIT 100",
+    )?;
+    let rows = stmt.query_map([after_id], |r| {
+        Ok((
+            Payout {
+                id: r.get(0)?,
+                auction_id: r.get(1)?,
+                bid_id: r.get(2)?,
+                kind: r.get(3)?,
+                to_address: r.get(4)?,
+                value_zats: r.get::<_, i64>(5)? as u64,
+                memo: r.get(6)?,
+                not_before: r.get(7)?,
+                txid: r.get(8)?,
+                status: r.get(9)?,
+                attempts: r.get(10)?,
+                error: r.get(11)?,
+            },
+            r.get::<_, Option<String>>(12)?,
+        ))
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+/// Viewer: mark its own matching payout row as sent by an external spender.
+pub fn mark_payout_sent_by_match(
+    conn: &Connection,
+    auction_id: Option<&str>,
+    kind: &str,
+    bid_txid: Option<&str>,
+    to_address: &str,
+    value_zats: u64,
+    txid: &str,
+) -> Result<bool> {
+    let n = conn.execute(
+        "UPDATE payouts SET status = 'sent', txid = ?1, sent_at = ?2, error = NULL
+         WHERE status IN ('queued', 'failed', 'dead') AND kind = ?3 AND to_address = ?4 AND value_zats = ?5
+           AND (?6 IS NULL OR auction_id = ?6)
+           AND (?7 IS NULL OR bid_id IN (SELECT id FROM bids WHERE txid = ?7))",
+        params![txid, now(), kind, to_address, value_zats as i64, auction_id, bid_txid],
+    )?;
+    Ok(n > 0)
 }

@@ -39,6 +39,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/admin/sellers", post(admin_create_seller))
         .route("/admin/payouts/{id}/retry", post(admin_retry_payout))
         .route("/admin/reconcile", get(admin_reconcile))
+        .route("/admin/auctions", get(admin_auctions))
+        .route("/admin/payouts/sync", post(admin_payouts_sync))
         .route("/auctions/{id}/events", get(auction_events))
         .layer(cors)
         .with_state(state)
@@ -553,4 +555,63 @@ async fn auction_events(State(state): State<Arc<AppState>>, Path(id): Path<Strin
         .filter(|e| !matches!(e.kind.as_str(), "bid_rejected" | "payout_dead"))
         .collect();
     Ok(Json(events))
+}
+
+#[derive(Serialize)]
+struct AdminAuction {
+    #[serde(flatten)]
+    auction: store::Auction,
+    seller_address: String,
+}
+
+/// Full auction definitions including the seller address, for a spender process.
+async fn admin_auctions(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiResult<Vec<AdminAuction>> {
+    check_admin(&state, &headers)?;
+    let conn = state.store.lock().await;
+    Ok(Json(
+        store::list_auctions(&conn)?
+            .into_iter()
+            .map(|a| AdminAuction { seller_address: a.seller_address.clone(), auction: a })
+            .collect(),
+    ))
+}
+
+#[derive(Deserialize)]
+struct SentPayout {
+    auction_id: Option<String>,
+    kind: String,
+    bid_txid: Option<String>,
+    to_address: String,
+    value_zats: u64,
+    txid: String,
+}
+
+/// A spender reports payouts it executed; the viewer marks its matching rows sent.
+async fn admin_payouts_sync(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(items): Json<Vec<SentPayout>>,
+) -> ApiResult<serde_json::Value> {
+    check_admin(&state, &headers)?;
+    let conn = state.store.lock().await;
+    let mut matched = 0;
+    for p in &items {
+        if store::mark_payout_sent_by_match(
+            &conn,
+            p.auction_id.as_deref(),
+            &p.kind,
+            p.bid_txid.as_deref(),
+            &p.to_address,
+            p.value_zats,
+            &p.txid,
+        )? {
+            matched += 1;
+            if p.kind == "seller" {
+                if let Some(aid) = &p.auction_id {
+                    store::set_auction_payout(&conn, aid, &p.txid)?;
+                }
+            }
+        }
+    }
+    Ok(Json(serde_json::json!({ "received": items.len(), "matched": matched })))
 }

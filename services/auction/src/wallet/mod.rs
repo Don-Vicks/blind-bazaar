@@ -135,7 +135,43 @@ pub fn load_or_create_seed(path: &Path) -> anyhow::Result<(SecretVec<u8>, bool)>
 
 pub struct Operator {
     pub account_id: AccountUuid,
-    pub usk: UnifiedSpendingKey,
+    /// None for a viewer process (viewing key only).
+    pub usk: Option<UnifiedSpendingKey>,
+}
+
+/// Ensure a view-only account exists for `ufvk_str` and return its id (viewer role).
+pub async fn ensure_viewer_account(
+    db: &mut Db,
+    client: &mut Client,
+    params: &Network,
+    ufvk_str: &str,
+    birthday_height: Option<u32>,
+) -> anyhow::Result<Operator> {
+    use zcash_address::unified::{Encoding, Ufvk};
+    use zcash_client_backend::data_api::AccountPurpose;
+    use zcash_keys::keys::UnifiedFullViewingKey;
+    let existing = db.get_account_ids()?;
+    let account_id = if let Some(id) = existing.first() {
+        *id
+    } else {
+        let (_, _, ufvk) = Ufvk::decode(ufvk_str).map_err(|e| anyhow!("bad OPERATOR_UFVK: {e}"))?;
+        let ufvk = UnifiedFullViewingKey::parse(&ufvk).map_err(|e| anyhow!("bad OPERATOR_UFVK: {e:?}"))?;
+        let tip = chain_tip(client).await?;
+        let birthday = get_wallet_birthday(
+            client,
+            params,
+            birthday_height.unwrap_or(tip.saturating_sub(100)).into(),
+            None,
+        )
+        .await?;
+        let account = db
+            .import_account_ufvk("viewer", &ufvk, &birthday, AccountPurpose::ViewOnly, None)
+            .map_err(|e| anyhow!("{e:?}"))?;
+        let id = account.id();
+        info!("imported view-only account {id:?} with birthday {}", birthday.height());
+        id
+    };
+    Ok(Operator { account_id, usk: None })
 }
 
 /// Ensure the operator account exists in the wallet DB and return its id and spending key.
@@ -173,7 +209,7 @@ pub async fn ensure_operator_account(
         .ok_or_else(|| anyhow!("operator account is view-only"))?;
     let usk = UnifiedSpendingKey::from_seed(params, seed.expose_secret(), derivation.account_index())
         .map_err(|e| anyhow!("{e:?}"))?;
-    Ok(Operator { account_id, usk })
+    Ok(Operator { account_id, usk: Some(usk) })
 }
 
 /// Orchard-only unified address request so bids never land in Sapling or transparent receivers.

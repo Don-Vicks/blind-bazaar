@@ -21,6 +21,25 @@ impl std::str::FromStr for NetworkName {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    All,
+    Viewer,
+    Spender,
+}
+
+impl std::str::FromStr for Role {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "all" => Ok(Role::All),
+            "viewer" => Ok(Role::Viewer),
+            "spender" => Ok(Role::Spender),
+            other => Err(format!("unknown role {other}; use all, viewer or spender")),
+        }
+    }
+}
+
 #[derive(Debug, Subcommand, Clone)]
 pub enum Cmd {
     /// Print the first N Orchard-only unified addresses derived from a seed file (no chain access).
@@ -32,6 +51,9 @@ pub enum Cmd {
         /// Unified addresses to test for ownership by this seed's Orchard incoming viewing key.
         #[arg(long)]
         check: Vec<String>,
+        /// Print the unified full viewing key (for configuring a viewer process).
+        #[arg(long)]
+        ufvk: bool,
     },
     /// Act as a standalone wallet: sync, print address and balance, optionally pay a ZIP-321 URI.
     /// Used for testing bids without a mobile wallet.
@@ -94,6 +116,20 @@ pub struct Config {
     /// Verify a disclosure JSON file against the chain and exit (no wallet needed).
     #[arg(long)]
     pub verify_disclosure: Option<PathBuf>,
+
+    /// Process role: `all` (one process holds both keys), `viewer` (viewing key only: ingests bids,
+    /// runs auctions, serves the API) or `spender` (spending key: mirrors auctions from the viewer,
+    /// recomputes outcomes from its own wallet and signs payouts).
+    #[arg(long, env = "ROLE", default_value = "all")]
+    pub role: Role,
+
+    /// Viewer role: the operator's unified full viewing key (`uview1…` / `uviewtest1…`).
+    #[arg(long, env = "OPERATOR_UFVK")]
+    pub operator_ufvk: Option<String>,
+
+    /// Spender role: base URL of the viewer, e.g. http://127.0.0.1:8787.
+    #[arg(long, env = "VIEWER_URL")]
+    pub viewer_url: Option<String>,
 
     /// Seconds a winner has to pay the balance after close before forfeiting the deposit.
     #[arg(long, env = "SETTLEMENT_WINDOW_SECS", default_value_t = 86_400)]
