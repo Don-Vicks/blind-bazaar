@@ -45,6 +45,15 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 | Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
 | Memo passthrough in Zodl, Zingo, YWallet from a ZIP-321 QR | one bid from each wallet |
 
+## Added Oct 13 evening (unit-tested; chain test of uniform mode pending)
+
+- Uniform-price multi-unit lots: top-N win at the lowest winning bid, per-winner settlement and forfeiture with
+  second-chance offers per vacancy, overpayment refunds, multi-output disclosures and a verifier that checks all
+- Go Dark: fresh receive address per payment (unified plus transparent receiver), NEAR Intents falls back to the
+  transparent receiver only if it rejects the unified address and the widget says so, auto-shield of any transparent
+  arrival by the spender, delivery mode and the source-chain leak stated in the widget, `docs/GO-DARK-THREAT-MODEL.md`
+- Change pool chosen by NU6.3 activation (Ironwood on mainnet, Orchard before)
+
 ## Hardening added Oct 13 (unit-tested, not yet exercised on chain)
 
 - Settlement deadline with forfeiture and second-chance offer to the runner-up

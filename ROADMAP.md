@@ -8,9 +8,11 @@ Status key: **done** · **in progress** · **planned**. Dates are targets.
 - done on regtest (Oct 13): full funded loop (fund → bid → close → refund → settle → payout → proof verifies); testnet and mainnet runs still to do
 - planned: three real wallets (Zodl, Zingo, YWallet) place bids from the QR; one Go Dark swap lands shielded
   from Phantom and one from MetaMask; mainnet dry run under 2 ZEC; video, write-up, screenshots; registration
-- planned (from `docs/LANDSCAPE.md`): one completed mainnet lot with a public verify page; uniform-price multi-unit
-  mode (the zkSNARKs and Crafts format) with automatic refunds and a refund-latency metric; Go Dark as the bid entry
-  path with a written threat model for the source-chain leg; viewing-key selective disclosure for "reserve met"
+- done: uniform-price multi-unit mode (the zkSNARKs and Crafts format) with per-winner settlement and forfeiture
+- done: Go Dark as the bid entry path with a written threat model, fresh address per payment, transparent fallback
+  with auto-shield, and the source-chain leak stated in the widget
+- planned (from `docs/LANDSCAPE.md`): one completed mainnet lot with a public verify page; refund-latency metric;
+  viewing-key selective disclosure for "reserve met"
 - stretch: Arcium MPC mode for winner selection (bids encrypted to an MXE, Vickrey or uniform clearing in MPC,
   result sealed to the seller, uniform shielded ZEC deposits carrying the Solana receipt hash)
 

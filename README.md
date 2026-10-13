@@ -19,6 +19,7 @@ Built for ZECATHON 2026. MIT licensed.
 | `packages/go-dark` | The widget (`<GoDark/>` React component and `GoDark.mount` script bundle) |
 | `docs/MEMO_SPEC.md` | The memo format |
 | `docs/PRIVACY.md` | Who sees what, known limits, rail findings |
+| `docs/GO-DARK-THREAT-MODEL.md` | What each hop reveals when entering through Go Dark, and the mitigations |
 | `docs/LANDSCAPE.md` | Arcium, comparable hackathon winners, the organiser's own auction, what we change |
 
 ## Run it locally (testnet)
@@ -63,6 +64,12 @@ operator from the local faucet, has the operator fund two independent bidder wal
 sealed bids, waits for close, and checks the winner, the disclosure proof, the loser's refund, the winner's settlement,
 the seller payout and the standalone verifier. About 15 minutes end to end.
 
+## Lot formats
+
+- **Single lot, first price**: the highest bid at or above reserve wins and pays its own bid.
+- **Edition, uniform price** (`units` > 1): the top N bids win and every winner pays the lowest winning bid. Each
+  winner settles separately; a winner who does not pay forfeits the deposit and the next bidder is offered the unit.
+
 ## How a bid works
 
 1. The seller lists a lot: title, reserve, close time, deposit. The service derives a fresh Orchard-only unified
@@ -90,6 +97,7 @@ the seller payout and the standalone verifier. About 15 minutes end to end.
 | GET | `/auctions/{id}/receipts` | receipts of received bids |
 | GET | `/auctions/{id}/bid-uri?bid_zats=&refund_address=&nonce=` | server-side ZIP-321 builder |
 | POST | `/auctions/{id}/envelopes` | Go Dark bid envelope `{deposit_address, rail, payload, destination_txid?}` |
+| POST | `/godark/receive-address` | fresh unified address (with transparent receiver) for one Go Dark payment |
 | GET | `/auctions/{id}/result` | winner, ledger hash, refunds, disclosure |
 
 ## Verify a result yourself
