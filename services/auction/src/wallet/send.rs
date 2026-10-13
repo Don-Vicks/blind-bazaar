@@ -19,6 +19,7 @@ use zcash_client_backend::{
     wallet::OvkPolicy,
 };
 use zcash_client_sqlite::AccountUuid;
+use zcash_client_backend::util::SystemClock;
 use zcash_keys::keys::UnifiedSpendingKey;
 use zcash_proofs::prover::LocalTxProver;
 use zcash_protocol::{
@@ -115,6 +116,8 @@ pub async fn send_request(
     let txids = create_proposed_transactions::<_, _, std::convert::Infallible, _, std::convert::Infallible, _>(
         db,
         params,
+        &SystemClock,
+        &mut super::rng(),
         prover,
         prover,
         &SpendingKeys::from_unified_spending_key(usk.clone()),

@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, anyhow};
 use bip0039::{Count, English, Mnemonic};
-use rand::rngs::OsRng;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng as OsRng;
 use secrecy::{ExposeSecret, SecretVec};
 use tonic::transport::{Channel, ClientTlsConfig, Uri};
 use tracing::info;
@@ -22,7 +23,11 @@ use zcash_protocol::consensus::{BlockHeight, Network, NetworkUpgrade, Parameters
 use zip32::AccountId;
 
 pub type Client = CompactTxStreamerClient<Channel>;
-pub type Db = WalletDb<rusqlite::Connection, Network, SystemClock, OsRng>;
+pub type Db = WalletDb<rusqlite::Connection, Network, SystemClock, UnwrapErr<OsRng>>;
+
+pub fn rng() -> UnwrapErr<OsRng> {
+    UnwrapErr(OsRng)
+}
 
 pub const DATA_DB: &str = "data.sqlite";
 
@@ -33,7 +38,7 @@ pub fn db_paths(wallet_dir: &Path) -> (PathBuf, PathBuf) {
 pub fn open_db(params: Network, wallet_dir: &Path) -> anyhow::Result<Db> {
     std::fs::create_dir_all(wallet_dir)?;
     let (_, data_path) = db_paths(wallet_dir);
-    let mut db_data = WalletDb::for_path(data_path, params, SystemClock, OsRng)?;
+    let mut db_data = WalletDb::for_path(data_path, params, SystemClock, rng())?;
     init_wallet_db(&mut db_data, None).map_err(|e| anyhow!("{e:?}"))?;
     Ok(db_data)
 }

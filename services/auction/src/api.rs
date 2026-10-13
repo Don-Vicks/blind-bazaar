@@ -152,7 +152,7 @@ async fn create_auction(
         .await
         .map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??;
 
-    let id = memo::random_auction_id(&mut rand::thread_rng());
+    let id = memo::random_auction_id(&mut rand::rng());
     let conn = state.store.lock().await;
     store::insert_auction(
         &conn,
@@ -335,7 +335,7 @@ async fn bid_uri(
     let nonce = match q.nonce {
         Some(n) if memo::is_nonce(&n) => n,
         Some(_) => return Err(bad("nonce must be 16 lowercase hex chars")),
-        None => memo::random_nonce(&mut rand::thread_rng()),
+        None => memo::random_nonce(&mut rand::rng()),
     };
     let conn = state.store.lock().await;
     let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;

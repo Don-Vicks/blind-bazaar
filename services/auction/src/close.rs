@@ -1,7 +1,7 @@
 //! Close due auctions, pick winners, queue refunds with random delays.
 
 use anyhow::Result;
-use rand::Rng;
+use rand::RngExt;
 use rusqlite::Connection;
 use tracing::info;
 
@@ -58,12 +58,12 @@ pub fn close_due(
             }
         }
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         for b in &valid {
             if Some(b.id) == winner {
                 continue;
             }
-            let delay = rng.gen_range(delay_min..=delay_max.max(delay_min)) as i64;
+            let delay = rng.random_range(delay_min..=delay_max.max(delay_min)) as i64;
             let memo_text = format!("BB1R|{}", auction.id);
             store::queue_payout(
                 store,

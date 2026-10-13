@@ -41,7 +41,7 @@ fn txid_internal_bytes(display_hex: &str) -> Result<Vec<u8>> {
 }
 
 fn orchard_receiver_from_ua(ua: &str) -> Result<[u8; 43]> {
-    let (_, addr) = UnifiedAddr::decode(ua).map_err(|e| anyhow!("bad unified address: {e}"))?;
+    let (_, _, addr) = UnifiedAddr::decode(ua).map_err(|e| anyhow!("bad unified address: {e}"))?;
     addr.items()
         .into_iter()
         .find_map(|r| match r {

@@ -1,6 +1,7 @@
 //! BB1 memo format: `BB1|<auction_id>|<bid_zatoshis>|<refund_address>|<nonce>`.
 //! See docs/MEMO_SPEC.md.
 
+use rand::RngExt;
 use sha2::{Digest, Sha256};
 
 pub const MAX_MEMO_BYTES: usize = 300;
@@ -133,13 +134,13 @@ pub fn receipt(nonce: &str) -> String {
 
 pub fn random_auction_id<R: rand::Rng>(rng: &mut R) -> String {
     (0..8)
-        .map(|_| CROCKFORD[rng.gen_range(0..CROCKFORD.len())] as char)
+        .map(|_| CROCKFORD[rng.random_range(0..CROCKFORD.len())] as char)
         .collect()
 }
 
 pub fn random_nonce<R: rand::Rng>(rng: &mut R) -> String {
     let mut b = [0u8; 8];
-    rng.fill(&mut b);
+    rng.fill_bytes(&mut b);
     hex::encode(b)
 }
 
@@ -223,7 +224,7 @@ mod tests {
 
     #[test]
     fn random_ids_have_right_shape() {
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         assert!(is_auction_id(&random_auction_id(&mut rng)));
         assert!(is_nonce(&random_nonce(&mut rng)));
     }
