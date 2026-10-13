@@ -217,6 +217,19 @@ pub fn orchard_only_request() -> UnifiedAddressRequest {
     UnifiedAddressRequest::ORCHARD
 }
 
+/// A fresh receive address for Go Dark payments: a unified address that also carries a transparent
+/// receiver, so a rail that cannot deliver shielded can still pay and the funds get shielded on arrival.
+/// Returns (encoded UA, encoded transparent address).
+pub fn next_receive_address(db: &mut Db, params: &Network, account_id: AccountUuid) -> anyhow::Result<(String, Option<String>)> {
+    use zcash_keys::encoding::AddressCodec;
+    let (ua, _) = db
+        .get_next_available_address(account_id, UnifiedAddressRequest::ALLOW_ALL)
+        .map_err(|e| anyhow!("{e:?}"))?
+        .ok_or_else(|| anyhow!("wallet could not derive a new address"))?;
+    let transparent = ua.transparent().map(|t| t.encode(params));
+    Ok((ua.encode(params), transparent))
+}
+
 /// A fresh diversified address for a new auction. Returns (encoded UA, diversifier index hex).
 pub fn next_auction_address(
     db: &mut Db,

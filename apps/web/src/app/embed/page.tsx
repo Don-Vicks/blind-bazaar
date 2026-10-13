@@ -8,7 +8,8 @@ export default function EmbedPage() {
 <div id="pay"></div>
 <script>
   GoDark.mount(document.getElementById("pay"), {
-    to: "u1…",             // your unified address
+    to: "u1…",             // your unified address, or:
+    toEndpoint: "${site}/api/godark/address", // a fresh address per payment
     amountZats: "1000000", // 0.01 ZEC, delivered shielded
     apiBase: "${site}",
   });

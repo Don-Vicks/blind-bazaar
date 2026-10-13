@@ -9,6 +9,8 @@ export interface QuoteRequest {
   zecOutZats: string;
   /** Zcash unified (u1…) or transparent (t1…) address. */
   recipient: string;
+  /** Transparent receiver of the same unified address, used only if the rail rejects the unified one. */
+  recipientTransparent?: string;
   /** Payer's address on the source chain, for refunds. */
   refundTo: string;
   dry?: boolean;
@@ -31,6 +33,9 @@ export interface Quote {
   etaSeconds: number;
   /** Identifier to poll status with: 1Click deposit address or Maya inbound txid (filled after send). */
   trackingId: string;
+  /** `shielded`: the rail delivers straight to the unified address. `transparent`: it delivers to the
+   *  transparent receiver and the service shields on arrival. */
+  delivery: "shielded" | "transparent";
   /** Rail-specific extras the widget needs to build the source-chain transaction. */
   maya?: { memo: string; router: string; inboundAddress: string; tokenContract?: string };
 }

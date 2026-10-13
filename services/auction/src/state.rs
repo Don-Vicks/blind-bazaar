@@ -7,6 +7,10 @@ pub enum WalletCmd {
     NewAddress {
         reply: oneshot::Sender<anyhow::Result<(String, String)>>,
     },
+    /// Fresh Go Dark receive address: unified address plus its transparent receiver.
+    NewReceiveAddress {
+        reply: oneshot::Sender<anyhow::Result<(String, Option<String>)>>,
+    },
     /// Fetch a transaction by display txid and trial-decrypt it (debug aid; mined or mempool).
     ScanTx {
         txid: String,

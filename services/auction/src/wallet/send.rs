@@ -32,6 +32,91 @@ use zip321::{Payment, TransactionRequest};
 use super::{Client, Db};
 use super::net::Net as Network;
 
+/// Change goes to the Ironwood pool once NU6.3 is active at the next block, otherwise Orchard.
+pub fn change_pool(db: &Db, params: &Network) -> anyhow::Result<ShieldedPool> {
+    use zcash_protocol::consensus::{NetworkUpgrade, Parameters};
+    let target = db.chain_height()?.map(|h| h + 1);
+    let ironwood = match (target, params.activation_height(NetworkUpgrade::Nu6_3)) {
+        (Some(t), Some(a)) => t >= a,
+        _ => false,
+    };
+    Ok(if ironwood { ShieldedPool::Ironwood } else { ShieldedPool::Orchard })
+}
+
+/// Shield every spendable transparent output of the account into the shielded pool. Returns txids.
+pub async fn shield_transparent(
+    db: &mut Db,
+    params: &Network,
+    client: &mut Client,
+    prover: &LocalTxProver,
+    account_id: AccountUuid,
+    usk: &UnifiedSpendingKey,
+    min_confirmations: Option<u32>,
+) -> anyhow::Result<Vec<String>> {
+    use zcash_client_backend::data_api::{CoinbaseFilter, wallet::{TargetHeight, propose_shielding}};
+    let Some(chain_height) = db.chain_height()? else { return Ok(vec![]) };
+    let target_height = TargetHeight::from(chain_height + 1);
+    let policy = confirmations_policy(min_confirmations);
+    let balances = db
+        .get_transparent_balances(account_id, target_height, policy)
+        .map_err(|e| anyhow!("{e:?}"))?;
+    let from_addrs: Vec<_> = balances.into_keys().collect();
+    if from_addrs.is_empty() {
+        return Ok(vec![]);
+    }
+    let change_strategy = MultiOutputChangeStrategy::new(
+        StandardFeeRule::Zip317,
+        None,
+        change_pool(db, params)?,
+        DustOutputPolicy::default(),
+        SplitPolicy::with_min_output_value(NonZeroUsize::new(4).unwrap(), Zatoshis::from_u64(10_000_000).unwrap()),
+    );
+    let proposal = propose_shielding::<_, _, _, _, std::convert::Infallible>(
+        db,
+        params,
+        &GreedyInputSelector::new(),
+        &change_strategy,
+        Zatoshis::ZERO,
+        &from_addrs,
+        account_id,
+        policy,
+        CoinbaseFilter::AllTransparentOutputs,
+        None,
+    )
+    .map_err(|e| anyhow!("propose_shielding: {e:?}"))?;
+    let txids = create_proposed_transactions::<_, _, std::convert::Infallible, _, std::convert::Infallible, _>(
+        db,
+        params,
+        &SystemClock,
+        &mut super::rng(),
+        prover,
+        prover,
+        &SpendingKeys::from_unified_spending_key(usk.clone()),
+        OvkPolicy::Sender,
+        &proposal,
+        None,
+    )
+    .map_err(|e| anyhow!("create_proposed_transactions (shield): {e:?}"))?;
+    let mut sent = Vec::new();
+    for txid in txids.iter() {
+        let (txid, raw) = db
+            .get_transaction(*txid)?
+            .map(|tx| {
+                let mut raw = service::RawTransaction::default();
+                tx.write(&mut raw.data).expect("in-memory write");
+                (tx.txid(), raw)
+            })
+            .ok_or_else(|| anyhow!("shield tx not found after creation"))?;
+        let r = client.send_transaction(raw).await?.into_inner();
+        if r.error_code != 0 {
+            return Err(anyhow!("send_transaction (shield) failed ({}): {}", r.error_code, r.error_message));
+        }
+        info!("shielded transparent funds in {txid}");
+        sent.push(txid.to_string());
+    }
+    Ok(sent)
+}
+
 pub struct Outgoing<'a> {
     pub address: &'a str,
     pub zats: u64,
@@ -90,7 +175,7 @@ pub async fn send_request(
     let change_strategy = MultiOutputChangeStrategy::new(
         StandardFeeRule::Zip317,
         None,
-        ShieldedPool::Orchard,
+        change_pool(db, params)?,
         DustOutputPolicy::default(),
         SplitPolicy::with_min_output_value(
             NonZeroUsize::new(4).unwrap(),

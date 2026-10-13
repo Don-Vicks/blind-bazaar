@@ -23,6 +23,18 @@ function headers(): Record<string, string> {
 }
 
 export async function oneclickQuote(req: QuoteRequest): Promise<Quote> {
+  try {
+    return await oneclickQuoteTo(req, req.recipient, "shielded");
+  } catch (e) {
+    // Official docs still list Zcash as transparent-only; fall back to the transparent receiver if offered.
+    if (req.recipientTransparent && /recipient|address|unsupported|invalid/i.test((e as Error).message)) {
+      return oneclickQuoteTo(req, req.recipientTransparent, "transparent");
+    }
+    throw e;
+  }
+}
+
+async function oneclickQuoteTo(req: QuoteRequest, recipient: string, delivery: Quote["delivery"]): Promise<Quote> {
   const deadline = new Date(Date.now() + 20 * 60_000).toISOString();
   const body = {
     dry: req.dry ?? false,
@@ -34,7 +46,7 @@ export async function oneclickQuote(req: QuoteRequest): Promise<Quote> {
     amount: req.zecOutZats,
     refundTo: req.refundTo,
     refundType: "ORIGIN_CHAIN",
-    recipient: req.recipient,
+    recipient,
     recipientType: "DESTINATION_CHAIN",
     deadline,
     depositMode: "SIMPLE",
@@ -63,6 +75,7 @@ export async function oneclickQuote(req: QuoteRequest): Promise<Quote> {
     expiresAt: Math.floor(new Date(j.quote.deadline ?? deadline).getTime() / 1000),
     etaSeconds: j.quote.timeEstimate,
     trackingId: j.quote.depositAddress ?? "",
+    delivery,
   };
 }
 

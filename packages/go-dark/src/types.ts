@@ -12,6 +12,7 @@ export interface Quote {
   expiresAt: number;
   etaSeconds: number;
   trackingId: string;
+  delivery: "shielded" | "transparent";
   maya?: { memo: string; router: string; inboundAddress: string; tokenContract?: string };
 }
 
@@ -27,6 +28,11 @@ export interface StatusResponse {
 export interface GoDarkOptions {
   /** Zcash unified address that receives the shielded ZEC. */
   to: string;
+  /** Transparent receiver of `to`, offered to a rail only if it rejects the unified address. */
+  toTransparent?: string;
+  /** If set, the widget fetches a fresh `{ ua, transparent }` from this URL before every payment, so two
+   *  payments to the same site cannot be linked by destination. Overrides `to`. */
+  toEndpoint?: string;
   /** Exact ZEC to deliver, in zatoshis (string or bigint). */
   amountZats: string | bigint;
   /** Origin that hosts the /api/godark/* proxy routes. Defaults to the page origin. */

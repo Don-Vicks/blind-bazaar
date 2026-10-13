@@ -58,6 +58,7 @@ export async function mayaQuote(req: QuoteRequest): Promise<Quote> {
     expiresAt: final.expiry,
     etaSeconds: final.total_swap_seconds,
     trackingId: "",
+    delivery: "shielded",
     maya: {
       memo: final.memo,
       router: final.router ?? "",

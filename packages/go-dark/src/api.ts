@@ -2,7 +2,7 @@ import type { Chain, Asset, Quote, StatusResponse } from "./types";
 
 export async function fetchQuote(
   apiBase: string,
-  req: { chain: Chain; asset: Asset; zecOutZats: string; recipient: string; refundTo: string },
+  req: { chain: Chain; asset: Asset; zecOutZats: string; recipient: string; recipientTransparent?: string; refundTo: string },
 ): Promise<Quote> {
   const res = await fetch(`${apiBase}/api/godark/quote`, {
     method: "POST",
@@ -41,5 +41,12 @@ export async function postEnvelope(
   });
   const j = (await res.json()) as { receipt: string; error?: string };
   if (!res.ok) throw new Error(j.error ?? `envelope failed (${res.status})`);
+  return j;
+}
+
+export async function fetchFreshAddress(endpoint: string): Promise<{ ua: string; transparent?: string }> {
+  const res = await fetch(endpoint, { cache: "no-store" });
+  const j = (await res.json()) as { ua: string; transparent?: string; error?: string };
+  if (!res.ok || !j.ua) throw new Error(j.error ?? "could not get a receive address");
   return j;
 }

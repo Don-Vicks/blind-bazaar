@@ -12,5 +12,5 @@ export function GoDarkDemo(props: Partial<GoDarkOptions> & { amountZats: string 
   useEffect(() => setMounted(true), []);
   const to = props.to ?? health.data?.operator_address;
   if (!mounted || !to) return <p className="text-[13px] text-muted-foreground">Waiting for the service to publish a receive address…</p>;
-  return <GoDark {...props} to={to} amountZats={props.amountZats} />;
+  return <GoDark {...props} to={to} toEndpoint={props.toEndpoint ?? "/api/godark/address"} amountZats={props.amountZats} />;
 }

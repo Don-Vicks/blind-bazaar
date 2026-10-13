@@ -101,6 +101,10 @@ impl Worker {
                         let r = wallet::next_auction_address(&mut db, &self.params, operator.account_id);
                         let _ = reply.send(r);
                     }
+                    WalletCmd::NewReceiveAddress { reply } => {
+                        let r = wallet::next_receive_address(&mut db, &self.params, operator.account_id);
+                        let _ = reply.send(r);
+                    }
                     WalletCmd::ScanTx { txid, reply } => {
                         let r = wallet::sync::scan_txid(&mut client, &self.params, &mut db, &txid).await;
                         let _ = reply.send(r);
@@ -187,6 +191,23 @@ impl Worker {
         }
 
         if let (Some(prover), Some(usk)) = (prover, operator.usk.as_ref()) {
+            // Anything a rail delivered to a transparent receiver gets shielded before the auction logic sees it.
+            let unshielded = db
+                .get_wallet_summary(wallet::send::confirmations_policy(self.cfg.min_confirmations))
+                .ok()
+                .flatten()
+                .and_then(|s| s.account_balances().get(&operator.account_id).map(|b| u64::from(b.unshielded())))
+                .unwrap_or(0);
+            if unshielded > 0 {
+                match wallet::send::shield_transparent(db, &self.params, client, prover, operator.account_id, usk, self.cfg.min_confirmations).await {
+                    Ok(txids) if !txids.is_empty() => {
+                        let store = self.store.lock().await;
+                        store::insert_event(&store, None, "shielded", &serde_json::json!({ "txids": txids, "value_zats": unshielded }))?;
+                    }
+                    Ok(_) => {}
+                    Err(e) => warn!("auto-shield failed: {e:#}"),
+                }
+            }
             self.process_payouts(client, db, prover, operator.account_id, usk).await?;
         }
         if self.cfg.role == Role::Spender {

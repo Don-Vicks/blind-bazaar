@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchQuote, fetchStatus, postEnvelope, submitDeposit } from "./api";
+import { fetchFreshAddress, fetchQuote, fetchStatus, postEnvelope, submitDeposit } from "./api";
 import { connectEthereum, sendErc20ViaRouter, sendEthNative } from "./chains/ethereum";
 import { connectSolana, sendSolana } from "./chains/solana";
 import type { Asset, Chain, GoDarkOptions, Quote, StatusResponse } from "./types";
@@ -51,6 +51,7 @@ export function GoDark(opts: GoDarkOptions) {
   const [chain, setChain] = useState<Chain>(chains[0]);
   const [asset, setAsset] = useState<Asset>(ASSETS[chains[0]][0]);
   const [account, setAccount] = useState<string | null>(null);
+  const [dest, setDest] = useState<{ ua: string; transparent?: string }>({ ua: opts.to, transparent: opts.toTransparent });
   const [quote, setQuote] = useState<Quote | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusResponse | null>(null);
@@ -76,11 +77,17 @@ export function GoDark(opts: GoDarkOptions) {
     try {
       const acct = chain === "solana" ? await connectSolana() : await connectEthereum();
       setAccount(acct);
+      let d = dest;
+      if (opts.toEndpoint) {
+        d = await fetchFreshAddress(opts.toEndpoint);
+        setDest(d);
+      }
       const q = await fetchQuote(apiBase, {
         chain,
         asset,
         zecOutZats: BigInt(opts.amountZats).toString(),
-        recipient: opts.to,
+        recipient: d.ua,
+        recipientTransparent: d.transparent,
         refundTo: acct,
       });
       setQuote(q);
@@ -183,7 +190,7 @@ export function GoDark(opts: GoDarkOptions) {
             <div className="gd-eyebrow">Go Dark</div>
             <div className="gd-title">Pay privately.</div>
             <div className="gd-muted">
-              Deliver {zec(opts.amountZats)} shielded to <span className="gd-mono">{opts.to.slice(0, 12)}…</span>
+              Deliver {zec(opts.amountZats)} shielded to <span className="gd-mono">{dest.ua.slice(0, 12)}…</span>
             </div>
           </div>
 
@@ -256,7 +263,15 @@ export function GoDark(opts: GoDarkOptions) {
                   </tr>
                   <tr>
                     <td>Zcash sees</td>
-                    <td>One shielded output. No amount, no sender.</td>
+                    <td>
+                      {quote.delivery === "shielded"
+                        ? "One shielded output. No amount, no sender."
+                        : "A transparent payment to a one-time address, shielded by the recipient on arrival. The amount is visible for that one hop."}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>Still visible</td>
+                    <td>Your {chain === "solana" ? "Solana" : "Ethereum"} wallet sent funds to a swap rail at this time. Use a fresh source wallet if that link matters to you.</td>
                   </tr>
                   <tr>
                     <td>This site sees</td>

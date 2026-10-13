@@ -33,6 +33,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auctions/{id}/envelopes", post(post_envelope))
         .route("/auctions/{id}/result", get(result))
         .route("/auctions/{id}/bid-uri", get(bid_uri))
+        .route("/godark/receive-address", post(godark_receive_address))
         .route("/admin/payouts", post(admin_payout).get(admin_list_payouts))
         .route("/admin/scan-tx", post(admin_scan_tx))
         .route("/admin/block/{height}", get(admin_block))
@@ -651,4 +652,17 @@ async fn admin_payouts_sync(
         }
     }
     Ok(Json(serde_json::json!({ "received": items.len(), "matched": matched })))
+}
+
+/// A fresh receive address for a Go Dark payment: unified address plus its transparent receiver so a
+/// rail that cannot deliver shielded can still pay (the service shields on arrival).
+async fn godark_receive_address(State(state): State<Arc<AppState>>) -> ApiResult<serde_json::Value> {
+    let (tx, rx) = oneshot::channel();
+    state
+        .wallet
+        .send(WalletCmd::NewReceiveAddress { reply: tx })
+        .await
+        .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
+    let (ua, transparent) = rx.await.map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??;
+    Ok(Json(serde_json::json!({ "ua": ua, "transparent": transparent })))
 }
