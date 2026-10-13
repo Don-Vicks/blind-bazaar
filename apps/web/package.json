@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@blind-bazaar/go-dark": "workspace:*",
     "@blind-bazaar/sdk": "workspace:*",
     "@tanstack/react-query": "^5.90.0",
     "next": "16.4.0",

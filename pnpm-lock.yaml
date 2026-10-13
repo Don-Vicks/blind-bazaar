@@ -10,6 +10,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@blind-bazaar/go-dark':
+        specifier: workspace:*
+        version: link:../../packages/go-dark
       '@blind-bazaar/sdk':
         specifier: workspace:*
         version: link:../../packages/bb-sdk

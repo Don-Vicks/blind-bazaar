@@ -6,6 +6,8 @@ import { useState } from "react";
 import type { AuctionView } from "@/lib/api";
 import { zec } from "@/lib/format";
 import { Button, Card, Field, Mono, inputClass } from "@/components/ui";
+import { GoDark } from "@blind-bazaar/go-dark";
+import { API_BASE } from "@/lib/api";
 
 const RECEIPTS_KEY = "bb.receipts";
 
@@ -101,6 +103,19 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
           <p className="mt-2 text-xs text-muted-foreground">
             It appears on the status page once your bid lands. It reveals nothing about your bid. Saved in this browser.
           </p>
+        </div>
+        <div className="rounded-md border border-border p-4">
+          <p className="text-sm font-medium">No ZEC? Enter from Solana or Ethereum</p>
+          <p className="mb-3 mt-1 text-xs text-muted-foreground">
+            Go Dark swaps the deposit into shielded ZEC at the auction address and relays your sealed bid to the
+            auction. The rail never sees the bid.
+          </p>
+          <GoDark
+            to={auction.address}
+            amountZats={prepared.depositZats.toString()}
+            label="Enter with Go Dark"
+            envelope={{ auctionApi: API_BASE, auctionId: auction.id, payload: prepared.memo }}
+          />
         </div>
         <Button variant="secondary" onClick={() => setPrepared(null)} className="self-start">
           Start over
