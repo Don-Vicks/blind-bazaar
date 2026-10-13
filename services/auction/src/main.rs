@@ -1,6 +1,7 @@
 mod api;
 mod close;
 mod config;
+mod disclosure;
 mod ingest;
 mod memo;
 mod state;
@@ -17,6 +18,40 @@ use zcash_protocol::consensus::Network;
 
 use crate::config::{Config, NetworkName};
 
+/// `bb-auction --verify-disclosure result.json`: fetch the named transaction from lightwalletd and
+/// check that the disclosed note opening matches the on-chain commitment. Needs no wallet.
+async fn verify_disclosure_file(cfg: &Config, path: &std::path::Path) -> anyhow::Result<()> {
+    use zcash_client_backend::proto::service;
+    let d: disclosure::Disclosure = serde_json::from_str(&std::fs::read_to_string(path)?)?;
+    let params = match d.network.as_str() {
+        "main" => Network::MainNetwork,
+        _ => Network::TestNetwork,
+    };
+    let mut client = wallet::connect(&cfg.lightwalletd_url).await?;
+    let mut hash = hex::decode(&d.txid)?;
+    hash.reverse();
+    let raw = client
+        .get_transaction(service::TxFilter { hash, ..Default::default() })
+        .await?
+        .into_inner();
+    let mined = (raw.height > 0).then_some(raw.height as u32);
+    let tx = disclosure::read_tx(&params, &raw.data, mined)?;
+    let cmx = hex::encode(disclosure::compute_cmx(&d)?);
+    match disclosure::verify_against_tx(&d, &tx)? {
+        Some(pool) => {
+            println!("OK: note opening matches action {} of {} in the {pool} pool", d.action_index, d.txid);
+            println!("    recipient {}", d.recipient_address);
+            println!("    value     {} zatoshis", d.value_zats);
+            println!("    cmx       {cmx}");
+            Ok(())
+        }
+        None => {
+            println!("FAIL: computed cmx {cmx} does not match any action at index {}", d.action_index);
+            std::process::exit(2);
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -31,6 +66,9 @@ async fn main() -> anyhow::Result<()> {
         .expect("install rustls crypto provider");
 
     let cfg = Config::parse();
+    if let Some(path) = &cfg.verify_disclosure {
+        return verify_disclosure_file(&cfg, path).await;
+    }
     let (params, network_name) = match cfg.network {
         NetworkName::Test => (Network::TestNetwork, "test"),
         NetworkName::Main => (Network::MainNetwork, "main"),
@@ -44,6 +82,7 @@ async fn main() -> anyhow::Result<()> {
     let worker = worker::Worker {
         cfg: cfg.clone(),
         params,
+        network_name,
         store: store.clone(),
         status: status.clone(),
         rx,

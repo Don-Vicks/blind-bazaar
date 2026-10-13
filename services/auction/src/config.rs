@@ -44,8 +44,12 @@ pub struct Config {
     pub birthday_height: Option<u32>,
 
     /// Token required in `x-admin-token` for seller/admin routes.
-    #[arg(long, env = "ADMIN_TOKEN")]
+    #[arg(long, env = "ADMIN_TOKEN", default_value = "")]
     pub admin_token: String,
+
+    /// Verify a disclosure JSON file against the chain and exit (no wallet needed).
+    #[arg(long)]
+    pub verify_disclosure: Option<PathBuf>,
 
     /// HTTP bind address.
     #[arg(long, env = "BIND", default_value = "127.0.0.1:8787")]

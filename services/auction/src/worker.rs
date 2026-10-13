@@ -24,6 +24,7 @@ const MAX_PAYOUT_ATTEMPTS: i64 = 5;
 pub struct Worker {
     pub cfg: Config,
     pub params: Network,
+    pub network_name: &'static str,
     pub store: Arc<Mutex<Connection>>,
     pub status: Arc<RwLock<SyncStatus>>,
     pub rx: mpsc::Receiver<WalletCmd>,
@@ -123,7 +124,14 @@ impl Worker {
             if n > 0 {
                 info!("ingested {n} new outputs");
             }
-            close::close_due(&store, self.cfg.refund_delay_min_secs, self.cfg.refund_delay_max_secs)?;
+            close::close_due(
+                &store,
+                wallet_ro,
+                &self.params,
+                self.network_name,
+                self.cfg.refund_delay_min_secs,
+                self.cfg.refund_delay_max_secs,
+            )?;
         }
 
         self.process_payouts(client, db, prover, operator).await?;

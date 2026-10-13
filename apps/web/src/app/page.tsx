@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { countdown, zec } from "@/lib/format";
+import { useNow } from "@/lib/use-now";
 import { Button, Card, Skeleton, StatusPill } from "@/components/ui";
 
 export default function Home() {
@@ -12,7 +13,7 @@ export default function Home() {
     queryFn: api.auctions,
     refetchInterval: 10_000,
   });
-  const now = Math.floor(Date.now() / 1000);
+  const now = useNow();
 
   return (
     <div className="flex flex-col gap-8">
@@ -62,7 +63,7 @@ export default function Home() {
                     <dt className="text-muted-foreground">Deposit</dt>
                     <dd className="text-right font-mono">{zec(a.deposit_zats)}</dd>
                     <dt className="text-muted-foreground">{a.status === "open" ? "Closes in" : "Closed"}</dt>
-                    <dd className="text-right font-mono">{countdown(a.close_at - now)}</dd>
+                    <dd className="text-right font-mono">{now === null ? "…" : countdown(a.close_at - now)}</dd>
                   </dl>
                 </Link>
               </li>

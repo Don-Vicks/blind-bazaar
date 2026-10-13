@@ -5,9 +5,17 @@ use rand::Rng;
 use rusqlite::Connection;
 use tracing::info;
 
-use crate::{memo, store};
+use crate::{disclosure, memo, store};
+use zcash_protocol::consensus::Network;
 
-pub fn close_due(store: &Connection, delay_min: u64, delay_max: u64) -> Result<usize> {
+pub fn close_due(
+    store: &Connection,
+    wallet_ro: &Connection,
+    params: &Network,
+    network_name: &str,
+    delay_min: u64,
+    delay_max: u64,
+) -> Result<usize> {
     let now = store::now();
     let mut closed = 0;
     for auction in store::due_open_auctions(store, now)? {
@@ -34,6 +42,21 @@ pub fn close_due(store: &Connection, delay_min: u64, delay_max: u64) -> Result<u
 
         let status = if winner.is_some() { "closed" } else { "no_sale" };
         store::close_auction(store, &auction.id, status, winner, &ledger_hash)?;
+
+        if let Some(wid) = winner {
+            if let Some(w) = valid.iter().find(|b| b.id == wid) {
+                match disclosure::build(wallet_ro, params, network_name, &w.txid, w.output_index) {
+                    Ok(d) => {
+                        info!(
+                            "disclosure for {} built (verified against chain: {})",
+                            auction.id, d.verified_against_chain
+                        );
+                        store::set_disclosure(store, &auction.id, &serde_json::to_string(&d)?)?;
+                    }
+                    Err(e) => tracing::warn!("could not build disclosure for {}: {e:#}", auction.id),
+                }
+            }
+        }
 
         let mut rng = rand::thread_rng();
         for b in &valid {
