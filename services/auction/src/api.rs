@@ -123,6 +123,8 @@ struct CreateAuction {
     /// Unix seconds. Either this or `duration_secs`.
     close_at: Option<i64>,
     duration_secs: Option<i64>,
+    /// Optional https image for the lot.
+    image_url: Option<String>,
 }
 
 fn check_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
@@ -182,6 +184,11 @@ async fn create_auction(
     if close_at <= store::now() {
         return Err(bad("close_at must be in the future"));
     }
+    let image_url = match req.image_url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(u) if u.starts_with("https://") && u.len() < 2048 => Some(u.to_string()),
+        Some(_) => return Err(bad("image_url must be an https URL")),
+        None => None,
+    };
 
     let (tx, rx) = oneshot::channel();
     state
@@ -208,6 +215,7 @@ async fn create_auction(
             diversifier_index: Some(&di),
             close_at,
             seller_id,
+            image_url: image_url.as_deref(),
         },
     )?;
     store::insert_event(&conn, Some(&id), "created", &serde_json::json!({ "title": req.title.trim(), "close_at": close_at }))?;

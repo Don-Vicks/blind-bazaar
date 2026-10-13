@@ -193,6 +193,7 @@ mod tests {
                 diversifier_index: None,
                 close_at,
                 seller_id: None,
+                image_url: None,
             },
         )
         .unwrap();

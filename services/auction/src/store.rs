@@ -40,7 +40,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
             settlement_txid TEXT,
             payout_txid TEXT,
             settle_by INTEGER,
-            seller_id INTEGER
+            seller_id INTEGER,
+            image_url TEXT
          );
          CREATE TABLE IF NOT EXISTS bids (
             id INTEGER PRIMARY KEY,
@@ -105,6 +106,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
     for stmt in [
         "ALTER TABLE auctions ADD COLUMN settle_by INTEGER",
         "ALTER TABLE auctions ADD COLUMN seller_id INTEGER",
+        "ALTER TABLE auctions ADD COLUMN image_url TEXT",
     ] {
         // Ignore "duplicate column" on databases that already have it.
         let _ = conn.execute(stmt, []);
@@ -160,11 +162,13 @@ pub struct Auction {
     pub settle_by: Option<i64>,
     #[serde(default, skip_serializing)]
     pub seller_id: Option<i64>,
+    #[serde(default)]
+    pub image_url: Option<String>,
 }
 
 const AUCTION_COLS: &str = "id, title, description, reserve_zats, deposit_zats, seller_address, address,
     created_at, close_at, status, closed_at, winner_bid_id, ledger_hash, settlement_txid, payout_txid,
-    settle_by, seller_id";
+    settle_by, seller_id, image_url";
 
 fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
     Ok(Auction {
@@ -185,6 +189,7 @@ fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
         payout_txid: r.get(14)?,
         settle_by: r.get(15)?,
         seller_id: r.get(16)?,
+        image_url: r.get(17)?,
     })
 }
 
@@ -199,13 +204,14 @@ pub struct NewAuction<'a> {
     pub diversifier_index: Option<&'a str>,
     pub close_at: i64,
     pub seller_id: Option<i64>,
+    pub image_url: Option<&'a str>,
 }
 
 pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
     conn.execute(
         "INSERT INTO auctions (id, title, description, reserve_zats, deposit_zats, seller_address,
-            address, diversifier_index, created_at, close_at, status, seller_id)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11)",
+            address, diversifier_index, created_at, close_at, status, seller_id, image_url)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, ?12)",
         params![
             a.id,
             a.title,
@@ -217,7 +223,8 @@ pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
             a.diversifier_index,
             now(),
             a.close_at,
-            a.seller_id
+            a.seller_id,
+            a.image_url
         ],
     )?;
     Ok(())
@@ -777,11 +784,11 @@ pub fn get_disclosure(conn: &Connection, id: &str) -> Result<Option<String>> {
 pub fn mirror_auction(conn: &Connection, a: &Auction) -> Result<bool> {
     let n = conn.execute(
         "INSERT OR IGNORE INTO auctions (id, title, description, reserve_zats, deposit_zats, seller_address,
-            address, created_at, close_at, status)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open')",
+            address, created_at, close_at, status, image_url)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', ?10)",
         params![
             a.id, a.title, a.description, a.reserve_zats as i64, a.deposit_zats as i64,
-            a.seller_address, a.address, a.created_at, a.close_at
+            a.seller_address, a.address, a.created_at, a.close_at, a.image_url
         ],
     )?;
     Ok(n > 0)
