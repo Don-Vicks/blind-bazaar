@@ -12,11 +12,11 @@ export function loadVerifier(): Promise<VerifyWasm> {
     loading = (async () => {
       const url = "/wasm/bb_verify_wasm.js";
       const mod = (await import(/* webpackIgnore: true */ url)) as {
-        default: (input?: string) => Promise<unknown>;
+        default: (opts?: { module_or_path?: string }) => Promise<unknown>;
         compute_cmx: VerifyWasm["compute_cmx"];
         decrypt_note: VerifyWasm["decrypt_note"];
       };
-      await mod.default("/wasm/bb_verify_wasm_bg.wasm");
+      await mod.default({ module_or_path: "/wasm/bb_verify_wasm_bg.wasm" });
       return { compute_cmx: mod.compute_cmx, decrypt_note: mod.decrypt_note };
     })();
   }
