@@ -37,3 +37,9 @@ the only reader in both paths, so the trust model is unchanged.
   Same with `t1...`: accepted. Official docs still say transparent-only; a wet test
   with a small amount decides whether `u1` delivery is shielded.
 - Price reality: 0.1 ZEC is about 121 USD, so demo deposits are 0.01 ZEC or less.
+
+## Network upgrade timing
+
+Testnet is on NU7 (since height 4,465,026). Mainnet is on NU6.3 (Ironwood) with NU7 expected around Nov 5, 2026.
+The service depends on the pre-release librustzcash line that understands both, and the mainnet demo must be
+recorded before NU7 activates there or re-tested after.

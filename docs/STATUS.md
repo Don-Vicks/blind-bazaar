@@ -42,6 +42,16 @@ What is verified, what is written but unverified, and what does not exist yet. U
 - Light theme check and mobile width pass on every page; brand palette deferred.
 - Video, screenshots, forum/Discord posts, registration, final write-up numbers.
 
+## NU7 on testnet (found Oct 13)
+
+Testnet activated NU7 at height 4,465,026 (around Oct 6). The stable librustzcash crates (0.24 line) only know NU7
+as a placeholder, so they cannot parse any testnet transaction since then (`invalid consensus branch id
+0x77190ad9`). The service now builds against the Oct 6 pre-release line (`zcash_client_backend 0.25.0-pre.1`,
+`zcash_protocol 0.11.0-pre.0`, `orchard 0.16`, `rand 0.10`), which carries the real NU7 branch id and testnet
+height. Mainnet NU7 is expected around Nov 5, after the deadline, so the mainnet demo runs on NU6.3 rules with the
+same binary. Open question: whether lightwalletd 0.5.4 (the public testnet endpoint) includes v6 transaction
+outputs in compact blocks; the first received testnet note answers it.
+
 ## Known risks in the code
 
 - `ShieldedPool::Orchard` is passed as the fallback change pool in `wallet/send.rs`; post-Ironwood the strategy should redirect change, but this is unverified until the first send.
