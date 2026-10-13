@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api, explorerTxUrl } from "@/lib/api";
-import { zec } from "@/lib/format";
+import { duration, zec } from "@/lib/format";
 import { LotImage } from "@/components/lot-plate";
 import { Eyebrow, Fact, LinkButton, Mono, Panel, Skeleton, StatusDot } from "@/components/ui";
 
@@ -82,9 +82,9 @@ export function ResultClient({ id }: { id: string }) {
                 <span className="text-muted-foreground"> / {data.units}</span>
               </Fact>
             )}
-            <Fact label="Refunds" large>
-              {sent}
-              {pending > 0 && <span className="text-muted-foreground"> +{pending}</span>}
+            <Fact label={data.refund_latency_secs !== null ? "Refunded within" : "Refunds"} large>
+              {data.refund_latency_secs !== null ? duration(data.refund_latency_secs) : sent}
+              {data.refund_latency_secs === null && pending > 0 && <span className="text-muted-foreground"> +{pending} pending</span>}
             </Fact>
             <Fact label="Settlement">
               {data.payout_txid

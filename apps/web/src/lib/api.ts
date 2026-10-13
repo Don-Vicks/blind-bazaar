@@ -43,6 +43,9 @@ export interface AuctionResult {
   winning_txids: string[];
   ledger_hash: string | null;
   valid_bid_count: number;
+  refund_latency_secs: number | null;
+  refunds_sent: number;
+  refunds_pending: number;
   settlement_txid: string | null;
   payout_txid: string | null;
   refunds: { kind: string; status: string; txid: string | null }[];

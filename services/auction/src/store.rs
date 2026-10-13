@@ -556,6 +556,23 @@ pub fn all_payouts(conn: &Connection) -> Result<Vec<Payout>> {
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
+/// Seconds from close to the last refund sent, and how many refunds are sent vs pending.
+pub fn refund_latency(conn: &Connection, auction_id: &str) -> Result<(Option<i64>, i64, i64)> {
+    let closed_at: Option<i64> = conn.query_row("SELECT closed_at FROM auctions WHERE id = ?1", [auction_id], |r| r.get(0))?;
+    let (last_sent, sent, pending): (Option<i64>, i64, i64) = conn.query_row(
+        "SELECT MAX(sent_at), SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN status IN ('queued','failed') THEN 1 ELSE 0 END)
+         FROM payouts WHERE auction_id = ?1 AND kind = 'refund'",
+        [auction_id],
+        |r| Ok((r.get(0)?, r.get::<_, Option<i64>>(1)?.unwrap_or(0), r.get::<_, Option<i64>>(2)?.unwrap_or(0))),
+    )?;
+    let latency = match (closed_at, last_sent) {
+        (Some(c), Some(l)) if pending == 0 && sent > 0 => Some((l - c).max(0)),
+        _ => None,
+    };
+    Ok((latency, sent, pending))
+}
+
 pub fn payouts_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<Payout>> {
     let mut stmt = conn.prepare(
         "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error

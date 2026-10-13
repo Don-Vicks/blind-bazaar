@@ -333,6 +333,10 @@ struct ResultView {
     winning_txids: Vec<String>,
     ledger_hash: Option<String>,
     valid_bid_count: usize,
+    /// Seconds from close until the last losing deposit was refunded; null while refunds are pending.
+    refund_latency_secs: Option<i64>,
+    refunds_sent: i64,
+    refunds_pending: i64,
     settlement_txid: Option<String>,
     payout_txid: Option<String>,
     refunds: Vec<RefundView>,
@@ -357,6 +361,7 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
     let winner = winners.first().copied().cloned();
     let units_settled = winners.iter().filter(|b| b.status == "settled").count();
     let valid_bid_count = store::receipts_for_auction(&conn, &id)?.len();
+    let (refund_latency_secs, refunds_sent, refunds_pending) = store::refund_latency(&conn, &id)?;
     let refunds = store::payouts_for_auction(&conn, &id)?
         .into_iter()
         .map(|p| RefundView {
@@ -380,6 +385,9 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
         winning_txids: winners.iter().map(|w| w.txid.clone()).collect(),
         ledger_hash: auction.ledger_hash,
         valid_bid_count,
+        refund_latency_secs,
+        refunds_sent,
+        refunds_pending,
         settlement_txid: auction.settlement_txid,
         payout_txid: auction.payout_txid,
         refunds,

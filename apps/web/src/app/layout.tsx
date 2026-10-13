@@ -31,6 +31,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 Blind Bazaar
               </Link>
               <nav className="flex items-center gap-6">
+                <Link href="/how" className={nav}>
+                  How it works
+                </Link>
                 <Link href="/sell" className={nav}>
                   Sell
                 </Link>
