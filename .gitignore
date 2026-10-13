@@ -1,0 +1,11 @@
+node_modules/
+.next/
+dist/
+target/
+*.sqlite
+*.sqlite-*
+.env
+.env.*
+!.env.example
+data/
+.DS_Store
