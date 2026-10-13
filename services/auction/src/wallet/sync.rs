@@ -213,7 +213,7 @@ pub async fn inspect_block(client: &mut Client, params: &Network, height: u32) -
         .map(|t| {
             serde_json::json!({
                 "index": t.index,
-                "txid": hex::encode(t.hash.iter().rev().copied().collect::<Vec<_>>()),
+                "txid": hex::encode(t.txid.iter().rev().copied().collect::<Vec<_>>()),
                 "sapling_outputs": t.outputs.len(),
                 "orchard_actions": t.actions.len(),
                 "ironwood_actions": t.ironwood_actions.len(),
@@ -223,7 +223,7 @@ pub async fn inspect_block(client: &mut Client, params: &Network, height: u32) -
     // Fetch each compact tx in full to see the real version and bundle sizes.
     let mut full = Vec::new();
     for t in &block.vtx {
-        let req = service::TxFilter { hash: t.hash.clone(), ..Default::default() };
+        let req = service::TxFilter { hash: t.txid.clone(), ..Default::default() };
         match client.get_transaction(req).await {
             Ok(r) => {
                 let raw = r.into_inner();
