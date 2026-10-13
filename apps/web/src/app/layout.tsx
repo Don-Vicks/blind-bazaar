@@ -28,6 +28,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               </Link>
               <nav className="flex items-center gap-4 text-sm text-muted-foreground">
                 <Link
+                  href="/sell"
+                  className="rounded py-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  Sell
+                </Link>
+                <Link
                   href="/embed"
                   className="rounded py-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
