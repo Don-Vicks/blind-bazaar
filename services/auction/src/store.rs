@@ -446,6 +446,30 @@ pub fn due_payouts(conn: &Connection, now: i64, max_attempts: i64) -> Result<Vec
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
+pub fn all_payouts(conn: &Connection) -> Result<Vec<Payout>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error
+         FROM payouts ORDER BY id DESC LIMIT 100",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(Payout {
+            id: r.get(0)?,
+            auction_id: r.get(1)?,
+            bid_id: r.get(2)?,
+            kind: r.get(3)?,
+            to_address: r.get(4)?,
+            value_zats: r.get::<_, i64>(5)? as u64,
+            memo: r.get(6)?,
+            not_before: r.get(7)?,
+            txid: r.get(8)?,
+            status: r.get(9)?,
+            attempts: r.get(10)?,
+            error: r.get(11)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
 pub fn payouts_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<Payout>> {
     let mut stmt = conn.prepare(
         "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error

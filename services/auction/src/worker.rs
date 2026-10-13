@@ -6,7 +6,7 @@ use anyhow::Result;
 use rusqlite::Connection;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tracing::{error, info, warn};
-use zcash_client_backend::data_api::{WalletRead, wallet::ConfirmationsPolicy};
+use zcash_client_backend::data_api::WalletRead;
 use zcash_proofs::prover::LocalTxProver;
 use zcash_protocol::consensus::Network;
 
@@ -107,7 +107,7 @@ impl Worker {
         let tip = wallet::chain_tip(client).await.ok();
         let height = wallet::wallet_height(db)?;
         let balance = db
-            .get_wallet_summary(ConfirmationsPolicy::default())
+            .get_wallet_summary(wallet::send::confirmations_policy(self.cfg.min_confirmations))
             .ok()
             .flatten()
             .and_then(|s| {
@@ -170,6 +170,7 @@ impl Worker {
                 operator.account_id,
                 &operator.usk,
                 &out,
+                self.cfg.min_confirmations,
             )
             .await;
             let store = self.store.lock().await;

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NetworkName {
@@ -19,10 +19,33 @@ impl std::str::FromStr for NetworkName {
     }
 }
 
+#[derive(Debug, Subcommand, Clone)]
+pub enum Cmd {
+    /// Act as a standalone wallet: sync, print address and balance, optionally pay a ZIP-321 URI.
+    /// Used for testing bids without a mobile wallet.
+    Wallet {
+        /// Wallet directory (separate from the service wallet).
+        #[arg(long)]
+        dir: PathBuf,
+        /// Mnemonic file (created if absent).
+        #[arg(long)]
+        seed_file: PathBuf,
+        /// A `zcash:` payment URI to pay after syncing.
+        #[arg(long)]
+        pay: Option<String>,
+        /// Keep syncing until the spendable balance is at least this many zatoshis, then continue.
+        #[arg(long)]
+        wait_balance: Option<u64>,
+    },
+}
+
 /// Blind Bazaar auction service.
 #[derive(Debug, Parser, Clone)]
 #[command(name = "bb-auction")]
 pub struct Config {
+    #[command(subcommand)]
+    pub cmd: Option<Cmd>,
+
     /// `test` or `main`
     #[arg(long, env = "NETWORK", default_value = "test")]
     pub network: NetworkName,
@@ -50,6 +73,11 @@ pub struct Config {
     /// Verify a disclosure JSON file against the chain and exit (no wallet needed).
     #[arg(long)]
     pub verify_disclosure: Option<PathBuf>,
+
+    /// Confirmations required before a received note can be spent (applies to trusted and
+    /// untrusted notes alike). Default policy is 3 trusted / 10 untrusted.
+    #[arg(long, env = "MIN_CONFIRMATIONS")]
+    pub min_confirmations: Option<u32>,
 
     /// HTTP bind address.
     #[arg(long, env = "BIND", default_value = "127.0.0.1:8787")]

@@ -52,6 +52,73 @@ async fn verify_disclosure_file(cfg: &Config, path: &std::path::Path) -> anyhow:
     }
 }
 
+/// Standalone test wallet: `bb-auction wallet --dir data/bidder1 --seed-file data/bidder1.seed [--pay zcash:...]`.
+async fn wallet_cmd(
+    cfg: &Config,
+    dir: std::path::PathBuf,
+    seed_file: std::path::PathBuf,
+    pay: Option<String>,
+    wait_balance: Option<u64>,
+) -> anyhow::Result<()> {
+    use zcash_client_backend::data_api::WalletRead;
+    let params = match cfg.network {
+        NetworkName::Test => Network::TestNetwork,
+        NetworkName::Main => Network::MainNetwork,
+    };
+    let mut db = wallet::open_db(params, &dir)?;
+    let cache = wallet::cache::MemBlockCache::default();
+    let mut client = wallet::connect(&cfg.lightwalletd_url).await?;
+    let (seed, _) = wallet::load_or_create_seed(&seed_file)?;
+    let me = wallet::ensure_operator_account(&mut db, &mut client, &params, &seed, cfg.birthday_height).await?;
+    let address = match db.get_last_generated_address_matching(me.account_id, wallet::orchard_only_request())? {
+        Some(ua) => ua.encode(&params),
+        None => wallet::next_auction_address(&mut db, &params, me.account_id)?.0,
+    };
+    println!("address: {address}");
+    let policy = wallet::send::confirmations_policy(cfg.min_confirmations);
+    loop {
+        wallet::sync::sync_once(&mut client, &params, &cache, &mut db).await?;
+        wallet::sync::enhance(&mut client, &params, &mut db).await?;
+        let summary = db.get_wallet_summary(policy)?;
+        let (total, spendable) = summary
+            .as_ref()
+            .and_then(|s| s.account_balances().get(&me.account_id))
+            .map(|b| (u64::from(b.total()), u64::from(b.spendable_value())))
+            .unwrap_or((0, 0));
+        println!(
+            "height: {:?}  balance: {} zats (spendable {})",
+            db.chain_height()?.map(u32::from),
+            total,
+            spendable
+        );
+        match wait_balance {
+            Some(want) if spendable < want => {
+                tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                continue;
+            }
+            _ => break,
+        }
+    }
+    if let Some(uri) = pay {
+        let request = zip321::TransactionRequest::from_uri(&uri).map_err(|e| anyhow::anyhow!("bad URI: {e:?}"))?;
+        info!("paying {} payment(s) from {uri}", request.payments().len());
+        let prover = zcash_proofs::prover::LocalTxProver::bundled();
+        let txid = wallet::send::send_request(
+            &mut db,
+            &params,
+            &mut client,
+            &prover,
+            me.account_id,
+            &me.usk,
+            request,
+            cfg.min_confirmations,
+        )
+        .await?;
+        println!("txid: {txid}");
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -68,6 +135,9 @@ async fn main() -> anyhow::Result<()> {
     let cfg = Config::parse();
     if let Some(path) = &cfg.verify_disclosure {
         return verify_disclosure_file(&cfg, path).await;
+    }
+    if let Some(config::Cmd::Wallet { dir, seed_file, pay, wait_balance }) = cfg.cmd.clone() {
+        return wallet_cmd(&cfg, dir, seed_file, pay, wait_balance).await;
     }
     let (params, network_name) = match cfg.network {
         NetworkName::Test => (Network::TestNetwork, "test"),

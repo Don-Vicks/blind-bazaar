@@ -54,6 +54,13 @@ pub fn build_request(out: &Outgoing<'_>) -> anyhow::Result<TransactionRequest> {
     TransactionRequest::new(vec![payment]).map_err(|e| anyhow!("{e:?}"))
 }
 
+pub fn confirmations_policy(min: Option<u32>) -> ConfirmationsPolicy {
+    match min.and_then(std::num::NonZeroU32::new) {
+        Some(n) => ConfirmationsPolicy::new_symmetrical(n, true),
+        None => ConfirmationsPolicy::default(),
+    }
+}
+
 pub async fn send(
     db: &mut Db,
     params: &Network,
@@ -62,9 +69,23 @@ pub async fn send(
     account_id: AccountUuid,
     usk: &UnifiedSpendingKey,
     out: &Outgoing<'_>,
+    min_confirmations: Option<u32>,
 ) -> anyhow::Result<String> {
     let request = build_request(out)?;
+    send_request(db, params, client, prover, account_id, usk, request, min_confirmations).await
+}
 
+#[allow(clippy::too_many_arguments)]
+pub async fn send_request(
+    db: &mut Db,
+    params: &Network,
+    client: &mut Client,
+    prover: &LocalTxProver,
+    account_id: AccountUuid,
+    usk: &UnifiedSpendingKey,
+    request: TransactionRequest,
+    min_confirmations: Option<u32>,
+) -> anyhow::Result<String> {
     let change_strategy = MultiOutputChangeStrategy::new(
         StandardFeeRule::Zip317,
         None,
@@ -84,7 +105,7 @@ pub async fn send(
         &input_selector,
         &change_strategy,
         request,
-        ConfirmationsPolicy::default(),
+        confirmations_policy(min_confirmations),
         &SpendPolicy::default(),
         None,
         None,

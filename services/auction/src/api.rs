@@ -26,6 +26,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auctions/{id}/envelopes", post(post_envelope))
         .route("/auctions/{id}/result", get(result))
         .route("/auctions/{id}/bid-uri", get(bid_uri))
+        .route("/admin/payouts", post(admin_payout).get(admin_list_payouts))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -357,4 +358,41 @@ async fn bid_uri(
         deposit_zats: auction.deposit_zats,
         address: auction.address,
     }))
+}
+
+#[derive(Deserialize)]
+struct AdminPayout {
+    to_address: String,
+    value_zats: u64,
+    memo: Option<String>,
+}
+
+/// Operator-initiated send (fund a test wallet, return funds). Goes through the payout queue.
+async fn admin_payout(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(req): Json<AdminPayout>,
+) -> ApiResult<serde_json::Value> {
+    check_admin(&state, &headers)?;
+    if req.value_zats == 0 {
+        return Err(bad("value_zats must be > 0"));
+    }
+    let conn = state.store.lock().await;
+    let id = store::queue_payout(
+        &conn,
+        None,
+        None,
+        "manual",
+        &req.to_address,
+        req.value_zats,
+        req.memo.as_deref(),
+        store::now(),
+    )?;
+    Ok(Json(serde_json::json!({ "payout_id": id })))
+}
+
+async fn admin_list_payouts(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiResult<Vec<store::Payout>> {
+    check_admin(&state, &headers)?;
+    let conn = state.store.lock().await;
+    Ok(Json(store::all_payouts(&conn)?))
 }
