@@ -137,6 +137,8 @@ pub struct Operator {
     pub account_id: AccountUuid,
     /// None for a viewer process (viewing key only).
     pub usk: Option<UnifiedSpendingKey>,
+    /// The account's full viewing key (always available).
+    pub ufvk: Option<zcash_keys::keys::UnifiedFullViewingKey>,
 }
 
 /// Ensure a view-only account exists for `ufvk_str` and return its id (viewer role).
@@ -171,7 +173,8 @@ pub async fn ensure_viewer_account(
         info!("imported view-only account {id:?} with birthday {}", birthday.height());
         id
     };
-    Ok(Operator { account_id, usk: None })
+    let ufvk = db.get_account(account_id)?.and_then(|a| a.ufvk().cloned());
+    Ok(Operator { account_id, usk: None, ufvk })
 }
 
 /// Ensure the operator account exists in the wallet DB and return its id and spending key.
@@ -209,7 +212,8 @@ pub async fn ensure_operator_account(
         .ok_or_else(|| anyhow!("operator account is view-only"))?;
     let usk = UnifiedSpendingKey::from_seed(params, seed.expose_secret(), derivation.account_index())
         .map_err(|e| anyhow!("{e:?}"))?;
-    Ok(Operator { account_id, usk: Some(usk) })
+    let ufvk = Some(usk.to_unified_full_viewing_key());
+    Ok(Operator { account_id, usk: Some(usk), ufvk })
 }
 
 /// Orchard-only unified address request so bids never land in Sapling or transparent receivers.

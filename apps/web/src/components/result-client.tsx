@@ -41,7 +41,10 @@ export function ResultClient({ id }: { id: string }) {
   const disclosure = (Array.isArray(data.disclosure) ? data.disclosure[0] : data.disclosure) as { verified_against_chain?: boolean; cmx?: string; action_index?: number } | null;
   const sold = data.winning_amount_zats !== null;
   const uniform = data.format === "uniform";
-  const disclosures = Array.isArray(data.disclosure) ? (data.disclosure as { verified_against_chain?: boolean }[]) : data.disclosure ? [data.disclosure as { verified_against_chain?: boolean }] : [];
+  type D = { verified_against_chain?: boolean; enc_key?: string; bid_zats?: number; reserve_zats?: number };
+  const disclosures = Array.isArray(data.disclosure) ? (data.disclosure as D[]) : data.disclosure ? [data.disclosure as D] : [];
+  const reserveProofs = disclosures.filter((d) => d.enc_key && d.bid_zats !== undefined && d.reserve_zats !== undefined);
+  const reserveMet = reserveProofs.length > 0 && reserveProofs.every((d) => (d.bid_zats ?? 0) >= (d.reserve_zats ?? 0));
   const verifiedCount = disclosures.filter((d) => d.verified_against_chain).length;
 
   return (
@@ -143,6 +146,16 @@ export function ResultClient({ id }: { id: string }) {
               on-chain commitment. Anyone can check it with the service binary and a public lightwalletd. Losing bids
               stay sealed.
             </p>
+            {reserveProofs.length > 0 && (
+              <div className="hairline-t pt-4">
+                <Eyebrow>Reserve</Eyebrow>
+                <p className="serif mt-2 text-[22px] leading-tight">{reserveMet ? "Met, and provable." : "Not met."}</p>
+                <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+                  The winning note&apos;s encryption key is disclosed, so anyone can decrypt that one memo from the
+                  transaction and read the bid{reserveProofs.length === 1 && reserveProofs[0].bid_zats !== undefined ? ` (${zec(reserveProofs[0].bid_zats)} against a reserve of ${zec(reserveProofs[0].reserve_zats ?? 0)})` : ""}. No other note can be opened with it.
+                </p>
+              </div>
+            )}
             {disclosures.length > 0 && (
               <div className="hairline-t pt-4">
                 <Eyebrow>{disclosures.length > 1 ? `${disclosures.length} note openings` : `Commitment · action ${disclosure?.action_index}`}</Eyebrow>

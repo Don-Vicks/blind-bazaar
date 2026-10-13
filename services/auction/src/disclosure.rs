@@ -33,6 +33,108 @@ pub struct Disclosure {
     pub memo: Option<String>,
     pub cmx: String,
     pub verified_against_chain: bool,
+    /// Optional: the note's symmetric encryption key (hex). With it anyone can decrypt this one note's
+    /// ciphertext from the transaction and read the memo, which carries the bid. Nothing else.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enc_key: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reserve_zats: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bid_zats: Option<u64>,
+}
+
+/// Size of an Orchard note plaintext (lead byte, diversifier, value, rseed, memo).
+const NOTE_PLAINTEXT_SIZE: usize = 1 + 11 + 8 + 32 + 512;
+
+/// Derive the symmetric key of one received note from the account's incoming viewing key.
+pub fn note_encryption_key(
+    ufvk: &zcash_keys::keys::UnifiedFullViewingKey,
+    tx: &Transaction,
+    action_index: u32,
+    pool: &str,
+) -> Result<[u8; 32]> {
+    use orchard::keys::{PreparedIncomingViewingKey, Scope};
+    use orchard::note_encryption::{IronwoodDomain, OrchardDomain};
+    use zcash_note_encryption::{Domain, EphemeralKeyBytes};
+    let fvk = ufvk.orchard().ok_or_else(|| anyhow!("viewing key has no Orchard component"))?;
+    let pivk = PreparedIncomingViewingKey::new(&fvk.to_ivk(Scope::External));
+    let idx = action_index as usize;
+    macro_rules! key_for {
+        ($bundle:expr, $dom:ty) => {{
+            let action = $bundle.actions().get(idx).ok_or_else(|| anyhow!("no action {idx}"))?;
+            let ek = EphemeralKeyBytes(action.encrypted_note().epk_bytes);
+            let epk = <$dom as Domain>::epk(&ek).ok_or_else(|| anyhow!("invalid ephemeral key"))?;
+            let pepk = <$dom as Domain>::prepare_epk(epk);
+            let shared = <$dom as Domain>::ka_agree_dec(&pivk, &pepk);
+            let key = <$dom as Domain>::kdf(shared, &ek);
+            let mut out = [0u8; 32];
+            out.copy_from_slice(key.as_ref());
+            Ok(out)
+        }};
+    }
+    match pool {
+        "ironwood" => {
+            let b = tx.ironwood_bundle().ok_or_else(|| anyhow!("no ironwood bundle"))?;
+            key_for!(b, IronwoodDomain)
+        }
+        _ => {
+            let b = tx.orchard_bundle().ok_or_else(|| anyhow!("no orchard bundle"))?;
+            key_for!(b, OrchardDomain)
+        }
+    }
+}
+
+/// Decrypt one action's note ciphertext with a disclosed key and return (version, diversifier, value, rseed, memo text).
+pub fn decrypt_note_with_key(tx: &Transaction, action_index: u32, pool: &str, key: &[u8; 32]) -> Result<DecryptedNote> {
+    use chacha20poly1305::{ChaCha20Poly1305, KeyInit, aead::Aead};
+    let idx = action_index as usize;
+    let enc: &[u8] = match pool {
+        "ironwood" => tx.ironwood_bundle().and_then(|b| b.actions().get(idx)).map(|a| a.encrypted_note().enc_ciphertext.as_ref()),
+        _ => tx.orchard_bundle().and_then(|b| b.actions().get(idx)).map(|a| a.encrypted_note().enc_ciphertext.as_ref()),
+    }
+    .ok_or_else(|| anyhow!("no action {idx} in the {pool} bundle"))?;
+    let cipher = ChaCha20Poly1305::new(key.into());
+    let plaintext = cipher
+        .decrypt(&[0u8; 12].into(), enc)
+        .map_err(|_| anyhow!("ciphertext did not open with the disclosed key"))?;
+    if plaintext.len() != NOTE_PLAINTEXT_SIZE {
+        return Err(anyhow!("unexpected plaintext length {}", plaintext.len()));
+    }
+    let memo_bytes = &plaintext[52..564];
+    let memo = zcash_protocol::memo::MemoBytes::from_bytes(memo_bytes)
+        .ok()
+        .and_then(|m| zcash_protocol::memo::Memo::try_from(m).ok())
+        .and_then(|m| match m {
+            zcash_protocol::memo::Memo::Text(t) => Some(t.to_string()),
+            _ => None,
+        });
+    Ok(DecryptedNote {
+        version: plaintext[0],
+        diversifier: hex::encode(&plaintext[1..12]),
+        value: u64::from_le_bytes(plaintext[12..20].try_into().unwrap()),
+        rseed: hex::encode(&plaintext[20..52]),
+        memo,
+    })
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DecryptedNote {
+    pub version: u8,
+    pub diversifier: String,
+    pub value: u64,
+    pub rseed: String,
+    pub memo: Option<String>,
+}
+
+/// Check a decrypted note against the disclosed opening (same note) and extract the bid from its memo.
+pub fn memo_bid_matches(d: &Disclosure, n: &DecryptedNote) -> Result<Option<u64>> {
+    if n.value != d.value_zats || n.rseed != d.rseed || n.version != d.note_version {
+        return Err(anyhow!("decrypted note does not match the disclosed opening"));
+    }
+    Ok(n.memo.as_deref().and_then(|m| match crate::memo::parse(m) {
+        Ok(crate::memo::Parsed::Bid(b)) => Some(b.bid_zats),
+        _ => None,
+    }))
 }
 
 fn txid_internal_bytes(display_hex: &str) -> Result<Vec<u8>> {
@@ -107,7 +209,14 @@ pub fn read_tx(params: &Network, raw: &[u8], mined_height: Option<u32>) -> Resul
 
 /// Build the disclosure for a received output from the wallet DB and self-verify it against the
 /// raw transaction stored by the enhancement step.
-pub fn build(wallet_ro: &Connection, params: &Network, network_name: &str, txid_display: &str, action_index: u32) -> Result<Disclosure> {
+pub fn build(
+    wallet_ro: &Connection,
+    params: &Network,
+    network_name: &str,
+    txid_display: &str,
+    action_index: u32,
+    memo_key: Option<(&zcash_keys::keys::UnifiedFullViewingKey, u64)>,
+) -> Result<Disclosure> {
     let txid = txid_internal_bytes(txid_display)?;
     let row = wallet_ro
         .query_row(
@@ -159,6 +268,9 @@ pub fn build(wallet_ro: &Connection, params: &Network, network_name: &str, txid_
         memo,
         cmx: String::new(),
         verified_against_chain: false,
+        enc_key: None,
+        reserve_zats: None,
+        bid_zats: None,
     };
     d.cmx = hex::encode(compute_cmx(&d)?);
     if let Some(raw) = raw {
@@ -166,6 +278,13 @@ pub fn build(wallet_ro: &Connection, params: &Network, network_name: &str, txid_
         if let Some(pool) = verify_against_tx(&d, &tx)? {
             d.pool = pool.into();
             d.verified_against_chain = true;
+        }
+        if let (Some((ufvk, reserve)), true) = (memo_key, d.verified_against_chain) {
+            let key = note_encryption_key(ufvk, &tx, action_index, &d.pool)?;
+            let note = decrypt_note_with_key(&tx, action_index, &d.pool, &key)?;
+            d.bid_zats = memo_bid_matches(&d, &note)?;
+            d.reserve_zats = Some(reserve);
+            d.enc_key = Some(hex::encode(key));
         }
     }
     Ok(d)
@@ -192,6 +311,9 @@ mod tests {
             memo: None,
             cmx: String::new(),
             verified_against_chain: false,
+            enc_key: None,
+            reserve_zats: None,
+            bid_zats: None,
         };
         assert!(compute_cmx(&d).is_err());
     }

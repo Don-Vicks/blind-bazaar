@@ -147,6 +147,11 @@ pub struct Config {
     #[arg(long, env = "FEE_RESERVE_ZATS", default_value_t = 1_000_000)]
     pub fee_reserve_zats: u64,
 
+    /// Also disclose the symmetric key of each winning note so anyone can decrypt its memo and check
+    /// the bid met the reserve. Reveals the winner's bid and refund address; off by default.
+    #[arg(long, env = "DISCLOSE_WINNING_MEMO", default_value_t = false)]
+    pub disclose_winning_memo: bool,
+
     /// Confirmations required before a received note can be spent (applies to trusted and
     /// untrusted notes alike). Default policy is 3 trusted / 10 untrusted.
     #[arg(long, env = "MIN_CONFIRMATIONS")]

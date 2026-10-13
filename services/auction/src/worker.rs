@@ -138,6 +138,7 @@ impl Worker {
         prover: Option<&LocalTxProver>,
         operator: &wallet::Operator,
     ) -> Result<()> {
+        let memo_key = if self.cfg.disclose_winning_memo { operator.ufvk.clone() } else { None };
         if self.cfg.role == Role::Spender {
             self.mirror_auctions().await?;
         }
@@ -186,7 +187,7 @@ impl Worker {
                 delay_max: self.cfg.refund_delay_max_secs,
                 settlement_window_secs: self.cfg.settlement_window_secs,
             };
-            close::close_due(&store, Some(wallet_ro), &self.params, self.network_name, &close_cfg)?;
+            close::close_due(&store, Some(wallet_ro), &self.params, self.network_name, &close_cfg, memo_key.as_ref())?;
             close::enforce_settlement_deadlines(&store, &close_cfg)?;
         }
 

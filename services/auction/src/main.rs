@@ -61,6 +61,16 @@ async fn verify_one(cfg: &Config, d: &disclosure::Disclosure) -> anyhow::Result<
         Some(pool) => {
             println!("ok   action {} of {} ({pool} pool): {} zatoshis to {}", d.action_index, d.txid, d.value_zats, &d.recipient_address[..20]);
             println!("     cmx {cmx}");
+            if let Some(k) = &d.enc_key {
+                let key: [u8; 32] = hex::decode(k)?.try_into().map_err(|_| anyhow::anyhow!("enc_key must be 32 bytes"))?;
+                let note = disclosure::decrypt_note_with_key(&tx, d.action_index, pool, &key)?;
+                let bid = disclosure::memo_bid_matches(d, &note)?;
+                match (bid, d.reserve_zats) {
+                    (Some(b), Some(r)) => println!("     memo decrypted: bid {b} zatoshis, reserve {r}: {}", if b >= r { "reserve met" } else { "BELOW RESERVE" }),
+                    (Some(b), None) => println!("     memo decrypted: bid {b} zatoshis"),
+                    _ => println!("     memo decrypted but carries no BB1 bid"),
+                }
+            }
             Ok(true)
         }
         None => {

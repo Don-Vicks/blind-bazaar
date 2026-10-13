@@ -16,7 +16,7 @@ DATA=$(mktemp -d /tmp/bb-regtest.XXXX)
 export NETWORK=regtest REGTEST_NU_HEIGHT=1 REGTEST_LATEST_NU=${REGTEST_LATEST_NU:-nu6_1}
 export LIGHTWALLETD_URL=$LWD DATA_DIR=$DATA OPERATOR_SEED_FILE=$DATA/operator.seed BIRTHDAY_HEIGHT=100
 export ADMIN_TOKEN=regtest BIND=127.0.0.1:8797 SYNC_INTERVAL_SECS=5 MIN_CONFIRMATIONS=1
-export REFUND_DELAY_MIN_SECS=1 REFUND_DELAY_MAX_SECS=2 SETTLEMENT_WINDOW_SECS=600 RUST_LOG=${RUST_LOG:-info,zcash_client_backend=warn}
+export REFUND_DELAY_MIN_SECS=1 REFUND_DELAY_MAX_SECS=2 SETTLEMENT_WINDOW_SECS=600 DISCLOSE_WINNING_MEMO=true RUST_LOG=${RUST_LOG:-info,zcash_client_backend=warn}
 
 pass() { echo "PASS  $*"; }
 fail() { echo "FAIL  $*"; echo "--- service log tail ---"; tail -30 "$DATA/service.log"; exit 1; }
@@ -92,6 +92,8 @@ else
 fi
 [ "$(echo "$R" | j 'all(x["verified_against_chain"] for x in d["disclosure"])')" = "True" ] || fail "disclosure not verified: $R"
 pass "note-opening disclosure verified against the chain"
+[ "$(echo "$R" | j 'all(x.get("bid_zats",0) >= x.get("reserve_zats",10**18) for x in d["disclosure"])')" = "True" ] || fail "reserve proof missing or below reserve: $R"
+pass "winning memo decrypted with the disclosed key; bid meets reserve"
 
 wait_for 420 "loser refunded" bash -c "curl -sf $API/auctions/$ID/result | grep -q '\"kind\":\"refund\",\"status\":\"sent\"'"
 pass "loser refund sent"

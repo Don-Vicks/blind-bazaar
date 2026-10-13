@@ -14,6 +14,9 @@ pub struct CloseConfig {
     pub settlement_window_secs: i64,
 }
 
+/// Viewing key used to disclose winning memos (reserve-met proof), if the operator enabled it.
+pub type MemoKey<'a> = Option<&'a zcash_keys::keys::UnifiedFullViewingKey>;
+
 /// Valid bids at or above reserve, best first: highest amount, then earliest received.
 pub fn rank<'a>(valid: &[&'a store::Bid], reserve_zats: u64, exclude: &[i64]) -> Vec<&'a store::Bid> {
     let mut v: Vec<&store::Bid> = valid
@@ -43,6 +46,7 @@ pub fn close_due(
     params: &Network,
     network_name: &str,
     cfg: &CloseConfig,
+    memo_key: MemoKey<'_>,
 ) -> Result<usize> {
     let (delay_min, delay_max) = (cfg.delay_min, cfg.delay_max);
     let now = store::now();
@@ -99,7 +103,14 @@ pub fn close_due(
         if let Some(wallet_ro) = wallet_ro {
             let mut disclosures = Vec::new();
             for w in &winners {
-                match disclosure::build(wallet_ro, params, network_name, &w.txid, w.output_index) {
+                match disclosure::build(
+                    wallet_ro,
+                    params,
+                    network_name,
+                    &w.txid,
+                    w.output_index,
+                    memo_key.map(|k| (k, auction.reserve_zats)),
+                ) {
                     Ok(d) => disclosures.push(d),
                     Err(e) => tracing::warn!("could not build disclosure for {} bid {}: {e:#}", auction.id, w.id),
                 }
@@ -358,7 +369,7 @@ mod tests {
         let b2 = bid(&store, "aaaaaaaa", "02", 5_000_000, "0000000000000002", "valid");
         let _b3 = bid(&store, "aaaaaaaa", "03", 1_500_000, "0000000000000003", "valid"); // below reserve
         let _bad = bid(&store, "aaaaaaaa", "04", 9_000_000, "0000000000000004", "wrong_deposit");
-        let n = close_due(&store, None, &Network::Test, "test", &cfg()).unwrap();
+        let n = close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
         assert_eq!(n, 1);
         let a = store::get_auction(&store, "aaaaaaaa").unwrap().unwrap();
         assert_eq!(a.status, "closed");
@@ -379,7 +390,7 @@ mod tests {
         auction(&store, "bbbbbbbb", store::now() - 1);
         let first = bid(&store, "bbbbbbbb", "11", 4_000_000, "0000000000000011", "valid");
         let _second = bid(&store, "bbbbbbbb", "12", 4_000_000, "0000000000000012", "valid");
-        close_due(&store, None, &Network::Test, "test", &cfg()).unwrap();
+        close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
         assert_eq!(store::get_auction(&store, "bbbbbbbb").unwrap().unwrap().winner_bid_id, Some(first));
     }
 
@@ -388,7 +399,7 @@ mod tests {
         let store = store::open_in_memory().unwrap();
         auction(&store, "cccccccc", store::now() - 1);
         bid(&store, "cccccccc", "21", 1_000_000, "0000000000000021", "valid");
-        close_due(&store, None, &Network::Test, "test", &cfg()).unwrap();
+        close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
         let a = store::get_auction(&store, "cccccccc").unwrap().unwrap();
         assert_eq!(a.status, "no_sale");
         assert_eq!(store::payouts_for_auction(&store, "cccccccc").unwrap().len(), 1);
@@ -401,7 +412,7 @@ mod tests {
         let b1 = bid(&store, "dddddddd", "31", 3_000_000, "0000000000000031", "valid");
         let b2 = bid(&store, "dddddddd", "32", 5_000_000, "0000000000000032", "valid");
         let c = CloseConfig { settlement_window_secs: -1, ..cfg() }; // deadline already passed
-        close_due(&store, None, &Network::Test, "test", &c).unwrap();
+        close_due(&store, None, &Network::Test, "test", &c, None).unwrap();
         assert_eq!(store::get_auction(&store, "dddddddd").unwrap().unwrap().winner_bid_id, Some(b2));
 
         // Winner b2 never pays: forfeit, and b1's queued refund is cancelled for a second chance.
@@ -431,7 +442,7 @@ mod tests {
         let b3 = bid(&store, "eeeeeeee", "43", 4_000_000, "0000000000000043", "valid");
         let b4 = bid(&store, "eeeeeeee", "44", 3_000_000, "0000000000000044", "valid"); // loses
         let _b5 = bid(&store, "eeeeeeee", "45", 1_500_000, "0000000000000045", "valid"); // below reserve
-        close_due(&store, None, &Network::Test, "test", &cfg()).unwrap();
+        close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
         let a = store::get_auction(&store, "eeeeeeee").unwrap().unwrap();
         assert_eq!(a.status, "closed");
         assert_eq!(a.clearing_zats, Some(4_000_000), "clearing is the lowest winning bid");
@@ -452,7 +463,7 @@ mod tests {
         uniform_auction(&store, "ffffffff", 2);
         let b1 = bid(&store, "ffffffff", "51", 6_000_000, "0000000000000051", "valid");
         let b2 = bid(&store, "ffffffff", "52", 5_000_000, "0000000000000052", "valid");
-        close_due(&store, None, &Network::Test, "test", &cfg()).unwrap();
+        close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
         let a = store::get_auction(&store, "ffffffff").unwrap().unwrap();
         settle_winner(&store, &a, b1, 5_000_000, 5_000_000, "test").unwrap();
         assert_eq!(store::get_auction(&store, "ffffffff").unwrap().unwrap().status, "closed", "one winner still owes");
@@ -477,7 +488,7 @@ mod tests {
         )
         .unwrap();
         let b = bid(&store, "gggggggg", "61", 1_000_000, "0000000000000061", "valid");
-        close_due(&store, None, &Network::Test, "test", &cfg()).unwrap();
+        close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
         assert_eq!(store::get_bid(&store, b).unwrap().unwrap().status, "settled");
         assert_eq!(store::get_auction(&store, "gggggggg").unwrap().unwrap().status, "settled");
     }

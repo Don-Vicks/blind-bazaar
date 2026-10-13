@@ -59,3 +59,14 @@ the only reader in both paths, so the trust model is unchanged.
 Testnet is on NU7 (since height 4,465,026). Mainnet is on NU6.3 (Ironwood) with NU7 expected around Nov 5, 2026.
 The service depends on the pre-release librustzcash line that understands both, and the mainnet demo must be
 recorded before NU7 activates there or re-tested after.
+
+## Reserve-met proof (optional, `DISCLOSE_WINNING_MEMO=true`)
+
+The note-opening disclosure proves the amount and recipient of a winning output, but the bid itself lives in the
+memo, which the note commitment does not cover. With this option the service also discloses the symmetric key of each
+winning note, derived from the viewing key for that one action. Anyone can then decrypt that note's ciphertext from
+the transaction, read the memo, and check the bid against the reserve. The key opens nothing else.
+
+Cost: the winner's memo becomes public, which reveals the winning bid (already public as the price for single lots,
+above the clearing price for editions) and the winner's refund address. Bidders who care should use a fresh
+diversified address per bid; losing memos are never opened.

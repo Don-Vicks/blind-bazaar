@@ -111,7 +111,9 @@ cargo run --release -- --verify-disclosure disclosure.json --lightwalletd-url ht
 ```
 
 It rebuilds the Orchard note from the disclosed opening (recipient, value, rho, rseed), computes its commitment and
-compares it with the `cmx` of the named action in the transaction. Losing bids are never disclosed.
+compares it with the `cmx` of the named action in the transaction. With `DISCLOSE_WINNING_MEMO=true` the disclosure
+also carries that note's encryption key; the verifier then decrypts the memo from the transaction and reports whether
+the bid met the reserve. Losing bids are never disclosed.
 
 ## Operating it
 
