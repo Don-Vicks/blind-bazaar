@@ -48,6 +48,8 @@ export interface Health {
   last_error: string | null;
   operator_address: string | null;
   balance_zats: number | null;
+  low_balance?: boolean;
+  dead_payouts?: number;
 }
 
 export class ApiError extends Error {

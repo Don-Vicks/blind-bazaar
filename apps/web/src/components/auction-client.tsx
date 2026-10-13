@@ -7,6 +7,7 @@ import { countdown, dateTime, zec } from "@/lib/format";
 import { useNow } from "@/lib/use-now";
 import { Card, LinkButton, Mono, Skeleton, StatusPill } from "@/components/ui";
 import { BidPanel } from "@/components/bid-panel";
+import { EventTimeline } from "@/components/event-timeline";
 
 export function AuctionClient({ id }: { id: string }) {
   const { data, isPending, isError } = useQuery({
@@ -86,6 +87,8 @@ export function AuctionClient({ id }: { id: string }) {
           <LinkButton href={`/a/${data.id}/result`}>See the result</LinkButton>
         </Card>
       )}
+
+      <EventTimeline auctionId={data.id} />
 
       <p className="text-xs text-muted-foreground">
         Already bid?{" "}
