@@ -8,6 +8,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 BIN=${BIN:-target/debug/bb-auction}
+UNITS=${UNITS:-1}   # 1 = single first-price lot; 2 = two-unit uniform-price edition with three bidders
 LWD=${LWD:-http://127.0.0.1:9067}
 FAUCET=${FAUCET:-http://127.0.0.1:8080}
 API=http://127.0.0.1:8797
@@ -50,51 +51,68 @@ wait_for 240 "operator balance" bash -c "curl -sf $API/health | grep -Eq '\"bala
 pass "operator sees funds"
 
 # The operator funds the bidders itself: first exercise of the send path.
-for b in b1 b2; do
+BIDDERS="b1 b2"; [ "$UNITS" = "2" ] && BIDDERS="b1 b2 b3"
+for b in $BIDDERS; do
   ADDR=$("$BIN" wallet --dir "$DATA/$b" --seed-file "$DATA/$b.seed" 2>/dev/null | awk '/^address:/{print $2}')
   echo "$ADDR" > "$DATA/$b.addr"
   curl -sf -X POST $API/admin/payouts -H 'x-admin-token: regtest' -H 'content-type: application/json' \
     -d "{\"to_address\":\"$ADDR\",\"value_zats\":100000000,\"memo\":\"test funding\"}" >/dev/null || fail "queue funding for $b"
 done
-wait_for 300 "operator funding sends" bash -c "[ \$(curl -sf -H 'x-admin-token: regtest' $API/admin/payouts | python3 -I -c 'import json,sys;print(sum(1 for p in json.load(sys.stdin) if p[\"kind\"]==\"manual\" and p[\"status\"]==\"sent\"))') -ge 2 ]"
-pass "operator sent 1 ZEC to each bidder (shielded sends work)"
+NB=$(echo $BIDDERS | wc -w | tr -d ' ')
+wait_for 400 "operator funding sends" bash -c "[ \$(curl -sf -H 'x-admin-token: regtest' $API/admin/payouts | python3 -I -c 'import json,sys;print(sum(1 for p in json.load(sys.stdin) if p[\"kind\"]==\"manual\" and p[\"status\"]==\"sent\"))') -ge $NB ]"
+pass "operator sent 1 ZEC to each of $NB bidders (shielded sends work)"
 
 # Auction: reserve 0.2, deposit 0.1, closes in 8 min (regtest proving + 15 s blocks per bid). Seller is the operator itself for the test.
 A=$(curl -sf -X POST $API/auctions -H 'x-admin-token: regtest' -H 'content-type: application/json' \
-  -d "{\"title\":\"regtest lot\",\"reserve_zats\":20000000,\"deposit_zats\":10000000,\"seller_address\":\"$OP\",\"duration_secs\":480}")
+  -d "{\"title\":\"regtest lot\",\"reserve_zats\":20000000,\"deposit_zats\":10000000,\"seller_address\":\"$OP\",\"duration_secs\":480,\"units\":$UNITS}")
 ID=$(echo "$A" | j 'd["id"]')
-pass "auction $ID created"
+pass "auction $ID created (units=$UNITS, format $(echo "$A" | j 'd["format"]'))"
 
-# Two sealed bids: b1 bids 0.25, b2 bids 0.3 (winner). Each bidder refunds to its own address.
-for pair in "b1:25000000" "b2:30000000"; do
+# Sealed bids: b1 0.25, b2 0.3, and for editions b3 0.22. Each bidder refunds to its own address.
+BIDS="b1:25000000 b2:30000000"; [ "$UNITS" = "2" ] && BIDS="$BIDS b3:22000000"
+for pair in $BIDS; do
   b=${pair%%:*}; amt=${pair##*:}; ADDR=$(cat "$DATA/$b.addr")
   URI=$(curl -sf "$API/auctions/$ID/bid-uri?bid_zats=$amt&refund_address=$ADDR" | j 'd["uri"]')
   "$BIN" wallet --dir "$DATA/$b" --seed-file "$DATA/$b.seed" --wait-balance 10000000 --pay "$URI" 2>/dev/null | grep -E '^txid' || fail "$b could not pay"
   pass "$b paid the deposit with its sealed bid"
 done
 
-wait_for 420 "two receipts" bash -c "[ \$(curl -sf $API/auctions/$ID/receipts | python3 -I -c 'import json,sys;print(len(json.load(sys.stdin)[\"receipts\"]))') -ge 2 ]"
-pass "both bids ingested from encrypted memos"
+wait_for 420 "all receipts" bash -c "[ \$(curl -sf $API/auctions/$ID/receipts | python3 -I -c 'import json,sys;print(len(json.load(sys.stdin)[\"receipts\"]))') -ge $NB ]"
+pass "all $NB bids ingested from encrypted memos"
 
 wait_for 720 "auction closed" bash -c "curl -sf $API/auctions/$ID/result | grep -q '\"status\":\"closed\"'"
 R=$(curl -s $API/auctions/$ID/result)
-[ "$(echo "$R" | j 'd["winning_amount_zats"]')" = "30000000" ] || fail "wrong winner: $R"
-pass "winner is the 0.3 bid; ledger hash $(echo "$R" | j 'd["ledger_hash"][:16]')…"
+if [ "$UNITS" = "2" ]; then
+  [ "$(echo "$R" | j 'd["clearing_zats"]')" = "25000000" ] || fail "wrong clearing price: $R"
+  [ "$(echo "$R" | j 'd["units_sold"]')" = "2" ] || fail "wrong units sold: $R"
+  pass "edition: top two win (0.3 and 0.25) at clearing 0.25; 0.22 loses; ledger $(echo "$R" | j 'd["ledger_hash"][:16]')…"
+else
+  [ "$(echo "$R" | j 'd["winning_amount_zats"]')" = "30000000" ] || fail "wrong winner: $R"
+  pass "winner is the 0.3 bid; ledger hash $(echo "$R" | j 'd["ledger_hash"][:16]')…"
+fi
 [ "$(echo "$R" | j 'all(x["verified_against_chain"] for x in d["disclosure"])')" = "True" ] || fail "disclosure not verified: $R"
 pass "note-opening disclosure verified against the chain"
 
 wait_for 420 "loser refunded" bash -c "curl -sf $API/auctions/$ID/result | grep -q '\"kind\":\"refund\",\"status\":\"sent\"'"
 pass "loser refund sent"
 
-# Winner (b2) pays the balance 0.3 - 0.1 = 0.2 with the settlement memo.
-# The settlement URI needs the winner's nonce; fetch it from the bid record through the admin DB.
-WN=$(sqlite3 "$DATA/bb-regtest.sqlite" "SELECT b.nonce FROM auctions a JOIN bids b ON b.id=a.winner_bid_id WHERE a.id='$ID'")
+# Each winner pays price - deposit with the settlement memo BB1S|<auction>|<nonce>.
 AADDR=$(echo "$A" | j 'd["address"]')
-MEMO="BB1S|$ID|$WN"
-B64=$(printf '%s' "$MEMO" | base64 | tr '+/' '-_' | tr -d '=')
-SURI="zcash:$AADDR?amount=0.2&memo=$B64"
-"$BIN" wallet --dir "$DATA/b2" --seed-file "$DATA/b2.seed" --wait-balance 20000000 --pay "$SURI" 2>/dev/null | grep -E '^txid' || fail "winner could not settle"
-pass "winner paid the balance"
+settle() { # settle <bidder> <zec amount>
+  local b=$1 amt=$2
+  local WN=$(sqlite3 "$DATA/bb-regtest.sqlite" "SELECT b.nonce FROM bids b WHERE b.auction_id='$ID' AND b.status='won' AND b.refund_address='$(cat "$DATA/$b.addr")'")
+  [ -n "$WN" ] || fail "no unpaid winning bid for $b"
+  local MEMO="BB1S|$ID|$WN"
+  local B64=$(printf '%s' "$MEMO" | base64 | tr '+/' '-_' | tr -d '=')
+  "$BIN" wallet --dir "$DATA/$b" --seed-file "$DATA/$b.seed" --wait-balance 1000000 --pay "zcash:$AADDR?amount=$amt&memo=$B64" 2>/dev/null | grep -E '^txid' || fail "$b could not settle"
+  pass "$b paid the balance ($amt ZEC)"
+}
+if [ "$UNITS" = "2" ]; then
+  settle b2 0.15   # 0.25 clearing - 0.1 deposit
+  settle b1 0.15
+else
+  settle b2 0.2    # 0.3 bid - 0.1 deposit
+fi
 
 wait_for 420 "settled" bash -c "curl -sf $API/auctions/$ID/result | grep -Eq '\"status\":\"(settled|paid)\"'"
 pass "settlement detected"
