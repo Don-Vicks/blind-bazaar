@@ -12,7 +12,7 @@ export function PayButtonBuilder({ site }: { site: string }) {
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
   const [label, setLabel] = useState("Pay 0.01 ZEC privately");
   const [amount, setAmount] = useState("0.01");
-  const [mode, setMode] = useState<"fresh" | "own">("fresh");
+  const [mode, setMode] = useState<"fresh" | "own">("own");
   const [own, setOwn] = useState("");
   const [copied, setCopied] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -66,18 +66,18 @@ ${mode === "fresh" ? `    toEndpoint: "${site}/api/godark/address", // a fresh a
         </Field>
         <fieldset className="flex flex-col gap-2">
           <legend className="eyebrow mb-2 text-foreground">Where the ZEC goes</legend>
-          <label className={`flex cursor-pointer items-start gap-3 rounded-[2px] border px-3 py-3 text-[14px] ${mode === "fresh" ? "border-accent" : "border-hairline-strong"}`}>
-            <input type="radio" name="pb-mode" checked={mode === "fresh"} onChange={() => setMode("fresh")} className="mt-1 accent-[var(--accent)]" />
-            <span>
-              A fresh address per payment
-              <span className="block text-[13px] text-muted-foreground">This service creates a new address for every payer, so two payments to you cannot be linked. Funds land in the service wallet it manages for you.</span>
-            </span>
-          </label>
           <label className={`flex cursor-pointer items-start gap-3 rounded-[2px] border px-3 py-3 text-[14px] ${mode === "own" ? "border-accent" : "border-hairline-strong"}`}>
             <input type="radio" name="pb-mode" checked={mode === "own"} onChange={() => setMode("own")} className="mt-1 accent-[var(--accent)]" />
             <span>
               My own Zcash address
-              <span className="block text-[13px] text-muted-foreground">Paste a unified address from your wallet. Every payment lands there directly. No account with us.</span>
+              <span className="block text-[13px] text-muted-foreground">Paste a unified address from your wallet. Every payment lands there directly, non-custodial. Zcash wallets rotate the diversifier, so payments are not linkable on chain by address reuse either.</span>
+            </span>
+          </label>
+          <label className={`flex cursor-pointer items-start gap-3 rounded-[2px] border px-3 py-3 text-[14px] ${mode === "fresh" ? "border-accent" : "border-hairline-strong"}`}>
+            <input type="radio" name="pb-mode" checked={mode === "fresh"} onChange={() => setMode("fresh")} className="mt-1 accent-[var(--accent)]" />
+            <span>
+              A fresh address per payment from this service
+              <span className="block text-[13px] text-muted-foreground">Demo mode: this instance creates a new address for every payer and the funds land in its operator wallet. Use it to try the flow, not to collect money you want to keep; there is no merchant account or withdrawal yet.</span>
             </span>
           </label>
         </fieldset>
