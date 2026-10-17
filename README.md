@@ -68,6 +68,15 @@ operator from the local faucet, has the operator fund two independent bidder wal
 sealed bids, waits for close, and checks the winner, the disclosure proof, the loser's refund, the winner's settlement,
 the seller payout and the standalone verifier. About 15 minutes end to end.
 
+## Pay button
+
+The Go Dark widget doubles as a private pay button for any site: tips, checkout, donations. `/embed` builds the
+snippet with a live preview; `/demo/tip-jar.html` is a plain HTML page using it through the hosted
+`go-dark.iife.js`. The proxy routes under `/api/godark/*` send CORS headers for origins in
+`GODARK_ALLOWED_ORIGINS` (any origin when unset). Rebuild the hosted bundle with `pnpm build:go-dark`. What the
+rail sees is stated on the page and in `docs/GO-DARK-THREAT-MODEL.md`: private on the Zcash side and from the
+hosting site, not from the swap service.
+
 ## Lot formats
 
 - **Single lot, first price**: the highest bid at or above reserve wins and pays its own bid.

@@ -45,6 +45,13 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 | Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
 | Memo passthrough in Zodl, Zingo, YWallet from a ZIP-321 QR | one bid from each wallet |
 
+## Added Oct 17 (pay button)
+
+- Go Dark packaged as a private pay button for any site: builder with live preview and snippet on `/embed`, CORS on
+  the proxy routes with the origin allow-list, hosted bundle rebuilt (`pnpm build:go-dark`), destination optional
+  when a fresh-address endpoint is set, and a plain-HTML demo page (`/demo/tip-jar.html`) that mounts the hosted
+  script. Verified in the browser up to the wallet step; the mainnet swap itself still needs the wet test.
+
 ## Added Oct 17 (formats; unit-tested, exercised against the live service on testnet with seeded bids)
 
 - Vickrey: winner pays the second bid or the reserve; the winning memo is never disclosed; the result API returns

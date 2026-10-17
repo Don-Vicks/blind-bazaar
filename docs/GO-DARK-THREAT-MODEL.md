@@ -31,6 +31,8 @@ payer wallet (Solana or Ethereum)  →  swap rail (NEAR Intents or Maya)  →  Z
 - **No logging of addresses.** The quote proxy logs status codes and timing only. The service never stores the
   payer's source address; the envelope carries the rail's deposit address, which is a one-time account.
 - **Rate limit and origin allow-list on the proxy** so the widget cannot be used to enumerate quotes or addresses.
+  Third-party pages that host the pay button get CORS headers only if their origin is on the list
+  (`GODARK_ALLOWED_ORIGINS`); the hosting page itself never receives an address or a quote, only the button does.
 
 ## What we do not hide, said plainly
 
