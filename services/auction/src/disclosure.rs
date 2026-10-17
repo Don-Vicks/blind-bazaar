@@ -43,6 +43,9 @@ pub struct Disclosure {
     pub enc_ciphertext: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reserve_zats: Option<u64>,
+    /// How `bid_zats` relates to `reserve_zats`: absent or "at_least" (a floor), "at_most" (an RFQ budget).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reserve_rule: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bid_zats: Option<u64>,
 }
@@ -284,6 +287,7 @@ pub fn build(
         enc_key: None,
         enc_ciphertext: None,
         reserve_zats: None,
+        reserve_rule: None,
         bid_zats: None,
     };
     d.cmx = hex::encode(compute_cmx(&d)?);
@@ -329,6 +333,7 @@ mod tests {
             enc_key: None,
             enc_ciphertext: None,
             reserve_zats: None,
+        reserve_rule: None,
             bid_zats: None,
         };
         assert!(compute_cmx(&d).is_err());

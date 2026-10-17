@@ -201,12 +201,15 @@ fn settle(store: &Connection, auction: &store::Auction, nonce: &str, out: &Recei
         return Ok(());
     };
     let price = winner.price_zats.unwrap_or(0);
-    let owed = price.saturating_sub(winner.value_zats);
+    // RFQ: the buyer pays the whole quote; the quoter's bond is returned with the payout.
+    let rfq = close::is_rfq(&auction.format);
+    let owed = if rfq { price } else { price.saturating_sub(winner.value_zats) };
     if out.value_zats < owed {
         warn!("settlement for {} underpaid: got {} need {}", auction.id, out.value_zats, owed);
         return Ok(());
     }
-    close::settle_winner(store, auction, winner.id, price, winner.value_zats + out.value_zats, &out.txid)?;
+    let paid_total = if rfq { out.value_zats } else { winner.value_zats + out.value_zats };
+    close::settle_winner(store, auction, winner.id, price, paid_total, &out.txid)?;
     store::set_auction_settled_txid(store, &auction.id, &out.txid)?;
     info!("auction {} bid {} settled by {}", auction.id, winner.id, out.txid);
     Ok(())

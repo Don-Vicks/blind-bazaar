@@ -12,7 +12,7 @@ use tokio::sync::oneshot;
 use tower_http::cors::CorsLayer;
 
 use crate::{
-    memo,
+    close, memo,
     state::{AppState, WalletCmd},
     store,
 };
@@ -136,7 +136,10 @@ struct CreateAuction {
     image_url: Option<String>,
     /// Number of identical units (default 1). More than one implies the uniform-price format.
     units: Option<u32>,
-    /// `first_price` (default for one unit) or `uniform` (top-N win, all pay the lowest winning bid).
+    /// `first_price` (default for one unit), `uniform` (top-N win, all pay the lowest winning bid),
+    /// `vickrey` (top bid wins, pays the second bid or the reserve), or `rfq` (a request for quotes:
+    /// `reserve_zats` is the buyer's budget, `deposit_zats` the quoter's bond, the lowest quote wins
+    /// and the buyer pays it).
     format: Option<String>,
 }
 
@@ -201,10 +204,11 @@ async fn create_auction(
     let format = match req.format.as_deref() {
         None => if units > 1 { "uniform" } else { "first_price" },
         Some("uniform") => "uniform",
-        Some("first_price") if units == 1 => "first_price",
-        Some("first_price") => return Err(bad("first_price needs units = 1")),
-        Some(_) => return Err(bad("format must be first_price or uniform")),
+        Some(f @ ("first_price" | "vickrey" | "rfq")) if units == 1 => f,
+        Some(f @ ("first_price" | "vickrey" | "rfq")) => return Err(bad(format!("{f} needs units = 1"))),
+        Some(_) => return Err(bad("format must be first_price, uniform, vickrey or rfq")),
     };
+    let format: &'static str = close::FORMATS.iter().copied().find(|f| *f == format).expect("validated");
     if req.deposit_zats > req.reserve_zats {
         return Err(bad("deposit_zats must not exceed reserve_zats"));
     }
@@ -349,6 +353,18 @@ struct ResultView {
     payout_txid: Option<String>,
     refunds: Vec<RefundView>,
     disclosure: Option<serde_json::Value>,
+    /// Where the clearing price comes from: `own_bid`, `lowest_winning`, `second_bid`, `reserve`, `lowest_quote`.
+    price_source: Option<&'static str>,
+    /// Vickrey: the runner-up's ledger leaf (receipt and amount) with its Merkle path, so anyone can check
+    /// the price the winner pays is a bid committed at close. The runner-up's identity stays sealed.
+    price_proof: Option<PriceProof>,
+}
+
+#[derive(Serialize)]
+struct PriceProof {
+    receipt: String,
+    bid_zats: u64,
+    proof: crate::merkle::Proof,
 }
 
 #[derive(Serialize)]
@@ -380,6 +396,28 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
         .collect();
     let disclosure = store::get_disclosure(&conn, &id)?
         .and_then(|s| serde_json::from_str(&s).ok());
+    // Recompute the ranking the closer saw: every ledger bid, best first.
+    let ledger_bids: Vec<&store::Bid> = bids
+        .iter()
+        .filter(|b| matches!(b.status.as_str(), "valid" | "won" | "settled" | "forfeited" | "expired"))
+        .collect();
+    let ranked = close::rank(&ledger_bids, &auction.format, auction.reserve_zats, &[]);
+    let (price_source, price_proof) = if winners.is_empty() {
+        (None, None)
+    } else {
+        let (_, source) = close::price_for(&auction.format, auction.reserve_zats, &ranked, 0);
+        let source = if auction.format == "uniform" { "lowest_winning" } else { source };
+        let proof = (source == "second_bid")
+            .then(|| ranked.get(1).copied())
+            .flatten()
+            .and_then(|runner_up| {
+                let receipt = runner_up.receipt.clone()?;
+                let entries = store::ledger_entries(&conn, &id).ok()?;
+                let proof = crate::merkle::prove(&entries, &receipt)?;
+                Some(PriceProof { receipt, bid_zats: runner_up.bid_zats?, proof })
+            });
+        (Some(source), proof)
+    };
     Ok(Json(ResultView {
         auction_id: id,
         status: auction.status,
@@ -400,6 +438,8 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
         payout_txid: auction.payout_txid,
         refunds,
         disclosure,
+        price_source,
+        price_proof,
     }))
 }
 
@@ -764,6 +804,19 @@ struct SellerLotDetail {
     lot: SellerLot,
     events: Vec<store::Event>,
     payouts: Vec<store::Payout>,
+    /// RFQ only, once closed: how the buyer pays the winning quote. The memo carries the winning
+    /// quote's nonce, which only the buyer (here) and the quoter know.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settlement: Option<SettlementView>,
+}
+
+#[derive(Serialize)]
+struct SettlementView {
+    uri: String,
+    memo: String,
+    amount_zats: u64,
+    address: String,
+    settle_by: Option<i64>,
 }
 
 async fn seller_lot(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<String>) -> ApiResult<SellerLotDetail> {
@@ -777,10 +830,30 @@ async fn seller_lot(State(state): State<Arc<AppState>>, headers: HeaderMap, Path
     let fulfilment = store::get_fulfilment(&conn, &a.id)?.map(|(n, _)| n);
     let events = store::events_for_auction(&conn, &id)?;
     let payouts = store::payouts_for_auction(&conn, &id)?;
+    let settlement = if close::is_rfq(&a.format) && a.status == "closed" {
+        store::bids_for_auction(&conn, &id)?
+            .into_iter()
+            .find(|b| b.status == "won")
+            .and_then(|w| {
+                let nonce = w.nonce.clone()?;
+                let memo_str = memo::encode_settlement(&memo::Settlement { auction_id: id.clone(), nonce });
+                let amount_zats = w.price_zats?;
+                let request = crate::wallet::send::build_request(&crate::wallet::send::Outgoing {
+                    address: &a.address,
+                    zats: amount_zats,
+                    memo: Some(&memo_str),
+                })
+                .ok()?;
+                Some(SettlementView { uri: request.to_uri(), memo: memo_str, amount_zats, address: a.address.clone(), settle_by: w.settle_by })
+            })
+    } else {
+        None
+    };
     Ok(Json(SellerLotDetail {
         lot: SellerLot { seller_address: a.seller_address.clone(), auction: a, money, fulfilment },
         events,
         payouts,
+        settlement,
     }))
 }
 

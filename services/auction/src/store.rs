@@ -391,7 +391,7 @@ pub fn bid_exists(conn: &Connection, txid: &str, output_index: u32) -> Result<bo
 
 pub fn nonce_used(conn: &Connection, auction_id: &str, nonce: &str) -> Result<bool> {
     let n: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM bids WHERE auction_id = ?1 AND nonce = ?2 AND status IN ('valid', 'won', 'settled', 'forfeited')",
+        "SELECT COUNT(*) FROM bids WHERE auction_id = ?1 AND nonce = ?2 AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired')",
         params![auction_id, nonce],
         |r| r.get(0),
     )?;
@@ -416,7 +416,7 @@ pub fn get_bid(conn: &Connection, id: i64) -> Result<Option<Bid>> {
 pub fn ledger_entries(conn: &Connection, auction_id: &str) -> Result<Vec<(String, u64)>> {
     let mut stmt = conn.prepare(
         "SELECT receipt, bid_zats FROM bids WHERE auction_id = ?1
-           AND status IN ('valid', 'won', 'settled', 'forfeited') AND receipt IS NOT NULL AND bid_zats IS NOT NULL",
+           AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired') AND receipt IS NOT NULL AND bid_zats IS NOT NULL",
     )?;
     let rows = stmt.query_map([auction_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64)))?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -424,7 +424,7 @@ pub fn ledger_entries(conn: &Connection, auction_id: &str) -> Result<Vec<(String
 
 pub fn receipts_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT receipt FROM bids WHERE auction_id = ?1 AND status IN ('valid', 'won', 'settled', 'forfeited')
+        "SELECT receipt FROM bids WHERE auction_id = ?1 AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired')
            AND receipt IS NOT NULL
          ORDER BY receipt ASC",
     )?;
@@ -782,7 +782,7 @@ pub struct LotMoney {
 pub fn lot_money(conn: &Connection, auction_id: &str) -> Result<LotMoney> {
     let mut m = LotMoney::default();
     let (v, r, held): (i64, i64, i64) = conn.query_row(
-        "SELECT SUM(CASE WHEN status IN ('valid','won','settled','forfeited') THEN 1 ELSE 0 END),
+        "SELECT SUM(CASE WHEN status IN ('valid','won','settled','forfeited','expired') THEN 1 ELSE 0 END),
                 SUM(CASE WHEN status IN ('malformed','wrong_deposit','duplicate_nonce','late','unknown_auction') THEN 1 ELSE 0 END),
                 COALESCE(SUM(CASE WHEN status IN ('valid','won') THEN value_zats ELSE 0 END), 0)
          FROM bids WHERE auction_id = ?1",

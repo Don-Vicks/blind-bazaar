@@ -17,29 +17,60 @@ pub struct CloseConfig {
 /// Viewing key used to disclose winning memos (reserve-met proof), if the operator enabled it.
 pub type MemoKey<'a> = Option<&'a zcash_keys::keys::UnifiedFullViewingKey>;
 
-/// Valid bids at or above reserve, best first: highest amount, then earliest received.
-pub fn rank<'a>(valid: &[&'a store::Bid], reserve_zats: u64, exclude: &[i64]) -> Vec<&'a store::Bid> {
+/// Auction formats. `reserve_zats` is a floor for the selling formats and the buyer's budget (a
+/// ceiling) for a request for quotes.
+pub const FORMATS: [&str; 4] = ["first_price", "uniform", "vickrey", "rfq"];
+
+/// True for a request for quotes: the lot creator is a buyer, bids are quotes, the lowest wins.
+pub fn is_rfq(format: &str) -> bool {
+    format == "rfq"
+}
+
+/// Eligible bids, best first. Selling formats: at or above reserve, highest amount first. RFQ: at or
+/// below budget, lowest quote first. Ties go to the earliest received.
+pub fn rank<'a>(valid: &[&'a store::Bid], format: &str, reserve_zats: u64, exclude: &[i64]) -> Vec<&'a store::Bid> {
+    let rfq = is_rfq(format);
     let mut v: Vec<&store::Bid> = valid
         .iter()
         .copied()
         .filter(|b| !exclude.contains(&b.id))
-        .filter(|b| b.bid_zats.unwrap_or(0) >= reserve_zats)
+        .filter(|b| {
+            let amount = b.bid_zats.unwrap_or(0);
+            if rfq { amount > 0 && amount <= reserve_zats } else { amount >= reserve_zats }
+        })
         .collect();
     v.sort_by(|a, b| {
-        b.bid_zats
-            .cmp(&a.bid_zats)
+        let by_amount = if rfq { a.bid_zats.cmp(&b.bid_zats) } else { b.bid_zats.cmp(&a.bid_zats) };
+        by_amount
             .then_with(|| a.received_at.cmp(&b.received_at))
             .then_with(|| a.id.cmp(&b.id))
     });
     v
 }
 
-pub fn pick_winner<'a>(valid: &[&'a store::Bid], reserve_zats: u64, exclude: &[i64]) -> Option<&'a store::Bid> {
-    rank(valid, reserve_zats, exclude).into_iter().next()
+pub fn pick_winner<'a>(valid: &[&'a store::Bid], format: &str, reserve_zats: u64, exclude: &[i64]) -> Option<&'a store::Bid> {
+    rank(valid, format, reserve_zats, exclude).into_iter().next()
+}
+
+/// What the winner at `position` in `ranked` pays (total, deposit included), and where that price
+/// comes from.
+pub fn price_for(format: &str, reserve_zats: u64, ranked: &[&store::Bid], position: usize) -> (u64, &'static str) {
+    let own = ranked.get(position).and_then(|b| b.bid_zats).unwrap_or(0);
+    match format {
+        "uniform" => (own, "lowest_winning"),
+        "vickrey" => match ranked.get(position + 1).and_then(|b| b.bid_zats) {
+            Some(next) if next >= reserve_zats => (next, "second_bid"),
+            _ => (reserve_zats, "reserve"),
+        },
+        "rfq" => (own, "lowest_quote"),
+        _ => (own, "own_bid"),
+    }
 }
 
 /// Close due auctions. First-price: the top bid wins at its own price. Uniform: the top `units` bids
-/// win and every winner pays the lowest winning bid. Losers are refunded with random delays.
+/// win and every winner pays the lowest winning bid. Vickrey: the top bid wins and pays the second
+/// bid (or the reserve). RFQ: the lowest quote within budget wins at its own quote and the buyer pays
+/// it. Losers are refunded with random delays.
 pub fn close_due(
     store: &Connection,
     wallet_ro: Option<&Connection>,
@@ -61,12 +92,19 @@ pub fn close_due(
             .collect();
         let ledger_hash = crate::merkle::root(&ledger);
 
-        let ranked = rank(&valid, auction.reserve_zats, &[]);
-        let units = auction.units.max(1) as usize;
+        let ranked = rank(&valid, &auction.format, auction.reserve_zats, &[]);
+        let units = if auction.format == "uniform" { auction.units.max(1) as usize } else { 1 };
         let winners: Vec<&store::Bid> = ranked.iter().copied().take(units).collect();
         let clearing = match auction.format.as_str() {
             "uniform" => winners.last().and_then(|b| b.bid_zats),
-            _ => winners.first().and_then(|b| b.bid_zats),
+            _ if winners.is_empty() => None,
+            f => Some(price_for(f, auction.reserve_zats, &ranked, 0).0),
+        };
+        let price_of = |position: usize| -> u64 {
+            match auction.format.as_str() {
+                "uniform" => clearing.unwrap_or(0),
+                f => price_for(f, auction.reserve_zats, &ranked, position).0,
+            }
         };
 
         let status = if winners.is_empty() { "no_sale" } else { "closed" };
@@ -80,9 +118,8 @@ pub fn close_due(
             settle_by,
             clearing,
         )?;
-        for w in &winners {
-            let price = if auction.format == "uniform" { clearing.unwrap_or(0) } else { w.bid_zats.unwrap_or(0) };
-            store::set_bid_won(store, w.id, price, settle_by.unwrap_or(now))?;
+        for (i, w) in winners.iter().enumerate() {
+            store::set_bid_won(store, w.id, price_of(i), settle_by.unwrap_or(now))?;
         }
         store::insert_event(
             store,
@@ -102,6 +139,8 @@ pub fn close_due(
 
         if let Some(wallet_ro) = wallet_ro {
             let mut disclosures = Vec::new();
+            // Vickrey keeps the winning bid sealed: the price is proven from the ledger, not the memo.
+            let memo_key = if auction.format == "vickrey" { None } else { memo_key };
             for w in &winners {
                 match disclosure::build(
                     wallet_ro,
@@ -111,7 +150,12 @@ pub fn close_due(
                     w.output_index,
                     memo_key.map(|k| (k, auction.reserve_zats)),
                 ) {
-                    Ok(d) => disclosures.push(d),
+                    Ok(mut d) => {
+                        if is_rfq(&auction.format) && d.reserve_zats.is_some() {
+                            d.reserve_rule = Some("at_most".into());
+                        }
+                        disclosures.push(d)
+                    }
                     Err(e) => tracing::warn!("could not build disclosure for {} bid {}: {e:#}", auction.id, w.id),
                 }
             }
@@ -141,11 +185,14 @@ pub fn close_due(
                 now + delay,
             )?;
         }
-        // A winner whose deposit already covers the price owes nothing: settle on the spot.
-        for w in &winners {
-            let price = if auction.format == "uniform" { clearing.unwrap_or(0) } else { w.bid_zats.unwrap_or(0) };
-            if price <= w.value_zats {
-                settle_winner(store, &auction, w.id, price, w.value_zats, "deposit covers price")?;
+        // A winner whose deposit already covers the price owes nothing: settle on the spot. In an RFQ the
+        // buyer pays, so the quoter's bond never counts towards the price.
+        if !is_rfq(&auction.format) {
+            for (i, w) in winners.iter().enumerate() {
+                let price = price_of(i);
+                if price <= w.value_zats {
+                    settle_winner(store, &auction, w.id, price, w.value_zats, "deposit covers price")?;
+                }
             }
         }
         info!(
@@ -165,6 +212,9 @@ pub fn close_due(
 
 /// Record a winner's settlement: mark the bid settled, pay the seller the price, refund any excess the
 /// winner overpaid, and advance the auction to `settled` once every winner has paid.
+///
+/// RFQ: the buyer (lot creator) is the payer. `paid_total_zats` is what the buyer sent; the winning
+/// quoter receives the price plus their bond back, and any overpayment returns to the buyer.
 pub fn settle_winner(
     store: &Connection,
     auction: &store::Auction,
@@ -174,32 +224,38 @@ pub fn settle_winner(
     source: &str,
 ) -> Result<()> {
     store::set_bid_status(store, bid_id, "settled")?;
+    let bid = store::get_bid(store, bid_id)?;
     let memo_text = format!("BB1P|{}", auction.id);
+    let (payee, payee_amount, overpay_to) = if is_rfq(&auction.format) {
+        let quoter = bid.as_ref().and_then(|b| b.refund_address.clone()).unwrap_or_default();
+        let bond = bid.as_ref().map(|b| b.value_zats).unwrap_or(0);
+        (quoter, price_zats + bond, Some(auction.seller_address.clone()))
+    } else {
+        (auction.seller_address.clone(), price_zats, bid.as_ref().and_then(|b| b.refund_address.clone()))
+    };
     store::queue_payout(
         store,
         Some(&auction.id),
         Some(bid_id),
         "seller",
-        &auction.seller_address,
-        price_zats,
+        &payee,
+        payee_amount,
         Some(&memo_text),
         store::now() + 30,
     )?;
     if paid_total_zats > price_zats {
-        if let Some(b) = store::get_bid(store, bid_id)? {
-            if let Some(addr) = b.refund_address.as_deref() {
-                let memo_text = format!("BB1R|{}", auction.id);
-                store::queue_payout(
-                    store,
-                    Some(&auction.id),
-                    Some(bid_id),
-                    "refund",
-                    addr,
-                    paid_total_zats - price_zats,
-                    Some(&memo_text),
-                    store::now() + 30,
-                )?;
-            }
+        if let Some(addr) = overpay_to.as_deref() {
+            let memo_text = format!("BB1R|{}", auction.id);
+            store::queue_payout(
+                store,
+                Some(&auction.id),
+                Some(bid_id),
+                "refund",
+                addr,
+                paid_total_zats - price_zats,
+                Some(&memo_text),
+                store::now() + 30,
+            )?;
         }
     }
     store::insert_event(
@@ -223,6 +279,31 @@ pub fn enforce_settlement_deadlines(store: &Connection, cfg: &CloseConfig) -> Re
         let Some(auction_id) = winner.auction_id.clone() else { continue };
         let Some(auction) = store::get_auction(store, &auction_id)? else { continue };
         if auction.status != "closed" {
+            continue;
+        }
+        if is_rfq(&auction.format) {
+            // The buyer never paid: the quoter did nothing wrong, so the bond goes back and the request lapses.
+            store::set_bid_status(store, winner.id, "expired")?;
+            let memo_text = format!("BB1R|{}", auction.id);
+            store::queue_payout(
+                store,
+                Some(&auction.id),
+                Some(winner.id),
+                "refund",
+                winner.refund_address.as_deref().unwrap_or_default(),
+                winner.value_zats,
+                Some(&memo_text),
+                now + 30,
+            )?;
+            store::set_auction_status(store, &auction.id, "unsettled")?;
+            store::insert_event(
+                store,
+                Some(&auction.id),
+                "buyer_defaulted",
+                &serde_json::json!({ "bid_receipt": winner.receipt, "quote_zats": winner.price_zats }),
+            )?;
+            info!("rfq {}: buyer did not pay, bond refunded, request lapsed", auction.id);
+            acted += 1;
             continue;
         }
         store::set_bid_status(store, winner.id, "forfeited")?;
@@ -251,10 +332,11 @@ pub fn enforce_settlement_deadlines(store: &Connection, cfg: &CloseConfig) -> Re
             .map(|b| b.id)
             .collect();
         let valid: Vec<&store::Bid> = bids.iter().filter(|b| b.status == "valid").collect();
-        match pick_winner(&valid, auction.reserve_zats, &taken) {
+        let ranked = rank(&valid, &auction.format, auction.reserve_zats, &taken);
+        match ranked.first().copied() {
             Some(r) if store::cancel_queued_payout_for_bid(store, r.id)? => {
                 let settle_by = now + cfg.settlement_window_secs;
-                let price = r.bid_zats.unwrap_or(0);
+                let price = price_for(&auction.format, auction.reserve_zats, &ranked, 0).0;
                 store::set_bid_won(store, r.id, price, settle_by)?;
                 store::insert_event(
                     store,
@@ -317,11 +399,15 @@ mod tests {
     }
 
     fn uniform_auction(store: &Connection, id: &str, units: u32) {
+        formatted_auction(store, id, units, "uniform");
+    }
+
+    fn formatted_auction(store: &Connection, id: &str, units: u32, format: &str) {
         store::insert_auction(
             store,
             &NewAuction {
                 id,
-                title: "edition",
+                title: "lot",
                 description: "",
                 reserve_zats: 2_000_000,
                 deposit_zats: 1_000_000,
@@ -332,7 +418,7 @@ mod tests {
                 seller_id: None,
                 image_url: None,
                 units,
-                format: "uniform",
+                format,
             },
         )
         .unwrap();
@@ -491,6 +577,95 @@ mod tests {
         close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
         assert_eq!(store::get_bid(&store, b).unwrap().unwrap().status, "settled");
         assert_eq!(store::get_auction(&store, "gggggggg").unwrap().unwrap().status, "settled");
+    }
+
+    #[test]
+    fn vickrey_winner_pays_the_second_bid_and_stays_sealed() {
+        let store = store::open_in_memory().unwrap();
+        formatted_auction(&store, "hhhhhhhh", 1, "vickrey");
+        let b1 = bid(&store, "hhhhhhhh", "71", 3_000_000, "0000000000000071", "valid");
+        let b2 = bid(&store, "hhhhhhhh", "72", 5_000_000, "0000000000000072", "valid");
+        let _b3 = bid(&store, "hhhhhhhh", "73", 1_000_000, "0000000000000073", "valid"); // below reserve
+        close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
+        let a = store::get_auction(&store, "hhhhhhhh").unwrap().unwrap();
+        assert_eq!(a.winner_bid_id, Some(b2));
+        assert_eq!(a.clearing_zats, Some(3_000_000), "price is the runner-up's bid");
+        assert_eq!(store::get_bid(&store, b2).unwrap().unwrap().price_zats, Some(3_000_000));
+        let refunded: Vec<i64> = store::payouts_for_auction(&store, "hhhhhhhh").unwrap().iter().filter(|p| p.kind == "refund").filter_map(|p| p.bid_id).collect();
+        assert!(refunded.contains(&b1));
+        // The ledger lets anyone check the price is a committed bid without opening the runner-up's note.
+        let entries = store::ledger_entries(&store, "hhhhhhhh").unwrap();
+        let receipt = crate::memo::receipt("0000000000000071");
+        let proof = crate::merkle::prove(&entries, &receipt).unwrap();
+        assert_eq!(proof.root, a.ledger_hash.unwrap());
+        assert!(crate::merkle::verify(&receipt, 3_000_000, &proof));
+    }
+
+    #[test]
+    fn vickrey_single_bid_pays_the_reserve_and_second_chance_reprices() {
+        let store = store::open_in_memory().unwrap();
+        formatted_auction(&store, "iiiiiiii", 1, "vickrey");
+        let only = bid(&store, "iiiiiiii", "81", 5_000_000, "0000000000000081", "valid");
+        close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
+        assert_eq!(store::get_bid(&store, only).unwrap().unwrap().price_zats, Some(2_000_000), "no second bid: pay the reserve");
+
+        let store = store::open_in_memory().unwrap();
+        formatted_auction(&store, "jjjjjjjj", 1, "vickrey");
+        let b1 = bid(&store, "jjjjjjjj", "91", 3_000_000, "0000000000000091", "valid");
+        let b2 = bid(&store, "jjjjjjjj", "92", 4_000_000, "0000000000000092", "valid");
+        let b3 = bid(&store, "jjjjjjjj", "93", 6_000_000, "0000000000000093", "valid");
+        let c = CloseConfig { settlement_window_secs: -1, ..cfg() };
+        close_due(&store, None, &Network::Test, "test", &c, None).unwrap();
+        assert_eq!(store::get_bid(&store, b3).unwrap().unwrap().price_zats, Some(4_000_000));
+        enforce_settlement_deadlines(&store, &c).unwrap();
+        let r = store::get_bid(&store, b2).unwrap().unwrap();
+        assert_eq!(r.status, "won");
+        assert_eq!(r.price_zats, Some(3_000_000), "runner-up now pays the third bid, not their own");
+        assert_eq!(store::get_bid(&store, b1).unwrap().unwrap().status, "valid");
+    }
+
+    #[test]
+    fn rfq_lowest_quote_within_budget_wins_and_the_buyer_pays() {
+        let store = store::open_in_memory().unwrap();
+        formatted_auction(&store, "kkkkkkkk", 1, "rfq"); // budget 2_000_000, bond 1_000_000
+        let q1 = bid(&store, "kkkkkkkk", "a1", 1_500_000, "00000000000000a1", "valid");
+        let q2 = bid(&store, "kkkkkkkk", "a2", 1_200_000, "00000000000000a2", "valid");
+        let _q3 = bid(&store, "kkkkkkkk", "a3", 2_500_000, "00000000000000a3", "valid"); // over budget
+        close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
+        let a = store::get_auction(&store, "kkkkkkkk").unwrap().unwrap();
+        assert_eq!(a.status, "closed");
+        assert_eq!(a.winner_bid_id, Some(q2));
+        assert_eq!(a.clearing_zats, Some(1_200_000));
+        let w = store::get_bid(&store, q2).unwrap().unwrap();
+        assert_eq!(w.status, "won", "the quoter's bond does not count as payment; the buyer must pay");
+        let payouts = store::payouts_for_auction(&store, "kkkkkkkk").unwrap();
+        assert_eq!(payouts.iter().filter(|p| p.kind == "refund").count(), 2, "losing and over-budget quotes get their bond back");
+        assert!(payouts.iter().any(|p| p.kind == "refund" && p.bid_id == Some(q1)));
+
+        // The buyer pays the quote (plus a little): the quoter gets quote + bond, the buyer the excess.
+        settle_winner(&store, &a, q2, 1_200_000, 1_250_000, "test").unwrap();
+        let payouts = store::payouts_for_auction(&store, "kkkkkkkk").unwrap();
+        let to_quoter = payouts.iter().find(|p| p.kind == "seller").unwrap();
+        assert_eq!(to_quoter.value_zats, 2_200_000);
+        assert_eq!(to_quoter.to_address, UA);
+        assert!(payouts.iter().any(|p| p.kind == "refund" && p.bid_id == Some(q2) && p.value_zats == 50_000));
+        assert_eq!(store::get_auction(&store, "kkkkkkkk").unwrap().unwrap().status, "settled");
+    }
+
+    #[test]
+    fn rfq_buyer_default_returns_the_bond_and_lapses() {
+        let store = store::open_in_memory().unwrap();
+        formatted_auction(&store, "llllllll", 1, "rfq");
+        let q = bid(&store, "llllllll", "b1", 1_000_000, "00000000000000b1", "valid");
+        let c = CloseConfig { settlement_window_secs: -1, ..cfg() };
+        close_due(&store, None, &Network::Test, "test", &c, None).unwrap();
+        assert_eq!(enforce_settlement_deadlines(&store, &c).unwrap(), 1);
+        assert_eq!(store::get_bid(&store, q).unwrap().unwrap().status, "expired");
+        assert_eq!(store::get_auction(&store, "llllllll").unwrap().unwrap().status, "unsettled");
+        let payouts = store::payouts_for_auction(&store, "llllllll").unwrap();
+        assert!(payouts.iter().any(|p| p.kind == "refund" && p.bid_id == Some(q) && p.value_zats == 1_000_000));
+        assert!(payouts.iter().all(|p| p.kind != "forfeit"));
+        assert_eq!(store::ledger_entries(&store, "llllllll").unwrap().len(), 1, "expired quotes stay in the ledger");
     }
 
     #[test]

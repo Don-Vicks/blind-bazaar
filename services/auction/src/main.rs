@@ -68,6 +68,7 @@ async fn verify_one(cfg: &Config, d: &disclosure::Disclosure) -> anyhow::Result<
                 let note = disclosure::decrypt_note_with_key(&tx, d.action_index, pool, &key)?;
                 let bid = disclosure::memo_bid_matches(d, &note)?;
                 match (bid, d.reserve_zats) {
+                    (Some(b), Some(r)) if d.reserve_rule.as_deref() == Some("at_most") => println!("     memo decrypted: quote {b} zatoshis, budget {r}: {}", if b <= r { "within budget" } else { "OVER BUDGET" }),
                     (Some(b), Some(r)) => println!("     memo decrypted: bid {b} zatoshis, reserve {r}: {}", if b >= r { "reserve met" } else { "BELOW RESERVE" }),
                     (Some(b), None) => println!("     memo decrypted: bid {b} zatoshis"),
                     _ => println!("     memo decrypted but carries no BB1 bid"),
