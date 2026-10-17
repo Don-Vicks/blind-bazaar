@@ -51,7 +51,7 @@ export default function Home() {
                 <p className="serif text-[22px] leading-tight group-hover:text-accent">{featured.title}</p>
                 <p className="num shrink-0 text-[13px] text-muted-foreground">{now === null ? "…" : countdown(featured.close_at - now)}</p>
               </div>
-              <Eyebrow className="mt-1">Featured lot · reserve {zec(featured.reserve_zats)}</Eyebrow>
+              <Eyebrow className="mt-1">Featured lot · {fmt(featured.format).floorLabel.toLowerCase()} {zec(featured.reserve_zats)}</Eyebrow>
             </Link>
           ) : (
             <div className="plate">
