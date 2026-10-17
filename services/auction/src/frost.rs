@@ -323,14 +323,28 @@ struct Session {
     created: Instant,
 }
 
+/// One line of the signer's audit log: what it was asked to authorise and what it did.
+#[derive(Clone, Debug, Serialize)]
+pub struct AuditEntry {
+    pub at: i64,
+    pub session: String,
+    pub sighash: String,
+    pub summary: TxSummary,
+    /// "committed", "signed", or "refused: …"
+    pub outcome: String,
+}
+
 pub struct SignerHost {
     share: bb_frost::SignerShare,
     fvk: orchard::keys::FullViewingKey,
     params: Network,
     policy: SignerPolicy,
     sessions: Mutex<HashMap<String, Session>>,
+    audit: Mutex<std::collections::VecDeque<AuditEntry>>,
     pub signed: AtomicU64,
 }
+
+const AUDIT_KEEP: usize = 200;
 
 const SESSION_TTL: Duration = Duration::from_secs(600);
 
@@ -345,8 +359,28 @@ impl SignerHost {
             params,
             policy,
             sessions: Mutex::new(HashMap::new()),
+            audit: Mutex::new(std::collections::VecDeque::new()),
             signed: AtomicU64::new(0),
         })
+    }
+
+    fn audit(&self, session: &str, sighash: &[u8; 32], summary: &TxSummary, outcome: impl Into<String>) {
+        let mut log = self.audit.lock().unwrap();
+        if log.len() >= AUDIT_KEEP {
+            log.pop_front();
+        }
+        log.push_back(AuditEntry {
+            at: time::OffsetDateTime::now_utc().unix_timestamp(),
+            session: session.to_string(),
+            sighash: hex::encode(sighash),
+            summary: summary.clone(),
+            outcome: outcome.into(),
+        });
+    }
+
+    /// Most recent audit entries, newest first.
+    pub fn audit_log(&self) -> Vec<AuditEntry> {
+        self.audit.lock().unwrap().iter().rev().cloned().collect()
     }
 
     pub fn load(share_path: &Path, escrow: &Escrow, params: Network, policy: SignerPolicy) -> Result<Self> {
@@ -383,9 +417,12 @@ impl SignerHost {
                     "refusing session {session}: {} zats to external recipients exceeds policy {max}",
                     plan.summary.external_zats
                 );
-                return Err(anyhow!("policy: external value {} exceeds {max}", plan.summary.external_zats));
+                let reason = format!("policy: external value {} exceeds {max}", plan.summary.external_zats);
+                self.audit(session, &plan.sighash, &plan.summary, format!("refused: {reason}"));
+                return Err(anyhow!(reason));
             }
         }
+        self.audit(session, &plan.sighash, &plan.summary, "committed");
         info!(
             "session {session}: {} spend(s), {} external output(s) totalling {} zats, change {} zats",
             plan.actions.len(),
@@ -441,6 +478,7 @@ impl SignerHost {
             shares.push(Share { pool: item.pool, index: item.index, share: bb_frost::wire::share_to_hex(&share) });
         }
         self.signed.fetch_add(1, Ordering::Relaxed);
+        self.audit(&req.session, &session.plan.sighash, &session.plan.summary, "signed");
         info!("session {}: signed {} spend(s)", req.session, shares.len());
         Ok(Round2Response { identifier: self.identifier(), shares })
     }
@@ -471,6 +509,10 @@ pub async fn run_signer(host: Arc<SignerHost>, bind: &str, token: Option<String>
             "policy_max_external_zats": st.host.policy.max_external_zats,
         }))
     }
+    async fn log(State(st): State<St>, headers: HeaderMap) -> std::result::Result<Json<Vec<AuditEntry>>, (StatusCode, String)> {
+        authed(&st, &headers)?;
+        Ok(Json(st.host.audit_log()))
+    }
     async fn round1(
         State(st): State<St>,
         headers: HeaderMap,
@@ -490,6 +532,7 @@ pub async fn run_signer(host: Arc<SignerHost>, bind: &str, token: Option<String>
 
     let app = Router::new()
         .route("/health", get(health))
+        .route("/frost/log", get(log))
         .route("/frost/round1", post(round1))
         .route("/frost/round2", post(round2))
         .with_state(St { host, token });
@@ -781,6 +824,11 @@ mod tests {
         }
         assert_eq!(hosts[1].signed.load(Ordering::Relaxed), 1);
         assert_eq!(hosts[0].signed.load(Ordering::Relaxed), 0);
+        let log = hosts[1].audit_log();
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0].outcome, "signed");
+        assert_eq!(log[1].outcome, "committed");
+        assert_eq!(log[0].summary.external_zats, 50_000);
     }
 
     #[tokio::test]
@@ -805,6 +853,7 @@ mod tests {
         let plan = plan(&public, 1, 10_001);
         let err = hosts[0].round1_plan("s1", plan).unwrap_err();
         assert!(err.to_string().contains("policy"), "{err}");
+        assert!(hosts[0].audit_log()[0].outcome.starts_with("refused"));
         let ok = plan_ok(&public);
         hosts[0].round1_plan("s2", ok).unwrap();
     }

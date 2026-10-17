@@ -66,7 +66,9 @@ FROST_ESCROW=./frost/escrow.json FROST_SIGNERS=https://a:8801,https://b:8801,htt
 # viewer (unchanged): OPERATOR_UFVK=<from `frost show`> ROLE=viewer bb-auction
 ```
 
-`/health` reports `"signing": "frost 2-of-3 (…)"`. `FROST_SIGNER_SHARES` runs shares in-process for
+`/health` reports `"signing": "frost 2-of-3 (…)"`. Each signer keeps an audit log of what it was
+asked to authorise (`GET /frost/log`: session, sighash, external outputs and amounts, change, and
+whether it committed, signed or refused). `FROST_SIGNER_SHARES` runs shares in-process for
 development; it gives no separation and logs a warning. `scripts/regtest-e2e.sh` with `FROST=1`
 runs the full money loop with two signer hosts up and the third deliberately absent.
 
