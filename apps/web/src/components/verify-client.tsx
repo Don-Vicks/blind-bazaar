@@ -23,6 +23,7 @@ interface Disclosure {
   enc_key?: string;
   enc_ciphertext?: string;
   reserve_zats?: number;
+  reserve_rule?: "at_least" | "at_most";
   bid_zats?: number;
 }
 
@@ -62,7 +63,7 @@ export function VerifyClient({ id }: { id: string }) {
               const m = /^BB1\|[0-9a-z]{8}\|(\d+)\|/.exec(note.memo ?? "");
               if (m) {
                 c.bidZats = Number(m[1]);
-                if (d.reserve_zats !== undefined) c.reserveMet = c.bidZats >= d.reserve_zats;
+                if (d.reserve_zats !== undefined) c.reserveMet = d.reserve_rule === "at_most" ? c.bidZats <= d.reserve_zats : c.bidZats >= d.reserve_zats;
               }
             }
           } catch (e) {
@@ -144,7 +145,9 @@ export function VerifyClient({ id }: { id: string }) {
                     <dd><Mono>{c.memo ?? "(empty)"}</Mono></dd>
                     {c.bidZats !== undefined && c.d.reserve_zats !== undefined && (
                       <p className={`mt-1 ${c.reserveMet ? "text-success" : "text-danger"}`}>
-                        Bid {zec(c.bidZats)} against reserve {zec(c.d.reserve_zats)}: {c.reserveMet ? "reserve met" : "below reserve"}
+                        {c.d.reserve_rule === "at_most"
+                          ? `Quote ${zec(c.bidZats)} against budget ${zec(c.d.reserve_zats)}: ${c.reserveMet ? "within budget" : "over budget"}`
+                          : `Bid ${zec(c.bidZats)} against reserve ${zec(c.d.reserve_zats)}: ${c.reserveMet ? "reserve met" : "below reserve"}`}
                       </p>
                     )}
                   </div>

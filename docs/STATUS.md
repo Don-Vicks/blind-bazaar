@@ -45,6 +45,16 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 | Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
 | Memo passthrough in Zodl, Zingo, YWallet from a ZIP-321 QR | one bid from each wallet |
 
+## Added Oct 17 (formats; unit-tested, exercised against the live service on testnet with seeded bids)
+
+- Vickrey: winner pays the second bid or the reserve; the winning memo is never disclosed; the result API returns
+  the runner-up's ledger leaf with its Merkle path (`price_proof`) and the result page verifies it in the browser.
+  Second-chance offers reprice to the next bid. 2 close tests.
+- Request for quotes: buyer sets a budget and a bond, lowest sealed quote wins, the buyer settles from the
+  dashboard (settlement URI on `/seller/lots/{id}`), the winner receives quote plus bond, buyer default returns
+  the bond and lapses the request. Disclosures carry `reserve_rule: at_most` so both verifiers read "within
+  budget". 2 close tests. `scripts/regtest-e2e.sh FORMAT=vickrey|rfq` written, not yet run (regtest devnet).
+
 ## Added Oct 17 (FROST escrow; unit-tested, chain run pending)
 
 - 2-of-3 FROST custody for the spender: `packages/bb-frost` (RedPallas re-randomized FROST, 3 tests),

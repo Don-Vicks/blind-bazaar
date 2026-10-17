@@ -6,6 +6,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useState } from "react";
 import { API_BASE, type AuctionView } from "@/lib/api";
 import { zec } from "@/lib/format";
+import { fmt, isRfq } from "@/lib/formats";
 import { Button, Eyebrow, Field, Mono, Panel, inputClass } from "@/components/ui";
 
 const RECEIPTS_KEY = "bb.receipts";
@@ -27,6 +28,8 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
   const [errors, setErrors] = useState<{ amount?: string; refund?: string; confirm?: string }>({});
   const [prepared, setPrepared] = useState<PreparedBid | null>(null);
   const [copied, setCopied] = useState<"uri" | "memo" | null>(null);
+  const rfq = isRfq(auction.format);
+  const f = fmt(auction.format);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -34,7 +37,10 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
     let bidZats = 0n;
     try {
       bidZats = parseZec(amount);
-      if (bidZats < BigInt(auction.reserve_zats)) next.amount = `At least ${zec(auction.reserve_zats)}.`;
+      if (rfq) {
+        if (bidZats === 0n) next.amount = "A quote above zero.";
+        else if (bidZats > BigInt(auction.reserve_zats)) next.amount = `At most the budget, ${zec(auction.reserve_zats)}.`;
+      } else if (bidZats < BigInt(auction.reserve_zats)) next.amount = `At least ${zec(auction.reserve_zats)}.`;
     } catch {
       next.amount = "An amount in ZEC, up to 8 decimals.";
     }
@@ -61,11 +67,11 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
     return (
       <Panel className="flex flex-col gap-7">
         <div>
-          <Eyebrow>Your sealed bid</Eyebrow>
+          <Eyebrow>Your sealed {f.verb}</Eyebrow>
           <p className="serif mt-2 text-[34px] leading-none">{zec(prepared.bid.bidZats)}</p>
           <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
-            Pay the <span className="num text-foreground">{zec(prepared.depositZats)}</span> deposit from Zodl, Zingo or
-            YWallet. The bid travels inside the encrypted memo; only the auction can read it.
+            Pay the <span className="num text-foreground">{zec(prepared.depositZats)}</span> {rfq ? "bond" : "deposit"} from Zodl, Zingo or
+            YWallet. The {f.verb} travels inside the encrypted memo; only the auction can read it.
           </p>
         </div>
         <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
@@ -93,14 +99,14 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
           <Eyebrow>Receipt · keep this</Eyebrow>
           <Mono className="mt-2 block">{prepared.receipt}</Mono>
           <p className="mt-2 text-[13px] text-muted-foreground">
-            Appears on the status page once your bid lands. Reveals nothing about the bid. Saved in this browser.
+            Appears on the status page once your {f.verb} lands. Reveals nothing about it. Saved in this browser.
           </p>
         </div>
         <div className="hairline-t pt-5">
           <Eyebrow>No ZEC?</Eyebrow>
           <p className="mb-4 mt-2 text-[13px] leading-relaxed text-muted-foreground">
-            Go Dark swaps the deposit from Solana or Ethereum into shielded ZEC at the auction address and relays your
-            sealed bid. The rail never sees the bid.
+            Go Dark swaps the {rfq ? "bond" : "deposit"} from Solana or Ethereum into shielded ZEC at the auction address and relays your
+            sealed {f.verb}. The rail never sees it.
           </p>
           <GoDark
             to={auction.address}
@@ -120,13 +126,16 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
     <Panel>
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
         <div>
-          <Eyebrow>Place a sealed bid</Eyebrow>
+          <Eyebrow>Place a sealed {f.verb}</Eyebrow>
           <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
-            You pay the fixed deposit now. Win, and you pay the difference. Lose, and the deposit returns shielded to the
-            address below.
+            {rfq
+              ? "You post the fixed bond now. Win, and the buyer pays your quote; you receive it plus the bond. Lose, and the bond returns shielded to the address below."
+              : auction.format === "vickrey"
+                ? "You pay the fixed deposit now. Win, and you pay the second-highest bid, never your own. Lose, and the deposit returns shielded to the address below."
+                : "You pay the fixed deposit now. Win, and you pay the difference. Lose, and the deposit returns shielded to the address below."}
           </p>
         </div>
-        <Field label="Your bid" htmlFor="bid-amount" error={errors.amount} hint={`Reserve ${zec(auction.reserve_zats)}`}>
+        <Field label={f.amountLabel} htmlFor="bid-amount" error={errors.amount} hint={`${f.floorLabel} ${zec(auction.reserve_zats)}`}>
           <div className="relative">
             <input
               id="bid-amount"

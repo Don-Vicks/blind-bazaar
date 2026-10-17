@@ -2,8 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { verifyInclusion } from "@blind-bazaar/sdk";
 import { api, explorerTxUrl } from "@/lib/api";
 import { duration, zec } from "@/lib/format";
+import { fmt, isRfq } from "@/lib/formats";
 import { LotImage } from "@/components/lot-plate";
 import { Eyebrow, Fact, LinkButton, Mono, Panel, Skeleton, StatusDot } from "@/components/ui";
 
@@ -26,6 +28,15 @@ export function ResultClient({ id }: { id: string }) {
       /* no storage */
     }
   }, [id]);
+  const priceProof = useQuery({
+    queryKey: ["price-proof", id, data?.price_proof?.receipt],
+    queryFn: async () => {
+      const p = data!.price_proof!;
+      const ok = await verifyInclusion(p.receipt, BigInt(p.bid_zats), p.proof);
+      return ok && p.proof.root === data!.ledger_hash;
+    },
+    enabled: !!data?.price_proof && !!data?.ledger_hash,
+  });
   const fulfil = useQuery({
     queryKey: ["fulfilment", id, mine],
     queryFn: async () => {
@@ -65,10 +76,13 @@ export function ResultClient({ id }: { id: string }) {
   const disclosure = (Array.isArray(data.disclosure) ? data.disclosure[0] : data.disclosure) as { verified_against_chain?: boolean; cmx?: string; action_index?: number } | null;
   const sold = data.winning_amount_zats !== null;
   const uniform = data.format === "uniform";
+  const vickrey = data.format === "vickrey";
+  const rfq = isRfq(data.format);
+  const f = fmt(data.format);
   type D = { verified_against_chain?: boolean; enc_key?: string; bid_zats?: number; reserve_zats?: number };
   const disclosures = Array.isArray(data.disclosure) ? (data.disclosure as D[]) : data.disclosure ? [data.disclosure as D] : [];
   const reserveProofs = disclosures.filter((d) => d.enc_key && d.bid_zats !== undefined && d.reserve_zats !== undefined);
-  const reserveMet = reserveProofs.length > 0 && reserveProofs.every((d) => (d.bid_zats ?? 0) >= (d.reserve_zats ?? 0));
+  const reserveMet = reserveProofs.length > 0 && reserveProofs.every((d) => (rfq ? (d.bid_zats ?? 0) <= (d.reserve_zats ?? 0) : (d.bid_zats ?? 0) >= (d.reserve_zats ?? 0)));
   const verifiedCount = disclosures.filter((d) => d.verified_against_chain).length;
 
   return (
@@ -77,7 +91,7 @@ export function ResultClient({ id }: { id: string }) {
         <LotImage id={id} src={lot.data?.image_url} alt={lot.data?.title ?? ""} ratio="16/7" className={sold ? "" : "opacity-60"} />
         <div className="absolute bottom-0 left-0 flex items-end gap-5 p-5 sm:p-8">
           <span className="rounded-[2px] bg-background/90 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-foreground backdrop-blur">
-            {sold ? "Sold" : "Unsold"}
+            {sold ? (rfq ? "Awarded" : "Sold") : rfq ? "No award" : "Unsold"}
           </span>
         </div>
       </div>
@@ -95,12 +109,20 @@ export function ResultClient({ id }: { id: string }) {
               {sold
                 ? uniform
                   ? `${data.units_sold} of ${data.units} units sold at one price, the lowest winning bid among ${data.valid_bid_count} sealed bids. Winners above the clearing price pay only the clearing price. Losing amounts and bidders are never revealed. Every losing deposit returns shielded to the address its bidder sealed into the memo.`
-                  : `The highest of ${data.valid_bid_count} sealed bids. The losing amounts and bidders are never revealed, not even to the seller. Every losing deposit returns shielded to the address its bidder sealed into the memo.`
-                : "No bid met the reserve. Every deposit is being returned shielded to the address its bidder sealed into the memo. Nobody learns who bid, or how much."}
+                  : vickrey
+                    ? data.price_source === "second_bid"
+                      ? `The highest of ${data.valid_bid_count} sealed bids won and pays the second-highest bid. The winning bid itself stays sealed, even from the seller; the price is proven from the ledger below. Every losing deposit returns shielded to the address its bidder sealed into the memo.`
+                      : `The only bid at or above reserve won and pays the reserve. The winning bid itself stays sealed. Every other deposit returns shielded to the address its bidder sealed into the memo.`
+                    : rfq
+                      ? `The lowest of ${data.valid_bid_count} sealed quotes within budget. The other quotes and quoters are never revealed, not even to the buyer. Every losing bond returns shielded to the address its quoter sealed into the memo.`
+                      : `The highest of ${data.valid_bid_count} sealed bids. The losing amounts and bidders are never revealed, not even to the seller. Every losing deposit returns shielded to the address its bidder sealed into the memo.`
+                : rfq
+                  ? "No quote came in under budget. Every bond is being returned shielded to the address its quoter sealed into the memo. Nobody learns who quoted, or how much."
+                  : "No bid met the reserve. Every deposit is being returned shielded to the address its bidder sealed into the memo. Nobody learns who bid, or how much."}
             </p>
           </div>
           <div className="rise rise-2 grid grid-cols-2 gap-8 sm:grid-cols-3">
-            <Fact label="Sealed bids" large>
+            <Fact label={rfq ? "Sealed quotes" : "Sealed bids"} large>
               {data.valid_bid_count}
             </Fact>
             {uniform && (
@@ -115,9 +137,9 @@ export function ResultClient({ id }: { id: string }) {
             </Fact>
             <Fact label="Settlement">
               {data.payout_txid
-                ? "Seller paid"
+                ? rfq ? "Quoter paid" : "Seller paid"
                 : sold
-                  ? `${data.units_settled} of ${data.units_sold} paid`
+                  ? rfq ? (data.units_settled ? "Buyer paid" : "Awaiting the buyer") : `${data.units_settled} of ${data.units_sold} paid`
                   : "—"}
             </Fact>
           </div>
@@ -145,8 +167,26 @@ export function ResultClient({ id }: { id: string }) {
             <div>
               <Eyebrow>Ledger commitment at close</Eyebrow>
               <Mono className="mt-2 block text-muted-foreground">{data.ledger_hash ?? "—"}</Mono>
-              <p className="mt-1 text-[13px] text-muted-foreground">A hash of every valid bid at the moment of close, published before any refund leaves.</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">A hash of every valid {f.verb} at the moment of close, published before any refund leaves.</p>
             </div>
+            {vickrey && sold && (
+              <div>
+                <Eyebrow>Price proof</Eyebrow>
+                {data.price_proof ? (
+                  <>
+                    <p className="serif mt-2 text-[22px] leading-tight">
+                      {priceProof.data === true ? "The second bid is in the ledger." : priceProof.data === false ? "Proof does not verify." : "Checking…"}
+                    </p>
+                    <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+                      The runner-up&apos;s ledger leaf, receipt <span className="num">{data.price_proof.receipt.slice(0, 12)}…</span> at{" "}
+                      <span className="num">{zec(data.price_proof.bid_zats)}</span>, with its Merkle path to the commitment above, verified in this browser. It shows the price the winner pays was a bid sealed before close. The runner-up stays anonymous and the winning bid stays sealed.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">Only one bid met the reserve, so the winner pays the published reserve. Nothing else to prove.</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
         <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
@@ -167,16 +207,16 @@ export function ResultClient({ id }: { id: string }) {
             </div>
             <p className="text-[14px] leading-relaxed text-muted-foreground">
               A note-opening disclosure of the winning output: the recipient, value and randomness that reproduce the
-              on-chain commitment. Anyone can check it with the service binary and a public lightwalletd. Losing bids
-              stay sealed.
+              on-chain commitment. Anyone can check it with the service binary and a public lightwalletd. {rfq ? "Losing quotes" : "Losing bids"}{" "}
+              stay sealed{vickrey ? ", and so does the winning bid" : ""}.
             </p>
             {reserveProofs.length > 0 && (
               <div className="hairline-t pt-4">
-                <Eyebrow>Reserve</Eyebrow>
-                <p className="serif mt-2 text-[22px] leading-tight">{reserveMet ? "Met, and provable." : "Not met."}</p>
+                <Eyebrow>{rfq ? "Budget" : "Reserve"}</Eyebrow>
+                <p className="serif mt-2 text-[22px] leading-tight">{reserveMet ? (rfq ? "Within budget, and provable." : "Met, and provable.") : rfq ? "Over budget." : "Not met."}</p>
                 <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
                   The winning note&apos;s encryption key is disclosed, so anyone can decrypt that one memo from the
-                  transaction and read the bid{reserveProofs.length === 1 && reserveProofs[0].bid_zats !== undefined ? ` (${zec(reserveProofs[0].bid_zats)} against a reserve of ${zec(reserveProofs[0].reserve_zats ?? 0)})` : ""}. No other note can be opened with it.
+                  transaction and read the {f.verb}{reserveProofs.length === 1 && reserveProofs[0].bid_zats !== undefined ? ` (${zec(reserveProofs[0].bid_zats)} against a ${rfq ? "budget" : "reserve"} of ${zec(reserveProofs[0].reserve_zats ?? 0)})` : ""}. No other note can be opened with it.
                 </p>
               </div>
             )}

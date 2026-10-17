@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { countdown, dateTime, zec } from "@/lib/format";
+import { fmt } from "@/lib/formats";
 import { useNow } from "@/lib/use-now";
 import { Eyebrow, Fact, LinkButton, Mono, Panel, Skeleton, StatusDot } from "@/components/ui";
 import { BidPanel } from "@/components/bid-panel";
@@ -43,6 +44,7 @@ export function AuctionClient({ id }: { id: string }) {
 
   const remaining = data.close_at - (now ?? data.close_at);
   const open = data.status === "open" && remaining > 0;
+  const f = fmt(data.format);
 
   return (
     <div className="flex flex-col gap-10 sm:gap-14">
@@ -55,7 +57,7 @@ export function AuctionClient({ id }: { id: string }) {
           <div className="flex items-center gap-4">
             <Eyebrow>
               Lot {data.id}
-              {data.units > 1 ? ` · edition of ${data.units} · uniform price` : ""}
+              {data.units > 1 ? ` · edition of ${data.units} · uniform price` : f.tag ? ` · ${f.name.toLowerCase()}` : ""}
             </Eyebrow>
             <StatusDot status={open ? "open" : data.status === "open" ? "closing" : data.status} />
           </div>
@@ -64,10 +66,10 @@ export function AuctionClient({ id }: { id: string }) {
         </div>
 
         <div className="rise rise-2 grid grid-cols-2 gap-8 sm:grid-cols-3">
-          <Fact label="Reserve" large>
+          <Fact label={f.floorLabel} large>
             {zec(data.reserve_zats)}
           </Fact>
-          <Fact label="Deposit to bid" large>
+          <Fact label={f.depositLabel} large>
             {zec(data.deposit_zats)}
           </Fact>
           <Fact label={open ? "Closes in" : "Closed"} large>
@@ -78,7 +80,7 @@ export function AuctionClient({ id }: { id: string }) {
         <div className="rise rise-3 hairline-t flex flex-col gap-8 pt-8">
           <div className="grid gap-6 sm:grid-cols-2">
             <div>
-              <Eyebrow>Bids received</Eyebrow>
+              <Eyebrow>{data.format === "rfq" ? "Quotes received" : "Bids received"}</Eyebrow>
               <p className="num mt-1.5 text-[15px]">{data.bid_count}</p>
               <p className="mt-1 text-[13px] text-muted-foreground">Count only. Amounts stay sealed until close.</p>
             </div>
@@ -89,18 +91,17 @@ export function AuctionClient({ id }: { id: string }) {
           </div>
           <div className="grid gap-6 text-[14px] leading-relaxed text-muted-foreground sm:grid-cols-3">
             <p>
-              <span className="text-foreground">1. Seal.</span> Your bid is written into the encrypted memo of one shielded
-              payment of the deposit.
+              <span className="text-foreground">1. Seal.</span> Your {f.verb} is written into the encrypted memo of one shielded
+              payment of the {data.format === "rfq" ? "bond" : "deposit"}.
             </p>
             <p>
               <span className="text-foreground">2. Close.</span>{" "}
               {data.units > 1
                 ? `The top ${data.units} bids at or above reserve win and every winner pays the lowest winning bid. A hash of the bid ledger is published.`
-                : "Highest bid at or above reserve wins. A hash of the bid ledger is published."}
+                : f.rule}
             </p>
             <p>
-              <span className="text-foreground">3. Settle.</span> Losers are refunded shielded. The winner pays the balance.
-              Only the winning output is proven.
+              <span className="text-foreground">3. Settle.</span> {f.settle}
             </p>
           </div>
         </div>

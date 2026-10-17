@@ -6,6 +6,7 @@ import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { useSellerKey } from "@/lib/seller-key";
 import { zec } from "@/lib/format";
+import { fmt } from "@/lib/formats";
 import { LotImage } from "@/components/lot-plate";
 import { Button, Eyebrow, Field, LinkButton, Panel, Skeleton, StatusDot, inputClass } from "@/components/ui";
 
@@ -106,7 +107,7 @@ function LotTable({ title, lots }: { title: string; lots: import("@/lib/api").Se
                 <div className="plate w-16 shrink-0"><LotImage id={l.id} src={l.image_url} alt="" ratio="1/1" /></div>
                 <div className="min-w-0">
                   <p className="serif truncate text-[20px] leading-tight group-hover:text-accent">{l.title}</p>
-                  <div className="mt-1 flex items-center gap-3"><StatusDot status={l.status} />{l.units > 1 && <span className="eyebrow">Edition of {l.units}</span>}</div>
+                  <div className="mt-1 flex items-center gap-3"><StatusDot status={l.status} />{l.units > 1 ? <span className="eyebrow">Edition of {l.units}</span> : fmt(l.format).tag ? <span className="eyebrow">{fmt(l.format).tag}</span> : null}</div>
                 </div>
               </div>
               <Cell label="Bids" value={String(l.money.bids_valid)} />

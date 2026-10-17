@@ -73,6 +73,16 @@ the seller payout and the standalone verifier. About 15 minutes end to end.
 - **Single lot, first price**: the highest bid at or above reserve wins and pays its own bid.
 - **Edition, uniform price** (`units` > 1): the top N bids win and every winner pays the lowest winning bid. Each
   winner settles separately; a winner who does not pay forfeits the deposit and the next bidder is offered the unit.
+- **Vickrey, second price** (`format: vickrey`): the highest bid wins and pays the second-highest bid, or the
+  reserve if there is none. The winning bid is never disclosed, not even its memo; the price is proven by
+  publishing the runner-up's ledger leaf (receipt and amount) with its Merkle path to the ledger commitment, which
+  the result page verifies in the browser. The runner-up stays anonymous.
+- **Request for quotes** (`format: rfq`): the lot creator is a buyer. `reserve_zats` is the budget, `deposit_zats`
+  the bond every quoter posts. The lowest quote within budget wins; the buyer pays it from the dashboard with a
+  settlement memo and the winner receives the quote plus their bond. Losing bonds are refunded. If the buyer does
+  not pay in time the bond is returned and the request lapses. Only the winning price is ever revealed.
+
+`FORMAT=vickrey` or `FORMAT=rfq` runs the regtest end-to-end script in that format.
 
 ## How a bid works
 

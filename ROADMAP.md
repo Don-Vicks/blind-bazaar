@@ -54,7 +54,8 @@ Remove the single operator who can both read bids and move funds.
 - done: seller dashboard (lots, money, payouts, events) and a winner-gated delivery note
 - planned: seller reputation; escrow for physical goods
 - planned: winner notifications (email, push, wallet memo) and seller dashboard
-- planned: auction formats: Vickrey (second price), Dutch, OTC request-for-quote
+- done: Vickrey (second price, winning bid sealed, price proven from the ledger) and private request-for-quote
+- planned: Dutch format; batch markets (private order matching) on the same rails
 - planned: Go Dark receiver onboarding (in-browser 24-word wallet, Zodl/Zingo import), per-payment address
   rotation, transparent-receiver fallback with auto-shield, hosted widget CDN and npm release
 - planned: mobile wallet certification matrix for ZIP-321 memo handling

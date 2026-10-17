@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { api, type Auction } from "@/lib/api";
 import { countdown, zec } from "@/lib/format";
+import { fmt } from "@/lib/formats";
 import { useNow } from "@/lib/use-now";
 import { LotImage } from "@/components/lot-plate";
 import { Button, Eyebrow, Skeleton, StatusDot } from "@/components/ui";
@@ -111,7 +112,7 @@ function Gallery({ lots, now, compact = false }: { lots: Auction[]; now: number 
                 <p className={`serif leading-tight transition-colors duration-150 group-hover:text-accent ${compact ? "text-[20px]" : "text-[26px]"}`}>{a.title}</p>
                 <div className="mt-1.5 flex items-center gap-3">
                   <StatusDot status={a.status} />
-                  {a.units > 1 && <span className="eyebrow">Edition of {a.units}</span>}
+                  {a.units > 1 ? <span className="eyebrow">Edition of {a.units}</span> : fmt(a.format).tag ? <span className="eyebrow">{fmt(a.format).tag}</span> : null}
                 </div>
               </div>
               <div className="shrink-0 text-right">

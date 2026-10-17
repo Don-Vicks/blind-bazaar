@@ -22,6 +22,12 @@ key. Ethereum auctions leak every bid, bidder and losing amount to the world. Th
   and publishes `sha256(nonce)` receipts so a bidder can confirm "bid received" without revealing anything.
 - At close: highest valid bid at or above reserve wins; a hash of the bid ledger is published; losers are
   refunded shielded with random delays; the winner pays the balance by memo; the seller is paid.
+- Four formats on the same rails: sealed first price, editions at a uniform price, Vickrey (the winner pays
+  the second bid, the winning bid stays sealed, and the price is proven from the ledger commitment with a Merkle
+  path), and a private request for quotes where suppliers seal quotes against a published budget and only the
+  winning price is revealed.
+- Custody: the spender holds no spending key. The escrow's Orchard spend authority is a 2-of-3 FROST group key;
+  every payout is a PCZT that independent signer hosts inspect and co-sign.
 - The result page publishes a ZIP 311-style note-opening disclosure of the winning output. Anyone can verify it
   with `bb-auction --verify-disclosure` against a public lightwalletd. (Mainnet auction link: TODO.)
 - Go Dark: `<GoDark/>` React component and a `<script>` bundle. Ethereum routes through Maya Protocol
@@ -57,8 +63,8 @@ diversified unified addresses per auction and per payment; ZIP-321 payment URIs;
 
 ## Roadmap
 
-Two-operator bid escrow (FROST), Dutch and Vickrey formats, OTC request-for-quote mode, bidder-side inclusion
-proofs against the ledger commitment, and a WASM verifier in the result page.
+Distributed key generation for the escrow, signer-side payout verification against the viewer's ledger, Dutch
+format, and batch markets (private order matching) on the same bid-by-memo rails.
 
 ## Tracks
 

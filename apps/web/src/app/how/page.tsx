@@ -4,7 +4,7 @@ import { Eyebrow } from "@/components/ui";
 const steps = [
   ["Seal", "Your bid is written into the encrypted memo of one shielded payment of the fixed deposit. The chain is the mailbox; only the auction's viewing key can open it."],
   ["Receive", "The service decrypts the memo, validates the deposit and nonce, and publishes a receipt, a hash of your nonce, so you can confirm it landed without revealing anything."],
-  ["Close", "The top bid wins, or for editions the top N win and all pay the lowest winning bid. A hash of the full ledger is published before any money moves."],
+  ["Close", "Four formats. Sealed first price: the top bid wins at its bid. Vickrey: the top bid wins at the second bid, and the winning bid is never revealed. Edition: the top N win and all pay the lowest winning bid. Request for quotes: the lowest sealed quote within the buyer's budget wins. A hash of the full ledger is published before any money moves."],
   ["Refund", "Every losing deposit returns as a shielded payment to the address its bidder sealed into the memo, after a random delay. Nothing links refunds to the lot."],
   ["Settle", "Winners pay the balance with a settlement memo. The seller receives the price, shielded."],
   ["Prove", "The winning outputs are opened: recipient, value and randomness that reproduce the on-chain commitment, so anyone can check the result. Losing bids stay sealed forever."],

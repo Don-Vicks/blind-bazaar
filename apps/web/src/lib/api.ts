@@ -16,7 +16,7 @@ export interface Auction {
   payout_txid: string | null;
   image_url?: string | null;
   units: number;
-  format: "first_price" | "uniform";
+  format: import("./formats").Format;
   clearing_zats: number | null;
 }
 
@@ -33,7 +33,7 @@ export interface Receipts {
 export interface AuctionResult {
   auction_id: string;
   status: string;
-  format: "first_price" | "uniform";
+  format: import("./formats").Format;
   units: number;
   units_sold: number;
   units_settled: number;
@@ -50,6 +50,9 @@ export interface AuctionResult {
   payout_txid: string | null;
   refunds: { kind: string; status: string; txid: string | null }[];
   disclosure: unknown | null;
+  price_source: "own_bid" | "lowest_winning" | "second_bid" | "reserve" | "lowest_quote" | null;
+  /** Vickrey: the runner-up's ledger leaf and Merkle path proving the price is a committed bid. */
+  price_proof: { receipt: string; bid_zats: number; proof: import("@blind-bazaar/sdk").InclusionProof } | null;
 }
 
 export interface ProofResponse {
@@ -80,6 +83,8 @@ export interface SellerLot extends Auction {
 export interface SellerLotDetail extends SellerLot {
   events: { id: number; kind: string; payload: Record<string, unknown>; created_at: number }[];
   payouts: { id: number; kind: string; status: string; value_zats: number; txid: string | null; not_before: number }[];
+  /** RFQ, once closed: how the buyer pays the winning quote. */
+  settlement?: { uri: string; memo: string; amount_zats: number; address: string; settle_by: number | null };
 }
 
 export interface Health {

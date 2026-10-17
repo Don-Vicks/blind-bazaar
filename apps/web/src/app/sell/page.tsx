@@ -5,6 +5,7 @@ import { useMutation } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
+import { FORMATS, type Format } from "@/lib/formats";
 import { Button, Eyebrow, Field, Panel, inputClass } from "@/components/ui";
 
 const TOKEN_KEY = "bb.adminToken";
@@ -21,6 +22,7 @@ export default function SellPage() {
   const [hours, setHours] = useState("24");
   const [imageUrl, setImageUrl] = useState("");
   const [units, setUnits] = useState("1");
+  const [format, setFormat] = useState<Format>("first_price");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -60,8 +62,9 @@ export default function SellPage() {
     const h = Number(hours);
     if (!(h > 0 && h <= 24 * 14)) next.hours = "Between 0.1 and 336 hours.";
     if (imageUrl.trim() && !/^https:\/\/\S+$/.test(imageUrl.trim())) next.image = "An https image URL.";
-    const u = Number(units);
+    const u = format === "uniform" ? Number(units) : 1;
     if (!(Number.isInteger(u) && u >= 1 && u <= 10000)) next.units = "A whole number from 1 to 10000.";
+    if (format === "uniform" && u < 2) next.units = "An edition needs at least 2 units.";
     setErrors(next);
     if (Object.keys(next).length) return;
     try {
@@ -77,7 +80,8 @@ export default function SellPage() {
       seller_address: seller.trim(),
       duration_secs: Math.round(h * 3600),
       image_url: imageUrl.trim() || undefined,
-      units: Number(units),
+      units: format === "uniform" ? Number(units) : 1,
+      format,
     });
   }
 
@@ -102,10 +106,10 @@ export default function SellPage() {
           </p>
         </div>
         <dl className="hairline-t grid gap-4 pt-6 text-[14px]">
-          <div><dt className="text-foreground">Reserve</dt><dd className="text-muted-foreground">The lowest bid you will accept. Published.</dd></div>
-          <div><dt className="text-foreground">Deposit</dt><dd className="text-muted-foreground">Paid by every bidder to bid. Returned to losers, credited to the winner.</dd></div>
-          <div><dt className="text-foreground">Editions</dt><dd className="text-muted-foreground">Set units above 1 for identical items. Uniform price: everyone who wins pays the same, the lowest winning bid.</dd></div>
-          <div><dt className="text-foreground">Payout address</dt><dd className="text-muted-foreground">Your unified address. The winning amount arrives shielded.</dd></div>
+          <div><dt className="text-foreground">Sealed first price</dt><dd className="text-muted-foreground">Highest bid wins and pays its bid. Reserve published, deposit returned to losers.</dd></div>
+          <div><dt className="text-foreground">Vickrey</dt><dd className="text-muted-foreground">Highest bid wins but pays the second bid. Bidders bid their true value; the winning bid is never revealed, the price is proven from the ledger.</dd></div>
+          <div><dt className="text-foreground">Edition</dt><dd className="text-muted-foreground">Identical units. The top N win and everyone pays the same, the lowest winning bid.</dd></div>
+          <div><dt className="text-foreground">Request for quotes</dt><dd className="text-muted-foreground">You are buying. Set a budget; suppliers post a bond and seal a quote. Lowest quote wins, you pay it, the winner gets quote plus bond.</dd></div>
         </dl>
       </div>
       <div className="rise rise-2 sm:col-span-7">
@@ -117,20 +121,34 @@ export default function SellPage() {
           <Field label="Description" htmlFor="description" hint="Optional. What is being sold and how it is delivered.">
             <textarea id="description" name="description" rows={3} className={`${inputClass} min-h-24 py-2`} value={description} onChange={(e) => setDescription(e.target.value)} />
           </Field>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="eyebrow mb-2">Format</legend>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {(Object.keys(FORMATS) as Format[]).map((f) => (
+                <label key={f} className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-[2px] border px-3 text-[14px] ${format === f ? "border-accent" : "border-hairline-strong"}`}>
+                  <input type="radio" name="format" value={f} checked={format === f} onChange={() => setFormat(f)} className="accent-[var(--accent)]" />
+                  {FORMATS[f].name}
+                </label>
+              ))}
+            </div>
+            <p className="text-[13px] text-muted-foreground">{FORMATS[format].rule}</p>
+          </fieldset>
           <div className="grid gap-5 sm:grid-cols-2">
-            <Field label="Reserve (ZEC)" htmlFor="reserve" error={errors.reserve} hint="Lowest bid you will accept.">
+            <Field label={`${FORMATS[format].floorLabel} (ZEC)`} htmlFor="reserve" error={errors.reserve} hint={format === "rfq" ? "The most you will pay." : "Lowest bid you will accept."}>
               <input id="reserve" name="reserve" type="text" inputMode="decimal" autoComplete="off" placeholder="0.5" className={`${inputClass} num`} value={reserve} onChange={(e) => setReserve(e.target.value)} aria-invalid={!!errors.reserve} />
             </Field>
-            <Field label="Deposit (ZEC)" htmlFor="deposit" error={errors.deposit} hint="Every bidder pays this to bid. Losers get it back.">
+            <Field label={`${format === "rfq" ? "Bond" : "Deposit"} (ZEC)`} htmlFor="deposit" error={errors.deposit} hint={format === "rfq" ? "Every quoter posts this to quote. Returned with the payout, or when they lose." : "Every bidder pays this to bid. Losers get it back."}>
               <input id="deposit" name="deposit" type="text" inputMode="decimal" autoComplete="off" placeholder="0.05" className={`${inputClass} num`} value={deposit} onChange={(e) => setDeposit(e.target.value)} aria-invalid={!!errors.deposit} />
             </Field>
           </div>
-          <Field label="Payout address" htmlFor="seller" error={errors.seller} hint="Your unified address. The winning amount is sent here shielded.">
+          <Field label={format === "rfq" ? "Your address" : "Payout address"} htmlFor="seller" error={errors.seller} hint={format === "rfq" ? "Your unified address. Any overpayment on settlement returns here shielded." : "Your unified address. The winning amount is sent here shielded."}>
             <input id="seller" name="seller" type="text" autoComplete="off" spellCheck={false} placeholder="u1…" className={`${inputClass} num`} value={seller} onChange={(e) => setSeller(e.target.value)} aria-invalid={!!errors.seller} />
           </Field>
-          <Field label="Units" htmlFor="units" error={errors.units} hint="1 for a single lot. More than 1 makes it an edition: the top N bids win and every winner pays the lowest winning bid.">
-            <input id="units" name="units" type="number" min="1" max="10000" step="1" className={`${inputClass} num`} value={units} onChange={(e) => setUnits(e.target.value)} aria-invalid={!!errors.units} />
-          </Field>
+          {format === "uniform" && (
+            <Field label="Units" htmlFor="units" error={errors.units} hint="Identical items in the edition. The top N bids win and every winner pays the lowest winning bid.">
+              <input id="units" name="units" type="number" min="2" max="10000" step="1" className={`${inputClass} num`} value={units} onChange={(e) => setUnits(e.target.value)} aria-invalid={!!errors.units} />
+            </Field>
+          )}
           <Field label="Cover image" htmlFor="image" error={errors.image} hint="Optional https URL. Without one the lot gets a generated plate.">
             <input id="image" name="image" type="url" autoComplete="off" spellCheck={false} placeholder="https://…" className={`${inputClass} num text-[13px]`} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} aria-invalid={!!errors.image} />
           </Field>
