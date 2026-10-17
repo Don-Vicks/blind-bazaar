@@ -45,6 +45,20 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 | Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
 | Memo passthrough in Zodl, Zingo, YWallet from a ZIP-321 QR | one bid from each wallet |
 
+## Added Oct 17 evening (review fixes; unit-tested, exercised on the testnet service)
+
+- Bidder standing: `GET /auctions/{id}/standing?secret=` and a panel on the result and status pages: won/lost/pending,
+  balance owed, settlement QR and link, refund state, the seller's delivery note, and (mainnet) Go Dark settlement.
+- Bidder secret: the memo nonce is now `sha256(secret)[..16]`; the secret authenticates standing and the delivery note,
+  so a disclosed memo cannot be used to read the note. Receipts no longer authenticate anything.
+- Blinded ledger leaves (`receipt || bid || nonce`) so public inclusion proofs cannot be brute-forced to amounts.
+- Envelopes bound to a fresh address per payload; rail deliveries matched by address only; settlement envelopes;
+  spender mirrors envelopes; rail overshoot tolerated; late deliveries refunded.
+- FROST signer: one package per spend per session (nonce reuse closed), output commitments and value balance
+  verified, non-Orchard components refused, fee capped. Admin token required, constant-time comparisons.
+- Second-chance repricing updates the published price; price proof ignores forfeited bids; unmatched settlements
+  refunded; seller view hides bidders' addresses and receipts.
+
 ## Added Oct 17 (pay button)
 
 - Go Dark packaged as a private pay button for any site: builder with live preview and snippet on `/embed`, CORS on
@@ -109,9 +123,9 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 ## Not built yet
 
 - In-browser receiver wallet generation for Go Dark (24-word seed + unified address, Zodl/Zingo import).
-- Transparent-receiver fallback with auto-shield if 1Click cannot deliver to `u1` from Solana.
-- Rotation of per-payment addresses inside the widget (currently one `to` address per mount).
-- Bidder-side inclusion proof against the ledger hash (only the hash is published).
+- A real swap through Go Dark on mainnet (the widget, proxy and envelope binding are built; no wet test yet).
+- Deterministic close by mined height so viewer and spender cannot disagree on late bids or ties.
+- Distributed key generation for the FROST escrow (trusted dealer today).
 - Mainnet deployment: VPS, process supervision, HTTPS for the web app, `NEXT_PUBLIC_SITE_URL`, serving `go-dark.iife.js` from a CDN path.
 - Operator balance alerts; refund retry beyond 5 attempts needs a human.
 - Light theme check and mobile width pass on every page; brand palette deferred.

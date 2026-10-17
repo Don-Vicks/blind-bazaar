@@ -9,6 +9,20 @@ shielded ZEC at a unified address, and can carry a sealed bid along with it.
 
 Built for ZECATHON 2026. MIT licensed.
 
+## What is private, what is real, what is not
+
+| Claim | Status | How to check |
+|---|---|---|
+| Bids are private. Only the operator's viewing key can read a bid, and only after it is mined; other bidders and the seller never see losing bids. | Real, with one stated limit: the operator reads bids while a lot is open. | `docs/PRIVACY.md`; memo layout in `docs/MEMO_SPEC.md` |
+| The result is provable. A note-opening disclosure of the winning payment is published and recomputed in the browser and by a CLI. | Real on a local regtest chain and against the testnet service. No mainnet lot yet. | `/a/{id}/verify`, `bb-auction --verify-disclosure` |
+| The bid ledger cannot be altered after close. A Merkle root over every valid bid is published before any refund; each bidder verifies their own leaf; leaves are blinded by the bidder's nonce. | Real. | `/a/{id}/status`, `GET /auctions/{id}/proof` |
+| Refunds are private. Losing deposits return as shielded payments after a random delay. | Real on regtest; measured refund latency on the result page. | `scripts/regtest-e2e.sh` |
+| No single server holds the money. The spend authority is a 2-of-3 FROST group key; signer hosts verify every output and co-sign. | Built and unit-tested. Not yet exercised on a chain. Trusted-dealer keygen; DKG not built. | `docs/FROST.md`, `cargo test -p bb-auction frost` |
+| Four formats: first price, uniform-price editions, Vickrey (winning bid stays sealed, second price proven from the ledger), request for quotes. | Real; Vickrey and RFQ exercised on the testnet service with seeded bids. | `docs/STATUS.md` |
+| Go Dark: pay or bid from Solana or Ethereum, land in shielded ZEC. | Built on live mainnet rails (Maya, NEAR Intents); quotes are real; no completed swap yet. The rail sees the payer's source address. | `docs/GO-DARK-THREAT-MODEL.md`, `/embed` |
+| Bids are hidden from the operator too. | Not built. Roadmap: encrypt bids to a time-lock or run selection inside MPC. | `ROADMAP.md` |
+| In-browser Zcash wallet for recipients without one. | Not built. | |
+
 ## Layout
 
 | Path | What |

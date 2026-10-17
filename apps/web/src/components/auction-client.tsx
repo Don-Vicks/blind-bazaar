@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { countdown, dateTime, zec } from "@/lib/format";
 import { fmt } from "@/lib/formats";
 import { NetworkNotice } from "@/components/explain";
@@ -13,7 +13,7 @@ import { LotImage } from "@/components/lot-plate";
 import { EventTimeline } from "@/components/event-timeline";
 
 export function AuctionClient({ id }: { id: string }) {
-  const { data, isPending, isError } = useQuery({
+  const { data, isPending, isError, error } = useQuery({
     queryKey: ["auction", id],
     queryFn: () => api.auction(id),
     refetchInterval: 10_000,
@@ -35,7 +35,7 @@ export function AuctionClient({ id }: { id: string }) {
   if (isError) {
     return (
       <div className="flex flex-col items-start gap-4">
-        <p className="serif text-[28px]">This lot does not exist.</p>
+        <p className="serif text-[28px]">{error instanceof ApiError && error.status === 404 ? "This lot does not exist." : "The auction service is unreachable."}</p>
         <LinkButton href="/" variant="secondary">
           Back to lots
         </LinkButton>

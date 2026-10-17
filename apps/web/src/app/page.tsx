@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { api, type Auction } from "@/lib/api";
-import { countdown, zec } from "@/lib/format";
+import { countdown, dateTime, zec } from "@/lib/format";
 import { fmt } from "@/lib/formats";
 import { useNow } from "@/lib/use-now";
 import { LotImage } from "@/components/lot-plate";
@@ -132,7 +132,7 @@ function Gallery({ lots, now, compact = false }: { lots: Auction[]; now: number 
               </div>
               <div className="shrink-0 text-right">
                 <Eyebrow>{a.status === "open" ? "Closes in" : "Closed"}</Eyebrow>
-                <p className="num mt-1 text-[14px]">{now === null ? "…" : countdown(a.close_at - now)}</p>
+                <p className="num mt-1 text-[14px]">{a.status === "open" ? (now === null ? "…" : countdown(a.close_at - now)) : dateTime(a.close_at)}</p>
               </div>
             </div>
             <dl className="mt-3 flex gap-8 text-[13px]">

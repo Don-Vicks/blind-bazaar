@@ -12,7 +12,9 @@ three as chain primitives. The 512-byte encrypted memo carries the bid. A full v
 decrypt incoming bids while holding no spend authority over them. The note opening of the winning output can be
 published and checked against the on-chain commitment, so the result is provable while every losing bid stays
 sealed forever. No smart contract is deployed: the auction is a fresh diversified unified address and a viewing
-key. Ethereum auctions leak every bid, bidder and losing amount to the world. This one leaks nothing.
+key. Ethereum auctions leak every bid, bidder and losing amount to the world. This one reveals the winning price
+and the winning payment, and nothing about the losers; the one party that reads bids before close is the
+operator, and the table below says exactly what it can and cannot do with that.
 
 ## What works today
 
@@ -43,7 +45,7 @@ a swap to a rail; the rail sees the payer and the Zcash destination, never the b
 
 The known limit is operator trust: whoever runs the service can read bids while the auction is open and could
 shill. We do not hide this. We mitigate it with public receipts as bids arrive, a ledger hash committed at close,
-and the disclosure of the winner. v2 splits the viewing key and the spending key across two operators so neither
+and the disclosure of the winner. The viewer/spender split is shipped: the viewing key and the spending authority sit in two processes so neither
 can both read and act. Cross-chain bids are trusted identically to memo bids because the operator is the only
 reader in either path. Delivery to a unified address through NEAR Intents is accepted at quote time but documented
 as transparent-only; where a rail delivers to a transparent receiver we rotate addresses per payment and shield
@@ -52,7 +54,7 @@ immediately.
 ## Go Dark as open infrastructure
 
 Any creator, merchant or DAO can drop one tag on a page and start receiving shielded ZEC from users who have
-never touched Zcash. The widget never sees a seed; receivers without a wallet get a 24-word phrase generated in
+never touched Zcash. The widget never sees a seed. (In-browser wallet generation for receivers without a Zcash wallet is not built; today a recipient pastes a unified address from Zodl, Zingo or YWallet.) Planned text, kept for honesty: receivers would get a 24-word phrase generated in
 the browser and an import path into Zodl or Zingo. Every site that adds the button onboards its own users into
 the shielded pool.
 

@@ -11,7 +11,7 @@ import { LotImage } from "@/components/lot-plate";
 import { Button, Eyebrow, Fact, Field, LinkButton, Mono, Panel, Skeleton, StatusDot, inputClass } from "@/components/ui";
 
 export function SellerLotClient({ id }: { id: string }) {
-  const [key] = useSellerKey();
+  const [key, , keyReady] = useSellerKey();
   const qc = useQueryClient();
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
   const { data, isPending, isError } = useQuery({ queryKey: ["seller-lot", key, id], queryFn: () => api.sellerLot(key, id), enabled: key.length > 0, refetchInterval: 15_000 });
@@ -25,6 +25,7 @@ export function SellerLotClient({ id }: { id: string }) {
   });
   const network = health.data?.network ?? "test";
 
+  if (!keyReady) return <Skeleton className="h-64" />;
   if (!key) {
     return (
       <div className="flex flex-col items-start gap-4">

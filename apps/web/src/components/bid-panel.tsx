@@ -22,6 +22,17 @@ export function rememberReceipt(auctionId: string, receipt: string, nonce: strin
   }
 }
 
+/** Drop a prepared bid that was never paid, so the status page does not show it as pending forever. */
+export function forgetReceipt(auctionId: string, receipt: string) {
+  try {
+    const all = JSON.parse(localStorage.getItem(RECEIPTS_KEY) ?? "{}") as Record<string, { receipt: string }[]>;
+    all[auctionId] = (all[auctionId] ?? []).filter((r) => r.receipt !== receipt);
+    localStorage.setItem(RECEIPTS_KEY, JSON.stringify(all));
+  } catch {
+    /* no storage */
+  }
+}
+
 export function BidPanel({ auction }: { auction: AuctionView }) {
   const [amount, setAmount] = useState("");
   const [refund, setRefund] = useState("");
@@ -121,8 +132,15 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
             <p className="text-[13px] text-muted-foreground">Mainnet only. This instance runs on testnet, where the swap rails do not operate; pay from a Zcash testnet wallet instead.</p>
           )}
         </div>
-        <Button variant="ghost" onClick={() => setPrepared(null)} className="self-start px-0">
-          Start over
+        <Button
+          variant="ghost"
+          onClick={() => {
+            forgetReceipt(auction.id, prepared.receipt);
+            setPrepared(null);
+          }}
+          className="self-start px-0"
+        >
+          Start over (discards this unpaid {f.verb})
         </Button>
       </Panel>
     );

@@ -11,11 +11,12 @@ import { LotImage } from "@/components/lot-plate";
 import { Button, Eyebrow, Field, LinkButton, Panel, Skeleton, StatusDot, inputClass } from "@/components/ui";
 
 export default function DashboardPage() {
-  const [key, setKey] = useSellerKey();
+  const [key, setKey, keyReady] = useSellerKey();
   const [draft, setDraft] = useState("");
   const me = useQuery({ queryKey: ["seller-me", key], queryFn: () => api.sellerMe(key), enabled: key.length > 0, retry: false });
   const lots = useQuery({ queryKey: ["seller-lots", key], queryFn: () => api.sellerLots(key), enabled: me.isSuccess, refetchInterval: 15_000 });
 
+  if (!keyReady) return <Skeleton className="h-64" />;
   if (!key || me.isError) {
     return (
       <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
