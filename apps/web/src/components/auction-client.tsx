@@ -5,6 +5,7 @@ import Link from "next/link";
 import { api } from "@/lib/api";
 import { countdown, dateTime, zec } from "@/lib/format";
 import { fmt } from "@/lib/formats";
+import { NetworkNotice } from "@/components/explain";
 import { useNow } from "@/lib/use-now";
 import { Eyebrow, Fact, LinkButton, Mono, Panel, Skeleton, StatusDot } from "@/components/ui";
 import { BidPanel } from "@/components/bid-panel";
@@ -66,13 +67,13 @@ export function AuctionClient({ id }: { id: string }) {
         </div>
 
         <div className="rise rise-2 grid grid-cols-2 gap-8 sm:grid-cols-3">
-          <Fact label={f.floorLabel} large>
+          <Fact label={f.floorLabel} large hint={data.format === "rfq" ? "The most the buyer will pay." : "Lowest price the seller accepts."}>
             {zec(data.reserve_zats)}
           </Fact>
-          <Fact label={f.depositLabel} large>
+          <Fact label={f.depositLabel} large hint={data.format === "rfq" ? "Posted to quote; returned when you lose." : "Paid to bid; returned if you lose, counted if you win."}>
             {zec(data.deposit_zats)}
           </Fact>
-          <Fact label={open ? "Closes in" : "Closed"} large>
+          <Fact label={open ? "Closes in" : "Closed"} large hint={open ? "Bids after this are refunded automatically." : undefined}>
             <span aria-live="polite">{open ? countdown(remaining) : dateTime(data.close_at)}</span>
           </Fact>
         </div>
@@ -87,6 +88,7 @@ export function AuctionClient({ id }: { id: string }) {
             <div>
               <Eyebrow>Auction address</Eyebrow>
               <Mono className="mt-1.5 block text-muted-foreground">{data.address}</Mono>
+              <p className="mt-1 text-[13px] text-muted-foreground">Created for this lot only. Deposits are paid here.</p>
             </div>
           </div>
           <div className="grid gap-6 text-[14px] leading-relaxed text-muted-foreground sm:grid-cols-3">
@@ -109,6 +111,8 @@ export function AuctionClient({ id }: { id: string }) {
         <div className="rise rise-4 hairline-t pt-8">
           <EventTimeline auctionId={data.id} />
         </div>
+
+        <NetworkNotice compact />
 
         <p className="text-[13px] text-muted-foreground">
           Already bid?{" "}

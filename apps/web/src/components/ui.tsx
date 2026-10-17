@@ -45,11 +45,12 @@ export function Eyebrow({ className = "", ...props }: ComponentProps<"p">) {
 }
 
 /** Label + value pair used for facts. Value in mono, label as eyebrow. */
-export function Fact({ label, children, large = false }: { label: string; children: React.ReactNode; large?: boolean }) {
+export function Fact({ label, children, large = false, hint }: { label: string; children: React.ReactNode; large?: boolean; hint?: string }) {
   return (
     <div className="flex flex-col gap-1.5">
       <Eyebrow>{label}</Eyebrow>
       <div className={large ? "serif text-[28px] leading-none" : "num text-[15px]"}>{children}</div>
+      {hint && <p className="text-[12px] leading-snug text-muted-foreground">{hint}</p>}
     </div>
   );
 }

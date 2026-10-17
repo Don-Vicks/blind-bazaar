@@ -205,8 +205,12 @@ export function ResultClient({ id }: { id: string }) {
                     : "Nothing to prove."}
               </p>
             </div>
+            <p className="text-[14px] leading-relaxed text-foreground">
+              In plain words: the auction shows enough about the winning payment for anyone to confirm it exists on
+              the Zcash chain for this amount, and nothing about anyone else.
+            </p>
             <p className="text-[14px] leading-relaxed text-muted-foreground">
-              A note-opening disclosure of the winning output: the recipient, value and randomness that reproduce the
+              Technically, a note-opening disclosure of the winning output: the recipient, value and randomness that reproduce the
               on-chain commitment. Anyone can check it with the service binary and a public lightwalletd. {rfq ? "Losing quotes" : "Losing bids"}{" "}
               stay sealed{vickrey ? ", and so does the winning bid" : ""}.
             </p>
@@ -230,9 +234,14 @@ export function ResultClient({ id }: { id: string }) {
                 </details>
               </div>
             )}
-            <LinkButton href={`/a/${id}`} variant="secondary">
-              Back to the lot
-            </LinkButton>
+            <div className="flex flex-wrap gap-3">
+              {disclosures.length > 0 && (
+                <LinkButton href={`/a/${id}/verify`}>Re-check in my browser</LinkButton>
+              )}
+              <LinkButton href={`/a/${id}`} variant="secondary">
+                Back to the lot
+              </LinkButton>
+            </div>
           </Panel>
         </aside>
       </div>

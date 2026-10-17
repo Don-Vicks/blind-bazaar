@@ -59,10 +59,11 @@ export function StatusClient({ id }: { id: string }) {
         <div className="rise">
           <Eyebrow>Lot {id}</Eyebrow>
           {lot.data && <p className="serif mt-4 text-[22px] text-muted-foreground">{lot.data.title}</p>}
-          <h1 className="serif mt-2 text-[40px] leading-[1.05] sm:text-[56px]">Was my bid received?</h1>
+          <h1 className="serif mt-2 text-[40px] leading-[1.05] sm:text-[56px]">Did my bid arrive?</h1>
           <p className="mt-6 max-w-[52ch] text-[16px] leading-relaxed text-muted-foreground">
-            The auction publishes the receipt of every bid it has decrypted. A receipt is a hash of the nonce your
-            browser generated; it reveals nothing about the amount or the bidder.
+            When you bid, this site gave you a receipt. The auction publishes the receipt of every bid it has read.
+            If yours is in the list, you are in. A receipt reveals nothing about the amount or the bidder. After
+            close, you can also check that your bid was counted in the published fingerprint.
           </p>
         </div>
         <div className="rise rise-2 hairline-t pt-8">

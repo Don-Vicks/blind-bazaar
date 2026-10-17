@@ -15,7 +15,7 @@ interface Event {
 const LABELS: Record<string, (p: Record<string, unknown>) => string> = {
   created: () => "Lot listed",
   bid_received: () => "Sealed bid received",
-  closed: (p) => `Closed. Winning bid ${zec(p.winning_amount_zats as number)}`,
+  closed: (p) => `Closed. ${p.format === "rfq" ? "Winning quote" : p.format === "vickrey" ? "Price (second bid)" : "Winning bid"} ${zec(p.winning_amount_zats as number)}`,
   no_sale: () => "Closed with no bid at reserve",
   refund_sent: () => "Refund sent, shielded",
   second_chance: (p) => `Winner forfeited. Offered to the next bid at ${zec(p.winning_amount_zats as number)}`,

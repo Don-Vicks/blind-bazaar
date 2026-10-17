@@ -30,7 +30,7 @@ export default function DashboardPage() {
         </div>
         <aside className="rise rise-2 sm:col-span-5">
           <Panel className="flex flex-col gap-5">
-            <Field label="Seller key" htmlFor="seller-key" error={me.isError ? (me.error instanceof ApiError ? me.error.message : "Could not reach the service.") : undefined} hint="Starts with bbs_. Kept in this tab only.">
+            <Field label="Seller key" htmlFor="seller-key" error={me.isError ? (me.error instanceof ApiError ? me.error.message : "Could not reach the service.") : undefined} hint="Starts with bbs_. Kept in this tab only. The operator issues keys; on your own instance, create one with the admin token (POST /admin/sellers).">
               <input id="seller-key" name="seller-key" type="password" autoComplete="off" className={`${inputClass} num`} value={draft} onChange={(e) => setDraft(e.target.value)} />
             </Field>
             <Button onClick={() => setKey(draft.trim())}>Open dashboard</Button>

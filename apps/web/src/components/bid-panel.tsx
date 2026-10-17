@@ -127,6 +127,9 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
       <form onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
         <div>
           <Eyebrow>Place a sealed {f.verb}</Eyebrow>
+          <p className="mt-3 text-[14px] leading-relaxed text-foreground">
+            You need a Zcash wallet (Zodl, Zingo or YWallet) holding at least {zec(auction.deposit_zats)}. No ZEC? Prepare the {f.verb} first, then pay from Solana or Ethereum with Go Dark.
+          </p>
           <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
             {rfq
               ? "You post the fixed bond now. Win, and the buyer pays your quote; you receive it plus the bond. Lose, and the bond returns shielded to the address below."

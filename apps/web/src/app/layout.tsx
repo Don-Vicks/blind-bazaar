@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 const nav =
-  "rounded-[2px] py-2 text-[13px] text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent";
+  "whitespace-nowrap rounded-[2px] py-2 text-[13px] text-muted-foreground transition-colors duration-150 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -30,7 +30,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               >
                 Blind Bazaar
               </Link>
-              <nav className="flex items-center gap-6">
+              <nav className="flex items-center gap-4 sm:gap-6">
+                <Link href="/" className={nav}>
+                  Lots
+                </Link>
                 <Link href="/how" className={nav}>
                   How it works
                 </Link>
@@ -47,7 +50,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <main className="mx-auto w-full max-w-[1120px] flex-1 px-6 pb-24 pt-10 sm:pt-14">{children}</main>
           <footer className="hairline-t">
             <div className="mx-auto flex max-w-[1120px] flex-col gap-2 px-6 py-8 text-[13px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-              <p>Every bid is a shielded Zcash transaction. Losing bids are never revealed.</p>
+              <p>Private auctions on Zcash. Bids are encrypted payments; losing bids are never revealed; results are provable.</p>
               <p className="num text-[12px]">MIT · open source</p>
             </div>
           </footer>

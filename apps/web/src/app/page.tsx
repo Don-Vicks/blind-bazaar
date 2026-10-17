@@ -8,6 +8,7 @@ import { fmt } from "@/lib/formats";
 import { useNow } from "@/lib/use-now";
 import { LotImage } from "@/components/lot-plate";
 import { Button, Eyebrow, Skeleton, StatusDot } from "@/components/ui";
+import { Glossary, NetworkNotice, StartHere, WhyTrust } from "@/components/explain";
 
 export default function Home() {
   const { data, isPending, isError, refetch } = useQuery({
@@ -24,18 +25,21 @@ export default function Home() {
     <div className="flex flex-col gap-20 sm:gap-28">
       <section className="grid gap-10 sm:grid-cols-12 sm:gap-10">
         <div className="sm:col-span-7">
-          <Eyebrow className="rise">Sealed-bid auctions on Zcash</Eyebrow>
-          <h1 className="serif rise rise-2 mt-4 text-[48px] leading-[0.98] sm:text-[84px]">
-            Bid in the dark.
+          <Eyebrow className="rise">Private auctions on Zcash</Eyebrow>
+          <h1 className="serif rise rise-2 mt-4 text-[48px] leading-[0.98] sm:text-[80px]">
+            Sell to the highest bid.
             <br />
-            <span className="italic text-muted-foreground">Only the result comes to light.</span>
+            <span className="italic text-muted-foreground">Nobody sees the others.</span>
           </h1>
-          <p className="dropcap rise rise-3 mt-10 max-w-[46ch] text-[17px] leading-[1.6] text-muted-foreground">
-            Every auction on Ethereum leaks every bid, every bidder and every losing amount, forever. Here a bid is one
-            shielded transaction, the amount sealed inside its encrypted memo. Other bidders never learn what you bid,
-            or that you bid at all. Losers are refunded shielded; the winner is proven on chain; nothing else is ever
-            revealed.
+          <p className="rise rise-3 mt-8 max-w-[48ch] text-[17px] leading-[1.6] text-muted-foreground">
+            Blind Bazaar is an auction house where bids are private. A bidder pays a deposit from a Zcash wallet with
+            the bid hidden inside the payment. When the auction closes, the highest bid wins, everyone else gets their
+            deposit back, and nobody, not even the seller, ever learns the losing bids. The result is proven on the
+            Zcash chain, so you do not have to trust us.
           </p>
+          <div className="rise rise-4 mt-8">
+            <NetworkNotice />
+          </div>
         </div>
         <div className="rise rise-3 sm:col-span-5">
           {featured ? (
@@ -57,11 +61,16 @@ export default function Home() {
         </div>
       </section>
 
-      <section aria-labelledby="open-heading" className="rise rise-4 flex flex-col gap-8">
+      <StartHere />
+
+      <section id="open" aria-labelledby="open-heading" className="rise rise-4 flex flex-col gap-8 scroll-mt-8">
         <div className="hairline-b flex items-baseline justify-between pb-4">
-          <h2 id="open-heading" className="serif text-[32px]">
-            Open lots
-          </h2>
+          <div>
+            <h2 id="open-heading" className="serif text-[32px]">
+              Open lots
+            </h2>
+            <p className="mt-1 text-[13px] text-muted-foreground">Bidding is open. Reserve is the lowest price the seller accepts; deposit is what you pay to bid.</p>
+          </div>
           {data && <span className="num text-[13px] text-muted-foreground">{open.length}</span>}
         </div>
         {isPending ? (
@@ -84,16 +93,22 @@ export default function Home() {
       </section>
 
       {closed.length > 0 && (
-        <section aria-labelledby="closed-heading" className="flex flex-col gap-8">
+        <section id="closed" aria-labelledby="closed-heading" className="flex flex-col gap-8 scroll-mt-8">
           <div className="hairline-b flex items-baseline justify-between pb-4">
-            <h2 id="closed-heading" className="serif text-[32px]">
-              Closed
-            </h2>
+            <div>
+              <h2 id="closed-heading" className="serif text-[32px]">
+                Closed
+              </h2>
+              <p className="mt-1 text-[13px] text-muted-foreground">Open one to see the winning price, the bid fingerprint and the proof.</p>
+            </div>
             <span className="num text-[13px] text-muted-foreground">{closed.length}</span>
           </div>
           <Gallery lots={closed} now={now} compact />
         </section>
       )}
+
+      <WhyTrust />
+      <Glossary only={["Reserve", "Deposit", "Bid", "Receipt", "Ledger commitment", "Proof", "Settlement", "Unified address"]} />
     </div>
   );
 }
@@ -122,13 +137,19 @@ function Gallery({ lots, now, compact = false }: { lots: Auction[]; now: number 
             </div>
             <dl className="mt-3 flex gap-8 text-[13px]">
               <div>
-                <dt className="eyebrow">Reserve</dt>
+                <dt className="eyebrow">{fmt(a.format).floorLabel}</dt>
                 <dd className="num mt-0.5">{zec(a.reserve_zats)}</dd>
               </div>
               <div>
-                <dt className="eyebrow">Deposit</dt>
+                <dt className="eyebrow">{a.format === "rfq" ? "Bond" : "Deposit"}</dt>
                 <dd className="num mt-0.5">{zec(a.deposit_zats)}</dd>
               </div>
+              {a.status !== "open" && a.clearing_zats !== null && (
+                <div>
+                  <dt className="eyebrow">{a.format === "rfq" ? "Winning quote" : "Sold for"}</dt>
+                  <dd className="num mt-0.5">{zec(a.clearing_zats)}</dd>
+                </div>
+              )}
             </dl>
           </Link>
         </li>
