@@ -203,17 +203,28 @@ fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str
 
 fn settle(store: &Connection, auction: &store::Auction, nonce: &str, out: &ReceivedOutput, _row_id: i64) -> Result<()> {
     let bids = store::bids_for_auction(store, &auction.id)?;
+    let rfq = close::is_rfq(&auction.format);
+    // Money that does not settle anything is sent back rather than kept: to the bid's sealed refund
+    // address for a selling lot, or to the buyer's address for an RFQ.
+    let bounce = |reason: &str, to: Option<&str>| -> Result<()> {
+        warn!("settlement for {}: {reason}; refunding {} zats", auction.id, out.value_zats);
+        if let Some(addr) = to {
+            let memo_text = format!("BB1R|{}", auction.id);
+            store::queue_payout(store, Some(&auction.id), None, "refund", addr, out.value_zats, Some(&memo_text), store::now() + 60)?;
+        }
+        Ok(())
+    };
     let Some(winner) = bids.iter().find(|b| b.status == "won" && b.nonce.as_deref() == Some(nonce)) else {
-        warn!("settlement for {} does not match an unpaid winner", auction.id);
-        return Ok(());
+        let any = bids.iter().find(|b| b.nonce.as_deref() == Some(nonce));
+        let to = if rfq { Some(auction.seller_address.as_str()) } else { any.and_then(|b| b.refund_address.as_deref()) };
+        return bounce("does not match an unpaid winner", to);
     };
     let price = winner.price_zats.unwrap_or(0);
     // RFQ: the buyer pays the whole quote; the quoter's bond is returned with the payout.
-    let rfq = close::is_rfq(&auction.format);
     let owed = if rfq { price } else { price.saturating_sub(winner.value_zats) };
     if out.value_zats < owed {
-        warn!("settlement for {} underpaid: got {} need {}", auction.id, out.value_zats, owed);
-        return Ok(());
+        let to = if rfq { Some(auction.seller_address.as_str()) } else { winner.refund_address.as_deref() };
+        return bounce(&format!("underpaid: got {} need {owed}", out.value_zats), to);
     }
     let paid_total = if rfq { out.value_zats } else { winner.value_zats + out.value_zats };
     close::settle_winner(store, auction, winner.id, price, paid_total, &out.txid)?;

@@ -705,6 +705,12 @@ pub fn count_bids_with_status(conn: &Connection, auction_id: &str, status: &str)
     )?)
 }
 
+/// Update the published clearing price (after a second-chance offer reprices the lot).
+pub fn set_auction_clearing(conn: &Connection, id: &str, clearing_zats: u64) -> Result<()> {
+    conn.execute("UPDATE auctions SET clearing_zats = ?2 WHERE id = ?1", params![id, clearing_zats as i64])?;
+    Ok(())
+}
+
 pub fn set_auction_status(conn: &Connection, id: &str, status: &str) -> Result<()> {
     conn.execute("UPDATE auctions SET status = ?2 WHERE id = ?1", params![id, status])?;
     Ok(())

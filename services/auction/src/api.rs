@@ -448,7 +448,9 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
         .iter()
         .filter(|b| matches!(b.status.as_str(), "valid" | "won" | "settled" | "forfeited" | "expired"))
         .collect();
-    let ranked = close::rank(&ledger_bids, &auction.format, auction.reserve_zats, &[]);
+    // Forfeited and expired bids stay in the ledger but no longer take part in pricing.
+    let taken: Vec<i64> = ledger_bids.iter().filter(|b| matches!(b.status.as_str(), "forfeited" | "expired")).map(|b| b.id).collect();
+    let ranked = close::rank(&ledger_bids, &auction.format, auction.reserve_zats, &taken);
     let (price_source, price_proof) = if winners.is_empty() {
         (None, None)
     } else {
@@ -858,12 +860,23 @@ async fn seller_lots(State(state): State<Arc<AppState>>, headers: HeaderMap) -> 
     Ok(Json(out))
 }
 
+/// A payout as the seller may see it: no destination address, since losers' refund addresses are theirs alone.
+#[derive(Serialize)]
+struct SellerPayout {
+    id: i64,
+    kind: String,
+    status: String,
+    value_zats: u64,
+    txid: Option<String>,
+    not_before: i64,
+}
+
 #[derive(Serialize)]
 struct SellerLotDetail {
     #[serde(flatten)]
     lot: SellerLot,
     events: Vec<store::Event>,
-    payouts: Vec<store::Payout>,
+    payouts: Vec<SellerPayout>,
     /// RFQ only, once closed: how the buyer pays the winning quote. The memo carries the winning
     /// quote's nonce, which only the buyer (here) and the quoter know.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -888,8 +901,21 @@ async fn seller_lot(State(state): State<Arc<AppState>>, headers: HeaderMap, Path
     }
     let money = store::lot_money(&conn, &a.id)?;
     let fulfilment = store::get_fulfilment(&conn, &a.id)?.map(|(n, _)| n);
-    let events = store::events_for_auction(&conn, &id)?;
-    let payouts = store::payouts_for_auction(&conn, &id)?;
+    // Receipts identify bidders to themselves; the seller does not need them.
+    let events = store::events_for_auction(&conn, &id)?
+        .into_iter()
+        .map(|mut e| {
+            if let Some(obj) = e.payload.as_object_mut() {
+                obj.remove("receipt");
+                obj.remove("bid_receipt");
+            }
+            e
+        })
+        .collect();
+    let payouts = store::payouts_for_auction(&conn, &id)?
+        .into_iter()
+        .map(|p| SellerPayout { id: p.id, kind: p.kind, status: p.status, value_zats: p.value_zats, txid: p.txid, not_before: p.not_before })
+        .collect();
     let settlement = if close::is_rfq(&a.format) && a.status == "closed" {
         store::bids_for_auction(&conn, &id)?
             .into_iter()

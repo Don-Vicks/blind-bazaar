@@ -338,6 +338,7 @@ pub fn enforce_settlement_deadlines(store: &Connection, cfg: &CloseConfig) -> Re
                 let settle_by = now + cfg.settlement_window_secs;
                 let price = price_for(&auction.format, auction.reserve_zats, &ranked, 0).0;
                 store::set_bid_won(store, r.id, price, settle_by)?;
+                store::set_auction_clearing(store, &auction.id, price)?;
                 store::insert_event(
                     store,
                     Some(&auction.id),
@@ -621,6 +622,7 @@ mod tests {
         let r = store::get_bid(&store, b2).unwrap().unwrap();
         assert_eq!(r.status, "won");
         assert_eq!(r.price_zats, Some(3_000_000), "runner-up now pays the third bid, not their own");
+        assert_eq!(store::get_auction(&store, "jjjjjjjj").unwrap().unwrap().clearing_zats, Some(3_000_000), "published price follows");
         assert_eq!(store::get_bid(&store, b1).unwrap().unwrap().status, "valid");
     }
 
