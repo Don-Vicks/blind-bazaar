@@ -82,3 +82,21 @@ Zypherpunk: https://forum.zcashcommunity.com/t/zypherpunk-hackathon-winners/5398
 zkSNARKs auction: https://cryptobriefing.com/zksnarks-auction-clears-zcash-blind-bids/ ,
 https://crypto.news/aurora-intents-routed-19m-into-zcash-nft-auction/ , https://cryptobriefing.com/zksnarks-nft-17m-extraction-allegations/ .
 ZECATHON: https://thezecathon.com/ , https://x.com/zksnarks_/status/2104606505177899314 .
+
+## Odds check, Oct 17
+
+Public ZECATHON rivals in Private Markets found despite sealed submissions: **sealForge** (nearly our spec, live
+public testnet auction, FROST 2-of-3 escrow, measured refund unlinkability, published IVK and Merkle root, WASM
+audit page), **Kalyptra** (threshold-opened orders on ZSAs, regtest only), **Seisin** (ownership registry with three
+mainnet anchor txids). Judging appears to be the organiser's own taste with no published rubric, decided on X.
+Judges reward on-chain evidence over architecture across every past Zcash hackathon; the NEAR Intents panel
+withheld second and third prizes rather than reward weak entries; ZecHub 3.0 required mainnet.
+
+Estimated odds as built (regtest only, no video, private repo, no public footprint): Private Markets ~15%,
+Cross-Chain with Go Dark ~8%, grand prize ~3%, community choice ~2%. With a public testnet auction, a mainnet
+micro-auction with published txids and the proof page, a sub-3-minute video, a public repo with an evidence table,
+and daily building in public: Private Markets ~35%, community choice ~6%.
+
+Multi-track entry is unclear under "one account per project"; ask the organiser before treating Go Dark as a
+separate entry. The organiser is an anonymous team under unanswered scam allegations: odds of being named are not
+odds of being paid. Colosseum's Zcash track (ZCG-funded, closing around Oct 18) is a second venue for the same build.
