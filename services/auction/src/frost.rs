@@ -451,12 +451,22 @@ impl SignerHost {
     /// Round 2: produce one share per spend. The session is consumed whatever the outcome, so
     /// nonces are never reused.
     pub fn round2(&self, req: &Round2Request) -> Result<Round2Response> {
-        let session = self
+        let mut session = self
             .sessions
             .lock()
             .unwrap()
             .remove(&req.session)
             .ok_or_else(|| anyhow!("unknown or expired session"))?;
+        // Exactly one package per planned action. Signing two different packages with the same nonces
+        // would hand the caller enough linear equations to recover this signer's share, so a request
+        // with a repeated or missing action is refused outright and the session is gone either way.
+        if req.packages.len() != session.plan.actions.len() {
+            return Err(anyhow!(
+                "expected {} signing packages (one per spend), got {}",
+                session.plan.actions.len(),
+                req.packages.len()
+            ));
+        }
         let mut shares = Vec::with_capacity(req.packages.len());
         for item in &req.packages {
             let package = bb_frost::wire::package_from_hex(&item.package).map_err(|e| anyhow!("{e}"))?;
@@ -469,12 +479,13 @@ impl SignerHost {
                 .iter()
                 .find(|a| a.pool == item.pool && a.index == item.index)
                 .ok_or_else(|| anyhow!("package for an action not in the plan"))?;
+            // Taking the nonces out of the map means a second package for the same action cannot be signed.
             let nonces = session
                 .nonces
-                .get(&(item.pool, item.index))
-                .ok_or_else(|| anyhow!("no nonces for action"))?;
+                .remove(&(item.pool, item.index))
+                .ok_or_else(|| anyhow!("duplicate package for {:?} action {}", item.pool, item.index))?;
             let randomizer = bb_frost::randomizer_from_alpha(&action.alpha).map_err(|e| anyhow!("{e}"))?;
-            let share = bb_frost::round2(&self.share, nonces, &package, &randomizer).map_err(|e| anyhow!("{e}"))?;
+            let share = bb_frost::round2(&self.share, &nonces, &package, &randomizer).map_err(|e| anyhow!("{e}"))?;
             shares.push(Share { pool: item.pool, index: item.index, share: bb_frost::wire::share_to_hex(&share) });
         }
         self.signed.fetch_add(1, Ordering::Relaxed);
@@ -647,13 +658,9 @@ impl FrostSpender {
         })
     }
 
+    /// Public description: threshold and how many signers are configured. Signer locations stay private.
     pub fn describe(&self) -> String {
-        format!(
-            "frost {}-of-{} ({})",
-            self.escrow.threshold,
-            self.escrow.signers,
-            self.signers.iter().map(|s| s.name()).collect::<Vec<_>>().join(", ")
-        )
+        format!("frost {}-of-{} ({} signers configured)", self.escrow.threshold, self.escrow.signers, self.signers.len())
     }
 
     /// Run one signing session for `pczt` and return it with every spend authorised.
@@ -883,6 +890,36 @@ mod tests {
         // The session was consumed by the failed attempt.
         let err = hosts[0].round2(&req).unwrap_err();
         assert!(err.to_string().contains("unknown"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn round2_refuses_repeated_or_missing_actions() {
+        let (escrow, hosts) = setup(SignerPolicy::default());
+        let public = escrow.public_key_package().unwrap();
+        let plan = plan(&public, 2, 1);
+        let r1 = hosts[0].round1_plan("dup", plan.clone()).unwrap();
+        let other = bb_frost::generate(3, 2).unwrap(); // a forged co-signer commitment set
+        let pkg = |index: usize, forged: &bb_frost::SignerShare| {
+            let mut c = BTreeMap::new();
+            c.insert(
+                bb_frost::wire::identifier_from_hex(&r1.identifier).unwrap(),
+                bb_frost::wire::commitments_from_hex(&r1.commitments[index].commitments).unwrap(),
+            );
+            let (_, fc) = bb_frost::round1(forged);
+            c.insert(forged.identifier, fc);
+            PackageItem { pool: Pool::Orchard, index, package: bb_frost::wire::package_to_hex(&bb_frost::signing_package(&plan.sighash, c)).unwrap() }
+        };
+        // Two packages for action 0 with different co-signer commitments, none for action 1.
+        let req = Round2Request { session: "dup".into(), packages: vec![pkg(0, &other[1]), pkg(0, &other[2])] };
+        let err = hosts[0].round2(&req).unwrap_err();
+        assert!(err.to_string().contains("duplicate"), "{err}");
+        // The session is consumed; a well-formed retry is refused too.
+        let r1b = hosts[0].round1_plan("short", plan.clone()).unwrap();
+        let _ = r1b;
+        let req = Round2Request { session: "short".into(), packages: vec![] };
+        let err = hosts[0].round2(&req).unwrap_err();
+        assert!(err.to_string().contains("expected 2"), "{err}");
+        assert_eq!(hosts[0].signed.load(Ordering::Relaxed), 0);
     }
 
     struct Offline;

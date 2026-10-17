@@ -34,9 +34,10 @@ checked under `rk` outside the circuit, so a threshold `ak` needs no change to p
    returns commitments.
 3. Spender: with `threshold` commitments in hand, builds one signing package per spend
    (sighash + all commitments) and sends them (`POST /frost/round2 {session, packages}`).
-4. Signer: checks each package's message is the session's sighash, signs with the randomizer `alpha`
-   of that spend (`frost_rerandomized::sign`), and **deletes the session**: nonces are single-use
-   whatever happens.
+4. Signer: checks each package's message is the session's sighash, requires exactly one package per
+   planned spend (a repeated action with different co-signer commitments would leak the share through
+   nonce reuse), signs with the randomizer `alpha` of that spend (`frost_rerandomized::sign`), and
+   **deletes the session**: nonces are single-use whatever happens.
 5. Spender: aggregates each signature, checks `ak + [alpha]G` equals the action's `rk`, and applies it
    through `pczt::roles::signer::Signer::apply_orchard_spend_auth_signature`, which verifies the
    signature under `rk` before storing it. Then spend-finalize, extract, store, broadcast.
