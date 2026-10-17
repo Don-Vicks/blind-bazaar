@@ -65,11 +65,14 @@ recorded before NU7 activates there or re-tested after.
 ## Ledger commitment and inclusion proofs
 
 At close the ledger hash is the root of a Merkle tree over every valid bid: leaves are
-`sha256(0x00 || receipt || bid_zats_be8)` sorted by receipt, nodes are `sha256(0x01 || left || right)`, an odd node
-pairs with itself. After close, `GET /auctions/{id}/proof?receipt=…` returns the sibling path for one receipt. The
-bidder's browser recomputes the root from their receipt, their own bid amount (never sent) and the path, and compares
-it with the published hash. A bidder therefore learns only that their own bid was counted at the amount they sealed;
-nobody learns anyone else's bid, and the service cannot drop or alter a bid after close without changing the root.
+`sha256(0x00 || receipt || bid_zats_be8 || nonce)` sorted by receipt, nodes are `sha256(0x01 || left || right)`, an
+odd node pairs with itself. The nonce blinds the leaf: receipts are public and bid amounts are small, so without it a
+leaf could be brute-forced to an amount in seconds. After close, `GET /auctions/{id}/proof?receipt=…` returns the
+sibling path for one receipt. The bidder's browser recomputes the root from their receipt, their own bid amount and
+nonce (never sent) and the path, and compares it with the published hash. A bidder therefore learns only that their
+own bid was counted at the amount they sealed; nobody learns anyone else's bid, and the service cannot drop or alter a
+bid after close without changing the root. A Vickrey price proof publishes the runner-up's receipt, amount and nonce,
+which reveals that one amount and nothing else about them.
 
 ## Reserve-met proof (optional, `DISCLOSE_WINNING_MEMO=true`)
 

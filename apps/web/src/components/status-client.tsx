@@ -11,12 +11,13 @@ import { LotImage } from "@/components/lot-plate";
 
 export function StatusClient({ id }: { id: string }) {
   const [receipt, setReceipt] = useState("");
-  const [mine, setMine] = useState<{ receipt: string; bid?: string }[]>([]);
+  const [mine, setMine] = useState<{ receipt: string; nonce?: string; bid?: string }[]>([]);
   const [bidInput, setBidInput] = useState("");
+  const [nonceInput, setNonceInput] = useState("");
   const [inclusion, setInclusion] = useState<{ ok: boolean; leafCount: number; root: string } | { error: string } | null>(null);
   useEffect(() => {
     try {
-      const all = JSON.parse(localStorage.getItem("bb.receipts") ?? "{}") as Record<string, { receipt: string; bid?: string }[]>;
+      const all = JSON.parse(localStorage.getItem("bb.receipts") ?? "{}") as Record<string, { receipt: string; nonce?: string; bid?: string }[]>;
       setMine(all[id] ?? []);
     } catch {
       /* no storage */
@@ -34,6 +35,7 @@ export function StatusClient({ id }: { id: string }) {
   const found = data?.receipts.includes(lookup);
   const closed = lot.data ? lot.data.status !== "open" : false;
   const rememberedBid = mine.find((m) => m.receipt === lookup)?.bid;
+  const rememberedNonce = mine.find((m) => m.receipt === lookup)?.nonce;
 
   async function checkInclusion() {
     setInclusion(null);
@@ -47,9 +49,14 @@ export function StatusClient({ id }: { id: string }) {
       setInclusion({ error: "Enter the bid amount in ZEC you sealed with this receipt." });
       return;
     }
+    const nonce = (rememberedNonce ?? nonceInput.trim().toLowerCase());
+    if (!/^[0-9a-f]{16}$/.test(nonce)) {
+      setInclusion({ error: "Enter the 16-character nonce from your bid memo." });
+      return;
+    }
     try {
       const r = await api.proof(id, lookup);
-      const ok = await verifyInclusion(lookup, bidZats, r.proof);
+      const ok = await verifyInclusion(lookup, bidZats, nonce, r.proof);
       setInclusion({ ok, leafCount: r.leaf_count, root: r.ledger_hash });
     } catch (e) {
       setInclusion({ error: e instanceof ApiError ? e.message : "Could not fetch the proof." });
@@ -121,8 +128,14 @@ export function StatusClient({ id }: { id: string }) {
               <Eyebrow>Prove your bid was counted</Eyebrow>
               <p className="text-[13px] leading-relaxed text-muted-foreground">
                 The ledger committed at close is a Merkle tree over every valid bid. Your browser recomputes the root
-                from your receipt, your bid, and the path the service returns. The service never learns anything new.
+                from your receipt, your bid, your nonce and the path the service returns. The service never learns
+                anything new, and nobody else can turn a leaf back into an amount without your nonce.
               </p>
+              {!rememberedNonce && (
+                <Field label="Your nonce" htmlFor="bid-nonce" hint="The last field of your bid memo, 16 characters.">
+                  <input id="bid-nonce" name="bid-nonce" type="text" autoComplete="off" spellCheck={false} className={`${inputClass} num`} value={nonceInput} onChange={(e) => setNonceInput(e.target.value)} />
+                </Field>
+              )}
               {!rememberedBid && (
                 <Field label="Your bid (ZEC)" htmlFor="bid-zats" hint="The amount you sealed. Checked here; not sent to the server.">
                   <input id="bid-zats" name="bid-zats" type="text" inputMode="decimal" autoComplete="off" placeholder="0.25" className={`${inputClass} num`} value={bidInput} onChange={(e) => setBidInput(e.target.value)} />

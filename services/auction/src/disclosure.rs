@@ -306,6 +306,11 @@ pub fn build(
             d.enc_ciphertext = action_ciphertext_hex(&tx, action_index, &d.pool);
         }
     }
+    // The memo (bid, refund address, nonce) is published only when the operator chose to disclose the
+    // note's key, in which case anyone can decrypt it from the transaction anyway. Otherwise it stays sealed.
+    if d.enc_key.is_none() {
+        d.memo = None;
+    }
     Ok(d)
 }
 

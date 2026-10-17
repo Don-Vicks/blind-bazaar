@@ -10,6 +10,7 @@ import {
   parsePaymentUri,
   parseZec,
   prepareBid,
+  nonceFromSecret,
   receipt,
   leafHash,
   verifyInclusion,
@@ -64,17 +65,21 @@ describe("prepareBid", () => {
     expect(p.memo.startsWith("BB1|7k2m9q4e|5000000|")).toBe(true);
     expect(parsePaymentUri(p.uri).memo).toBe(p.memo);
     expect(p.receipt).toBe(await receipt(p.bid.nonce));
+    expect(p.secret).toMatch(/^[0-9a-f]{32}$/);
+    expect(p.bid.nonce).toBe(await nonceFromSecret(p.secret));
+    expect(p.memo).not.toContain(p.secret);
   });
 });
 
 describe("merkle", () => {
   it("leaf hash matches the Rust layout", async () => {
     // Pinned from `cargo test -p bb-auction vectors -- --nocapture`: sha256(0x00 || "ab" || 0x0000000000000001)
-    expect(await leafHash("ab", 1n)).toBe("61d06cec3eef4d7e316abe4db7ee13ebe849d3ff7d0ab236578b7701ea3e143d");
+    expect(await leafHash("ab", 1n, "00000000000000ab")).toBe("2bf19de1cea5e8da7d84ecfc5be99e8d60b292bc9493df50effc24e62c924205");
   });
   it("verifies a single-leaf proof", async () => {
-    const leaf = await leafHash("r1", 5n);
-    expect(await verifyInclusion("r1", 5n, { leaf, index: 0, leaf_count: 1, path: [], root: leaf })).toBe(true);
-    expect(await verifyInclusion("r1", 6n, { leaf, index: 0, leaf_count: 1, path: [], root: leaf })).toBe(false);
+    const leaf = await leafHash("r1", 5n, "0000000000000001");
+    expect(await verifyInclusion("r1", 5n, "0000000000000001", { leaf, index: 0, leaf_count: 1, path: [], root: leaf })).toBe(true);
+    expect(await verifyInclusion("r1", 6n, "0000000000000001", { leaf, index: 0, leaf_count: 1, path: [], root: leaf })).toBe(false);
+    expect(await verifyInclusion("r1", 5n, "0000000000000002", { leaf, index: 0, leaf_count: 1, path: [], root: leaf })).toBe(false);
   });
 });

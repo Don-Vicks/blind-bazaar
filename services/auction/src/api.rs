@@ -365,6 +365,9 @@ struct ResultView {
 struct PriceProof {
     receipt: String,
     bid_zats: u64,
+    /// The runner-up's memo nonce, needed to recompute their blinded leaf. It reveals nothing else
+    /// about them: their secret, refund address and identity stay sealed.
+    nonce: String,
     proof: crate::merkle::Proof,
 }
 
@@ -415,7 +418,7 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
                 let receipt = runner_up.receipt.clone()?;
                 let entries = store::ledger_entries(&conn, &id).ok()?;
                 let proof = crate::merkle::prove(&entries, &receipt)?;
-                Some(PriceProof { receipt, bid_zats: runner_up.bid_zats?, proof })
+                Some(PriceProof { receipt, bid_zats: runner_up.bid_zats?, nonce: runner_up.nonce.clone()?, proof })
             });
         (Some(source), proof)
     };
@@ -738,7 +741,7 @@ struct ProofView {
 }
 
 /// Inclusion proof of one receipt in the ledger committed at close. The bidder supplies the bid amount
-/// client-side to verify; the server never reveals it.
+/// and their nonce client-side to verify; the leaf is blinded by the nonce, so the server reveals no amount.
 async fn inclusion_proof(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -887,27 +890,29 @@ async fn seller_set_fulfilment(
 }
 
 #[derive(Deserialize)]
-struct NonceQuery {
-    /// The bid's nonce: the secret the bidder's browser generated. Receipts are public (they are
-    /// listed for everyone), so they cannot authenticate; the nonce is their preimage.
-    nonce: String,
+struct SecretQuery {
+    /// The bidder secret the browser generated with the bid. The memo nonce is sha256(secret)[..16],
+    /// and the receipt is sha256(nonce). Receipts are public and the nonce may become public if the
+    /// winning memo is disclosed, so only the secret authenticates the bidder.
+    secret: String,
 }
 
+/// Derive the memo nonce from a bidder secret, rejecting malformed input.
 fn nonce_param(raw: &str) -> Result<String, ApiError> {
-    let n = raw.trim().to_lowercase();
-    if !memo::is_nonce(&n) {
-        return Err(bad("nonce must be 16 lowercase hex chars"));
+    let s = raw.trim().to_lowercase();
+    if !memo::is_secret(&s) {
+        return Err(bad("secret must be 32 lowercase hex chars"));
     }
-    Ok(n)
+    Ok(memo::nonce_from_secret(&s))
 }
 
-/// The seller's delivery note, visible only to a winner who presents their bid nonce.
+/// The seller's delivery note, visible only to a winner who presents their bidder secret.
 async fn winner_fulfilment(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Query(q): Query<NonceQuery>,
+    Query(q): Query<SecretQuery>,
 ) -> ApiResult<serde_json::Value> {
-    let nonce = nonce_param(&q.nonce)?;
+    let nonce = nonce_param(&q.secret)?;
     let conn = state.store.lock().await;
     store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
     let receipt = memo::receipt(&nonce);
@@ -942,9 +947,9 @@ struct Standing {
     fulfilment: Option<String>,
 }
 
-/// Everything one bidder needs to know about their own bid, authenticated by the bid's nonce.
-async fn standing(State(state): State<Arc<AppState>>, Path(id): Path<String>, Query(q): Query<NonceQuery>) -> ApiResult<Standing> {
-    let nonce = nonce_param(&q.nonce)?;
+/// Everything one bidder needs to know about their own bid, authenticated by the bidder secret.
+async fn standing(State(state): State<Arc<AppState>>, Path(id): Path<String>, Query(q): Query<SecretQuery>) -> ApiResult<Standing> {
+    let nonce = nonce_param(&q.secret)?;
     let conn = state.store.lock().await;
     let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
     let bid = store::get_bid_by_nonce(&conn, &id, &nonce)?

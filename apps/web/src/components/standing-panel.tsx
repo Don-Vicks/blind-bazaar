@@ -10,6 +10,8 @@ import { Button, Eyebrow, Mono, Panel } from "@/components/ui";
 export interface SavedBid {
   receipt: string;
   nonce: string;
+  /** Authenticates the bidder to the service. Absent for bids made before secrets existed. */
+  secret?: string;
   bid?: string;
 }
 
@@ -37,16 +39,17 @@ const OUTCOME: Record<string, { title: string; body: string }> = {
 export function StandingPanel({ auctionId, network }: { auctionId: string; network: "test" | "main" }) {
   const [mine, setMine] = useState<SavedBid[]>([]);
   useEffect(() => setMine(savedBids(auctionId)), [auctionId]);
+  const withSecret = mine.filter((b) => b.secret);
   const results = useQueries({
-    queries: mine.map((b) => ({
-      queryKey: ["standing", auctionId, b.nonce],
-      queryFn: () => api.standing(auctionId, b.nonce),
+    queries: withSecret.map((b) => ({
+      queryKey: ["standing", auctionId, b.secret],
+      queryFn: () => api.standing(auctionId, b.secret!),
       refetchInterval: 15_000,
       retry: false,
     })),
   });
-  if (mine.length === 0) return null;
-  const rows = mine.map((b, i) => ({ b, q: results[i] })).filter(({ q }) => !(q.isError && q.error instanceof ApiError && q.error.status === 404));
+  if (withSecret.length === 0) return null;
+  const rows = withSecret.map((b, i) => ({ b, q: results[i] })).filter(({ q }) => !(q.isError && q.error instanceof ApiError && q.error.status === 404));
   if (rows.length === 0) return null;
   return (
     <div className="flex flex-col gap-6">

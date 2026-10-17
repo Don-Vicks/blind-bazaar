@@ -49,6 +49,18 @@ pub fn is_auction_id(s: &str) -> bool {
     s.len() == 8 && s.bytes().all(|b| CROCKFORD.contains(&b))
 }
 
+/// A bidder secret: 32 lowercase hex chars (16 random bytes) that only the bidder's browser holds.
+pub fn is_secret(s: &str) -> bool {
+    s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+}
+
+/// The memo nonce is derived from the secret: the first 16 hex chars of sha256(secret). The nonce
+/// travels in the memo (and may become public if the memo is disclosed); the secret never leaves the
+/// bidder and is what authenticates them to the service.
+pub fn nonce_from_secret(secret: &str) -> String {
+    hex::encode(Sha256::digest(secret.as_bytes()))[..16].to_string()
+}
+
 pub fn is_nonce(s: &str) -> bool {
     s.len() == 16 && s.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }

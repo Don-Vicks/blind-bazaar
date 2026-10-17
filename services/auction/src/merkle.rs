@@ -1,6 +1,8 @@
 //! Bid-ledger commitment as a Merkle tree so each bidder can check their own inclusion without
-//! learning anyone else's bid. Leaves are `sha256(0x00 || receipt || bid_zats_be8)`, sorted by
-//! receipt; internal nodes are `sha256(0x01 || left || right)`; an odd node is paired with itself.
+//! learning anyone else's bid. Leaves are `sha256(0x00 || receipt || bid_zats_be8 || nonce)`, sorted
+//! by receipt; internal nodes are `sha256(0x01 || left || right)`; an odd node is paired with itself.
+//! The nonce blinds the leaf: receipts are public and bid amounts are small, so without the nonce
+//! (known only to the bidder, and sealed in their memo) a leaf cannot be brute-forced to an amount.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -28,11 +30,15 @@ pub enum Side {
     Right,
 }
 
-pub fn leaf_hash(receipt: &str, bid_zats: u64) -> [u8; 32] {
+/// One ledger entry: (receipt, bid in zatoshis, nonce).
+pub type Entry = (String, u64, String);
+
+pub fn leaf_hash(receipt: &str, bid_zats: u64, nonce: &str) -> [u8; 32] {
     let mut h = Sha256::new();
     h.update([0u8]);
     h.update(receipt.as_bytes());
     h.update(bid_zats.to_be_bytes());
+    h.update(nonce.as_bytes());
     h.finalize().into()
 }
 
@@ -44,8 +50,8 @@ fn node_hash(l: &[u8; 32], r: &[u8; 32]) -> [u8; 32] {
     h.finalize().into()
 }
 
-/// Sorted leaves for a ledger of `(receipt, bid_zats)`.
-pub fn leaves(entries: &[(String, u64)]) -> Vec<(String, u64)> {
+/// Sorted leaves for a ledger of `(receipt, bid_zats, nonce)`.
+pub fn leaves(entries: &[Entry]) -> Vec<Entry> {
     let mut v = entries.to_vec();
     v.sort();
     v
@@ -67,19 +73,19 @@ fn levels(leaf_hashes: &[[u8; 32]]) -> Vec<Vec<[u8; 32]>> {
 
 /// Root of the ledger, hex. Empty ledger commits to sha256 of the empty string, matching the old
 /// plain hash so an empty auction is unchanged.
-pub fn root(entries: &[(String, u64)]) -> String {
+pub fn root(entries: &[Entry]) -> String {
     if entries.is_empty() {
         return hex::encode(Sha256::digest(b""));
     }
-    let lh: Vec<[u8; 32]> = leaves(entries).iter().map(|(r, v)| leaf_hash(r, *v)).collect();
+    let lh: Vec<[u8; 32]> = leaves(entries).iter().map(|(r, v, n)| leaf_hash(r, *v, n)).collect();
     hex::encode(levels(&lh).last().unwrap()[0])
 }
 
 /// Inclusion proof for `receipt` in the ledger, if present.
-pub fn prove(entries: &[(String, u64)], receipt: &str) -> Option<Proof> {
+pub fn prove(entries: &[Entry], receipt: &str) -> Option<Proof> {
     let sorted = leaves(entries);
-    let index = sorted.iter().position(|(r, _)| r == receipt)?;
-    let lh: Vec<[u8; 32]> = sorted.iter().map(|(r, v)| leaf_hash(r, *v)).collect();
+    let index = sorted.iter().position(|(r, _, _)| r == receipt)?;
+    let lh: Vec<[u8; 32]> = sorted.iter().map(|(r, v, n)| leaf_hash(r, *v, n)).collect();
     let lv = levels(&lh);
     let mut path = Vec::new();
     let mut i = index;
@@ -102,8 +108,8 @@ pub fn prove(entries: &[(String, u64)], receipt: &str) -> Option<Proof> {
 }
 
 /// Recompute the root from a leaf and its path.
-pub fn verify(receipt: &str, bid_zats: u64, proof: &Proof) -> bool {
-    let mut acc = leaf_hash(receipt, bid_zats);
+pub fn verify(receipt: &str, bid_zats: u64, nonce: &str, proof: &Proof) -> bool {
+    let mut acc = leaf_hash(receipt, bid_zats, nonce);
     if hex::encode(acc) != proof.leaf {
         return false;
     }
@@ -122,8 +128,10 @@ pub fn verify(receipt: &str, bid_zats: u64, proof: &Proof) -> bool {
 mod tests {
     use super::*;
 
-    fn ledger(n: usize) -> Vec<(String, u64)> {
-        (0..n).map(|i| (format!("{:064x}", (i as u64 + 1) * 0x9e37), (i as u64 + 1) * 1_000_000)).collect()
+    fn ledger(n: usize) -> Vec<Entry> {
+        (0..n)
+            .map(|i| (format!("{:064x}", (i as u64 + 1) * 0x9e37), (i as u64 + 1) * 1_000_000, format!("{:016x}", i as u64 + 7)))
+            .collect()
     }
 
     #[test]
@@ -131,12 +139,13 @@ mod tests {
         for n in [1usize, 2, 3, 4, 5, 8, 13] {
             let l = ledger(n);
             let r = root(&l);
-            for (receipt, bid) in &l {
+            for (receipt, bid, nonce) in &l {
                 let p = prove(&l, receipt).expect("present");
                 assert_eq!(p.root, r);
                 assert_eq!(p.leaf_count, n);
-                assert!(verify(receipt, *bid, &p), "n={n} receipt={receipt}");
-                assert!(!verify(receipt, bid + 1, &p), "wrong bid must fail");
+                assert!(verify(receipt, *bid, nonce, &p), "n={n} receipt={receipt}");
+                assert!(!verify(receipt, bid + 1, nonce, &p), "wrong bid must fail");
+                assert!(!verify(receipt, *bid, "0000000000000000", &p), "wrong nonce must fail");
             }
         }
     }
@@ -160,7 +169,7 @@ mod tests {
         let l = ledger(5);
         let mut p = prove(&l, &l[2].0).unwrap();
         p.path[0].hash = "00".repeat(32);
-        assert!(!verify(&l[2].0, l[2].1, &p));
+        assert!(!verify(&l[2].0, l[2].1, &l[2].2, &p));
     }
 }
 
@@ -169,6 +178,6 @@ mod vectors {
     /// Printed by `cargo test -- --nocapture vectors` and pinned in packages/bb-sdk/test/sdk.test.ts.
     #[test]
     fn print_leaf_vector() {
-        println!("LEAF_VECTOR {}", hex::encode(super::leaf_hash("ab", 1)));
+        println!("LEAF_VECTOR {}", hex::encode(super::leaf_hash("ab", 1, "00000000000000ab")));
     }
 }

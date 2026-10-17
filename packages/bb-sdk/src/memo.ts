@@ -72,6 +72,28 @@ export function encodeSettlement(s: Settlement): string {
   return `BB1S|${s.auctionId}|${s.nonce}`;
 }
 
+async function sha256Hex(s: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+/** The bidder secret: 16 random bytes, hex. Stays in the bidder's browser; authenticates them to the service. */
+export function randomSecret(): string {
+  const b = new Uint8Array(16);
+  crypto.getRandomValues(b);
+  return [...b].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+export function isSecret(s: string): boolean {
+  return /^[0-9a-f]{32}$/.test(s);
+}
+
+/** The memo nonce is sha256(secret)[..16]. It travels in the memo; the secret never does. */
+export async function nonceFromSecret(secret: string): Promise<string> {
+  return (await sha256Hex(secret)).slice(0, 16);
+}
+
+/** @deprecated nonces are derived from a secret now; kept for tools that only need a random nonce. */
 export function randomNonce(): string {
   const b = new Uint8Array(8);
   crypto.getRandomValues(b);
@@ -79,8 +101,7 @@ export function randomNonce(): string {
 }
 
 export async function receipt(nonce: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(nonce));
-  return [...new Uint8Array(digest)].map((x) => x.toString(16).padStart(2, "0")).join("");
+  return sha256Hex(nonce);
 }
 
 /** sha256 over sorted `receipt:bidZats` lines; must match the service's ledger_hash. */

@@ -23,7 +23,7 @@ export function ResultClient({ id }: { id: string }) {
     queryKey: ["price-proof", id, data?.price_proof?.receipt],
     queryFn: async () => {
       const p = data!.price_proof!;
-      const ok = await verifyInclusion(p.receipt, BigInt(p.bid_zats), p.proof);
+      const ok = await verifyInclusion(p.receipt, BigInt(p.bid_zats), p.nonce, p.proof);
       return ok && p.proof.root === data!.ledger_hash;
     },
     enabled: !!data?.price_proof && !!data?.ledger_hash,

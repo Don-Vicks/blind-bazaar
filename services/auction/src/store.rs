@@ -425,12 +425,12 @@ pub fn get_bid(conn: &Connection, id: i64) -> Result<Option<Bid>> {
 }
 
 /// The committed ledger of a closed auction: every bid that was valid at close, as (receipt, bid).
-pub fn ledger_entries(conn: &Connection, auction_id: &str) -> Result<Vec<(String, u64)>> {
+pub fn ledger_entries(conn: &Connection, auction_id: &str) -> Result<Vec<crate::merkle::Entry>> {
     let mut stmt = conn.prepare(
-        "SELECT receipt, bid_zats FROM bids WHERE auction_id = ?1
-           AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired') AND receipt IS NOT NULL AND bid_zats IS NOT NULL",
+        "SELECT receipt, bid_zats, nonce FROM bids WHERE auction_id = ?1
+           AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired') AND receipt IS NOT NULL AND bid_zats IS NOT NULL AND nonce IS NOT NULL",
     )?;
-    let rows = stmt.query_map([auction_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64)))?;
+    let rows = stmt.query_map([auction_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64, r.get::<_, String>(2)?)))?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 

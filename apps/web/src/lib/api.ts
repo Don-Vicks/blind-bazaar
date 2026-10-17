@@ -52,7 +52,7 @@ export interface AuctionResult {
   disclosure: unknown | null;
   price_source: "own_bid" | "lowest_winning" | "second_bid" | "reserve" | "lowest_quote" | null;
   /** Vickrey: the runner-up's ledger leaf and Merkle path proving the price is a committed bid. */
-  price_proof: { receipt: string; bid_zats: number; proof: import("@blind-bazaar/sdk").InclusionProof } | null;
+  price_proof: { receipt: string; bid_zats: number; nonce: string; proof: import("@blind-bazaar/sdk").InclusionProof } | null;
 }
 
 export interface ProofResponse {
@@ -158,9 +158,9 @@ export const api = {
   sellerLot: (key: string, id: string) => request<SellerLotDetail>(`/seller/lots/${id}`, { headers: { "x-seller-key": key } }),
   setFulfilment: (key: string, id: string, note: string) =>
     request<{ ok: boolean }>(`/seller/lots/${id}/fulfilment`, { method: "POST", headers: { "x-seller-key": key }, body: JSON.stringify({ note }) }),
-  fulfilment: (id: string, nonce: string) =>
-    request<{ note: string | null; updated_at: number | null }>(`/auctions/${id}/fulfilment?nonce=${encodeURIComponent(nonce)}`),
-  standing: (id: string, nonce: string) => request<Standing>(`/auctions/${id}/standing?nonce=${encodeURIComponent(nonce)}`),
+  fulfilment: (id: string, secret: string) =>
+    request<{ note: string | null; updated_at: number | null }>(`/auctions/${id}/fulfilment?secret=${encodeURIComponent(secret)}`),
+  standing: (id: string, secret: string) => request<Standing>(`/auctions/${id}/standing?secret=${encodeURIComponent(secret)}`),
   postEnvelope: (id: string, body: Record<string, unknown>) =>
     request<{ ok: boolean; receipt: string }>(`/auctions/${id}/envelopes`, {
       method: "POST",

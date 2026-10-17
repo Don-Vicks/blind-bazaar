@@ -86,9 +86,9 @@ pub fn close_due(
         let bids = store::bids_for_auction(store, &auction.id)?;
         let valid: Vec<&store::Bid> = bids.iter().filter(|b| b.status == "valid").collect();
 
-        let ledger: Vec<(String, u64)> = valid
+        let ledger: Vec<crate::merkle::Entry> = valid
             .iter()
-            .map(|b| (b.receipt.clone().unwrap_or_default(), b.bid_zats.unwrap_or(0)))
+            .map(|b| (b.receipt.clone().unwrap_or_default(), b.bid_zats.unwrap_or(0), b.nonce.clone().unwrap_or_default()))
             .collect();
         let ledger_hash = crate::merkle::root(&ledger);
 
@@ -598,7 +598,7 @@ mod tests {
         let receipt = crate::memo::receipt("0000000000000071");
         let proof = crate::merkle::prove(&entries, &receipt).unwrap();
         assert_eq!(proof.root, a.ledger_hash.unwrap());
-        assert!(crate::merkle::verify(&receipt, 3_000_000, &proof));
+        assert!(crate::merkle::verify(&receipt, 3_000_000, "0000000000000071", &proof));
     }
 
     #[test]

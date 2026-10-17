@@ -35,15 +35,16 @@ async function sha256(...parts: Uint8Array[]): Promise<Uint8Array> {
   return new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
 }
 
-export async function leafHash(receipt: string, bidZats: bigint): Promise<string> {
+/** Leaf = sha256(0x00 || receipt || bid_be8 || nonce). The nonce blinds the amount from everyone but the bidder. */
+export async function leafHash(receipt: string, bidZats: bigint, nonce: string): Promise<string> {
   const be = new Uint8Array(8);
   new DataView(be.buffer).setBigUint64(0, bidZats);
-  return hex(await sha256(new Uint8Array([0]), enc.encode(receipt), be));
+  return hex(await sha256(new Uint8Array([0]), enc.encode(receipt), be, enc.encode(nonce)));
 }
 
-/** Recompute the root from your receipt and bid and the server-supplied path; true if it equals `proof.root`. */
-export async function verifyInclusion(receipt: string, bidZats: bigint, proof: InclusionProof): Promise<boolean> {
-  let acc = unhex(await leafHash(receipt, bidZats));
+/** Recompute the root from your receipt, bid and nonce and the server-supplied path; true if it equals `proof.root`. */
+export async function verifyInclusion(receipt: string, bidZats: bigint, nonce: string, proof: InclusionProof): Promise<boolean> {
+  let acc = unhex(await leafHash(receipt, bidZats, nonce));
   if (hex(acc) !== proof.leaf) return false;
   for (const s of proof.path) {
     const sib = unhex(s.hash);
