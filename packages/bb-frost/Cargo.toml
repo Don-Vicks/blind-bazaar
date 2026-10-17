@@ -1,0 +1,23 @@
+[package]
+name = "bb-frost"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# Threshold spend authority for the Blind Bazaar spender: a 2-of-3 FROST group key over RedPallas is
+# used as the Orchard spend validating key `ak`. reddsa 0.5.x is the last line carrying the FROST
+# ciphersuite; orchard 0.16 uses reddsa 0.6, so this crate exchanges 32-byte keys and 64-byte
+# signatures with the rest of the service rather than sharing types.
+
+[dependencies]
+reddsa = { version = "=0.5.2", features = ["frost", "std"] }
+frost-rerandomized = "3"
+rand_core_old = { package = "rand_core", version = "0.6", features = ["getrandom"] }
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+pasta_curves = "0.5"
+ff = "0.13"
+group = "0.13"
