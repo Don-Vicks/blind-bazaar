@@ -101,8 +101,8 @@ function LotTable({ title, lots }: { title: string; lots: import("@/lib/api").Se
       <ul>
         {lots.map((l) => (
           <li key={l.id} className="hairline-b">
-            <Link href={`/dashboard/${l.id}`} className="group grid items-center gap-4 py-4 transition-colors duration-150 hover:bg-foreground/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:grid-cols-12 sm:px-2">
-              <div className="flex items-center gap-4 sm:col-span-5">
+            <Link href={`/dashboard/${l.id}`} className="group grid items-center gap-4 py-4 transition-colors duration-150 hover:bg-foreground/[0.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:grid-cols-[minmax(0,5fr)_repeat(4,minmax(0,1.5fr))_minmax(0,1fr)] sm:px-2">
+              <div className="flex items-center gap-4">
                 <div className="plate w-16 shrink-0"><LotImage id={l.id} src={l.image_url} alt="" ratio="1/1" /></div>
                 <div className="min-w-0">
                   <p className="serif truncate text-[20px] leading-tight group-hover:text-accent">{l.title}</p>
@@ -113,7 +113,7 @@ function LotTable({ title, lots }: { title: string; lots: import("@/lib/api").Se
               <Cell label={l.status === "open" ? "Reserve" : "Clearing"} value={l.status === "open" ? zec(l.reserve_zats) : l.clearing_zats === null ? "No sale" : zec(l.clearing_zats)} />
               <Cell label="Settled" value={l.money.winners ? `${l.money.winners_settled}/${l.money.winners}` : "—"} />
               <Cell label="Paid out" value={zec(l.money.seller_paid_zats)} />
-              <div className="sm:col-span-1 sm:text-right"><span className={`text-[12px] ${l.fulfilment ? "text-success" : "text-muted-foreground"}`}>{l.fulfilment ? "delivery posted" : l.money.winners_settled > 0 ? "post delivery" : ""}</span></div>
+              <div className="sm:text-right"><span className={`text-[12px] ${l.fulfilment ? "text-success" : "text-muted-foreground"}`}>{l.fulfilment ? "delivery posted" : l.money.winners_settled > 0 ? "post delivery" : ""}</span></div>
             </Link>
           </li>
         ))}
@@ -124,9 +124,9 @@ function LotTable({ title, lots }: { title: string; lots: import("@/lib/api").Se
 
 function Cell({ label, value }: { label: string; value: string }) {
   return (
-    <div className="sm:col-span-1.5">
+    <div>
       <span className="eyebrow sm:hidden">{label} </span>
-      <span className="num text-[14px]">{value}</span>
+      <span className="num whitespace-nowrap text-[14px]">{value}</span>
     </div>
   );
 }
