@@ -151,6 +151,16 @@ pub fn token_eq(a: &str, b: &str) -> bool {
     a.len() == b.len() && a.as_bytes().ct_eq(b.as_bytes()).into()
 }
 
+/// Wait for the wallet worker's answer, but not forever: while it is mid-sync a request should fail fast
+/// with 503 rather than hold the connection open.
+async fn wallet_reply<T>(rx: oneshot::Receiver<T>) -> Result<T, ApiError> {
+    match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+        Ok(Ok(v)) => Ok(v),
+        Ok(Err(_)) => Err(anyhow::anyhow!("wallet worker dropped reply").into()),
+        Err(_) => Err(ApiError(StatusCode::SERVICE_UNAVAILABLE, "wallet is busy syncing; try again shortly".into())),
+    }
+}
+
 fn check_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
     let ok = !state.admin_token.is_empty()
         && headers
@@ -233,9 +243,7 @@ async fn create_auction(
         .send(WalletCmd::NewAddress { reply: tx })
         .await
         .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
-    let (address, di) = rx
-        .await
-        .map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??;
+    let (address, di) = wallet_reply(rx).await??;
 
     let id = memo::random_auction_id(&mut rand::rng());
     let conn = state.store.lock().await;
@@ -355,7 +363,7 @@ async fn post_envelope(
         .send(WalletCmd::NewReceiveAddress { reply: tx })
         .await
         .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
-    let (address, transparent) = rx.await.map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??;
+    let (address, transparent) = wallet_reply(rx).await??;
     let env_id = hex::encode(rand::random::<[u8; 12]>());
     let conn = state.store.lock().await;
     store::insert_envelope(
@@ -781,7 +789,7 @@ async fn godark_receive_address(State(state): State<Arc<AppState>>) -> ApiResult
         .send(WalletCmd::NewReceiveAddress { reply: tx })
         .await
         .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
-    let (ua, transparent) = rx.await.map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??;
+    let (ua, transparent) = wallet_reply(rx).await??;
     Ok(Json(serde_json::json!({ "ua": ua, "transparent": transparent })))
 }
 

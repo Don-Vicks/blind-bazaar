@@ -20,6 +20,8 @@ use crate::{
 };
 
 const MAX_PAYOUT_ATTEMPTS: i64 = 5;
+/// Upper bound on one sync/ingest/payout pass. A stalled lightwalletd stream otherwise blocks the worker forever.
+const PASS_TIMEOUT: Duration = Duration::from_secs(300);
 
 pub struct Worker {
     pub cfg: Config,
@@ -74,8 +76,11 @@ impl Worker {
         info!("running as {:?}, signing: {}", self.cfg.role, signing.as_deref().unwrap_or("none (viewer)"));
 
         // Address derivation records the exposure height, so the wallet must know the chain tip first.
+        // Every network step is bounded: a lightwalletd call that never answers must not hang the worker.
         let db_cache = wallet::cache::MemBlockCache::default();
-        wallet::sync::sync_once(&mut client, &self.params, &db_cache, &mut db).await?;
+        tokio::time::timeout(PASS_TIMEOUT, wallet::sync::sync_once(&mut client, &self.params, &db_cache, &mut db))
+            .await
+            .map_err(|_| anyhow::anyhow!("initial sync timed out after {}s", PASS_TIMEOUT.as_secs()))??;
 
         // A dedicated receive address for the operator (tips, Go Dark demo, funding), persisted so
         // it is stable across restarts and never confused with an auction address.
@@ -131,7 +136,13 @@ impl Worker {
                     }
                 },
                 _ = interval.tick() => {
-                    if let Err(e) = self.pass(&mut client, &db_cache, &mut db, &wallet_ro, prover.as_ref(), &operator, frost.as_ref()).await {
+                    let outcome = tokio::time::timeout(
+                        PASS_TIMEOUT,
+                        self.pass(&mut client, &db_cache, &mut db, &wallet_ro, prover.as_ref(), &operator, frost.as_ref()),
+                    )
+                    .await
+                    .unwrap_or_else(|_| Err(anyhow::anyhow!("pass timed out after {}s; reconnecting", PASS_TIMEOUT.as_secs())));
+                    if let Err(e) = outcome {
                         error!("pass failed: {e:#}");
                         self.status.write().await.last_error = Some(format!("{e:#}"));
                         // Reconnect on the next tick in case the channel died.
