@@ -93,6 +93,7 @@ struct Health {
     pending_payouts_zats: u64,
     dead_payouts: i64,
     low_balance: bool,
+    signing: Option<String>,
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> ApiResult<Health> {
@@ -111,6 +112,7 @@ async fn health(State(state): State<Arc<AppState>>) -> ApiResult<Health> {
         pending_payouts_zats: s.pending_payouts_zats,
         dead_payouts: s.dead_payouts,
         low_balance: s.low_balance,
+        signing: s.signing,
     }))
 }
 

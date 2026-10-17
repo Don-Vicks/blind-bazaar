@@ -42,7 +42,9 @@ Remove the single operator who can both read bids and move funds.
   publishes receipts, decides winners) and a **spender** holding the spending key that mirrors auction
   definitions immutably, recomputes outcomes from its own wallet view, and only executes payouts its own ledger
   derives
-- planned: FROST threshold signing for the spender so refunds and payouts need k-of-n operators
+- done (unit-tested; chain run pending): FROST 2-of-3 threshold signing for the spender: the escrow account has no
+  spending key, every payout is a PCZT co-signed by independent signer hosts that inspect it first (`docs/FROST.md`)
+- planned: distributed key generation instead of the trusted dealer; signer policy beyond a per-tx cap
 - done: bidder-side inclusion proofs: Merkle commitment of the bid ledger at close, per-receipt proof verified in the browser
 - planned: encrypted-to-auction-key bid envelopes for cross-chain entries (rail and relay see ciphertext only)
 - planned: refund batching and timing analysis with documented k-anonymity targets

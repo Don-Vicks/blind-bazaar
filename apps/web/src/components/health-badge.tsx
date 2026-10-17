@@ -16,6 +16,7 @@ export function HealthBadge() {
         : ok
           ? `${data.network === "main" ? "mainnet" : data.network} · synced`
           : `syncing · ${lag ?? "?"} behind`;
+  const custody = data?.signing?.startsWith("frost") ? data.signing.split(" (")[0] : null;
   return (
     <span className="inline-flex items-center gap-2 text-[12px] text-muted-foreground" aria-live="polite">
       <span
@@ -23,6 +24,7 @@ export function HealthBadge() {
         className={`size-1.5 rounded-full ${isError || data?.low_balance ? "bg-danger" : ok ? "bg-accent" : "bg-muted-foreground/50"}`}
       />
       {label}
+      {custody ? <span className="text-muted-foreground/70" title={data?.signing ?? undefined}>· {custody}</span> : null}
     </span>
   );
 }

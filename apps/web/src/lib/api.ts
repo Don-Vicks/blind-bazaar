@@ -93,6 +93,8 @@ export interface Health {
   balance_zats: number | null;
   low_balance?: boolean;
   dead_payouts?: number;
+  /** "seed" or "frost 2-of-3 (...)"; null for a viewer process. */
+  signing?: string | null;
 }
 
 export class ApiError extends Error {

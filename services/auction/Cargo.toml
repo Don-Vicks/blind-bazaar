@@ -41,11 +41,12 @@ orchard = { version = "0.16", default-features = false, features = ["unstable-fr
 sapling = { package = "sapling-crypto", version = "0.9" }
 zcash_address = "=0.14.0-pre.1"
 zcash_client_backend = { version = "=0.25.0-pre.1", features = ["lightwalletd-tonic-tls-webpki-roots", "orchard", "sync", "transparent-inputs", "pczt"] }
-zcash_client_sqlite = { version = "=0.23.0-pre.1", features = ["orchard", "transparent-inputs"] }
+zcash_client_sqlite = { version = "=0.23.0-pre.1", features = ["orchard", "transparent-inputs", "serde"] }
 zcash_keys = { version = "=0.17.0-pre.1", features = ["orchard", "sapling", "unstable-frost"] }
 zcash_primitives = "=0.31.0-pre.1"
 pczt = { version = "=0.10.0-pre.1", features = ["orchard", "prover", "signer", "io-finalizer", "spend-finalizer", "tx-extractor"] }
 bb-frost = { path = "../../packages/bb-frost" }
+ff = "0.14"
 zcash_proofs = { version = "=0.31.0-pre.1", features = ["bundled-prover", "multicore"] }
 transparent = { package = "zcash_transparent", version = "=0.11.0-pre.1", features = ["transparent-inputs"] }
 zcash_note_encryption = "0.5"

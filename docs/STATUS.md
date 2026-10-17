@@ -45,6 +45,16 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 | Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
 | Memo passthrough in Zodl, Zingo, YWallet from a ZIP-321 QR | one bid from each wallet |
 
+## Added Oct 17 (FROST escrow; unit-tested, chain run pending)
+
+- 2-of-3 FROST custody for the spender: `packages/bb-frost` (RedPallas re-randomized FROST, 3 tests),
+  `bb-auction frost keygen|show|signer`, escrow account imported from the group viewing key with no spending key,
+  PCZT send path (propose → prove → signing session → verify under `rk` → extract → broadcast), signer hosts that
+  parse the PCZT themselves and enforce a per-transaction external-value cap, single-use sessions. Four protocol
+  tests in `frost.rs` (one signer offline, sub-threshold, policy refusal, session misuse). `/health` reports the
+  signing mode; `scripts/regtest-e2e.sh FROST=1` runs the money loop with two signers up and one absent (not yet
+  run: needs the regtest devnet). Design in `docs/FROST.md`.
+
 ## Added Oct 17
 
 - Seller dashboard: `/dashboard` lists my lots with bids, clearing, settlement and payout summaries; lot detail
@@ -107,4 +117,7 @@ outputs in compact blocks; the first received testnet note answers it.
 - The vendored `zcash_client_backend` carries a one-spot patch so servers without Ironwood subtree roots do not
   abort sync; drop it when upstream gates the request on NU6.3 activation.
 - Ingest treats every received non-change output as a potential bid; operator funding deposits with no memo stay unprocessed (harmless) and operator self-transfers are excluded.
-- The service holds the spending key for refunds and the viewing key in one process (documented limitation).
+- In `all` mode without `FROST_ESCROW` the service holds the spending key for refunds and the viewing key in one
+  process (development default). Production runs viewer + spender under the FROST escrow.
+- The PCZT path (`wallet/pczt_send.rs`) has not yet produced a transaction on a chain; the FROST session and the
+  signature verification under `rk` are unit-tested, the wallet-side PCZT build/prove/extract is not.

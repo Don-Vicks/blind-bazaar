@@ -16,7 +16,7 @@ use crate::{
     ingest,
     state::{SyncStatus, WalletCmd},
     store,
-    wallet::{self, send::Outgoing},
+    wallet::{self, send::{Authority, Outgoing}},
 };
 
 const MAX_PAYOUT_ATTEMPTS: i64 = 5;
@@ -47,16 +47,31 @@ impl Worker {
                     .ok_or_else(|| anyhow::anyhow!("ROLE=viewer needs OPERATOR_UFVK"))?;
                 wallet::ensure_viewer_account(&mut db, &mut client, &self.params, ufvk, self.cfg.birthday_height).await?
             }
-            Role::All | Role::Spender => {
-                let (seed, _created) = wallet::load_or_create_seed(&self.cfg.operator_seed_file)?;
-                wallet::ensure_operator_account(&mut db, &mut client, &self.params, &seed, self.cfg.birthday_height)
-                    .await?
-            }
+            Role::All | Role::Spender => match &self.cfg.frost_escrow {
+                Some(path) => {
+                    let escrow = crate::frost::Escrow::load(path)?;
+                    wallet::ensure_escrow_account(&mut db, &mut client, &self.params, &escrow, self.cfg.birthday_height).await?
+                }
+                None => {
+                    let (seed, _created) = wallet::load_or_create_seed(&self.cfg.operator_seed_file)?;
+                    wallet::ensure_operator_account(&mut db, &mut client, &self.params, &seed, self.cfg.birthday_height)
+                        .await?
+                }
+            },
+        };
+        let frost = match (&self.cfg.frost_escrow, self.cfg.role) {
+            (Some(path), Role::All | Role::Spender) => Some(self.build_frost(path)?),
+            _ => None,
         };
         if self.cfg.role == Role::Spender && self.cfg.viewer_url.is_none() {
             return Err(anyhow::anyhow!("ROLE=spender needs VIEWER_URL"));
         }
-        info!("running as {:?}", self.cfg.role);
+        let signing = match (&frost, operator.usk.is_some()) {
+            (Some(f), _) => Some(f.describe()),
+            (None, true) => Some("seed".to_string()),
+            (None, false) => None,
+        };
+        info!("running as {:?}, signing: {}", self.cfg.role, signing.as_deref().unwrap_or("none (viewer)"));
 
         // Address derivation records the exposure height, so the wallet must know the chain tip first.
         let db_cache = wallet::cache::MemBlockCache::default();
@@ -82,6 +97,7 @@ impl Worker {
             let mut st = self.status.write().await;
             st.operator_address = Some(operator_addr);
             st.lightwalletd_version = Some(format!("{ver} ({chain})"));
+            st.signing = signing;
         }
 
         let prover = if self.cfg.role == Role::Viewer {
@@ -115,7 +131,7 @@ impl Worker {
                     }
                 },
                 _ = interval.tick() => {
-                    if let Err(e) = self.pass(&mut client, &db_cache, &mut db, &wallet_ro, prover.as_ref(), &operator).await {
+                    if let Err(e) = self.pass(&mut client, &db_cache, &mut db, &wallet_ro, prover.as_ref(), &operator, frost.as_ref()).await {
                         error!("pass failed: {e:#}");
                         self.status.write().await.last_error = Some(format!("{e:#}"));
                         // Reconnect on the next tick in case the channel died.
@@ -137,6 +153,7 @@ impl Worker {
         wallet_ro: &Connection,
         prover: Option<&LocalTxProver>,
         operator: &wallet::Operator,
+        frost: Option<&crate::frost::FrostSpender>,
     ) -> Result<()> {
         let memo_key = if self.cfg.disclose_winning_memo { operator.ufvk.clone() } else { None };
         if self.cfg.role == Role::Spender {
@@ -191,15 +208,21 @@ impl Worker {
             close::enforce_settlement_deadlines(&store, &close_cfg)?;
         }
 
-        if let (Some(prover), Some(usk)) = (prover, operator.usk.as_ref()) {
-            // Anything a rail delivered to a transparent receiver gets shielded before the auction logic sees it.
+        let auth = match (operator.usk.as_ref(), frost) {
+            (Some(usk), _) => Some(Authority::Seed(usk)),
+            (None, Some(f)) => Some(Authority::Frost(f)),
+            (None, None) => None,
+        };
+        if let (Some(prover), Some(auth)) = (prover, auth) {
+            // Anything a rail delivered to a transparent receiver gets shielded before the auction logic
+            // sees it. The escrow key is Orchard-only, so nothing can land unshielded there.
             let unshielded = db
                 .get_wallet_summary(wallet::send::confirmations_policy(self.cfg.min_confirmations))
                 .ok()
                 .flatten()
                 .and_then(|s| s.account_balances().get(&operator.account_id).map(|b| u64::from(b.unshielded())))
                 .unwrap_or(0);
-            if unshielded > 0 {
+            if let (true, Some(usk)) = (unshielded > 0, operator.usk.as_ref()) {
                 match wallet::send::shield_transparent(db, &self.params, client, prover, operator.account_id, usk, self.cfg.min_confirmations).await {
                     Ok(txids) if !txids.is_empty() => {
                         let store = self.store.lock().await;
@@ -209,7 +232,7 @@ impl Worker {
                     Err(e) => warn!("auto-shield failed: {e:#}"),
                 }
             }
-            self.process_payouts(client, db, prover, operator.account_id, usk).await?;
+            self.process_payouts(client, db, prover, operator.account_id, &auth).await?;
         }
         if self.cfg.role == Role::Spender {
             self.report_payouts().await?;
@@ -227,6 +250,24 @@ impl Worker {
             };
         }
         Ok(())
+    }
+
+    /// Assemble the escrow coordinator from config: HTTP signer hosts, plus any in-process shares.
+    fn build_frost(&self, escrow_path: &std::path::Path) -> Result<crate::frost::FrostSpender> {
+        use crate::frost::{Escrow, FrostSpender, HttpSigner, LocalSigner, SignerHost, SignerPolicy, SignerTransport};
+        let escrow = Escrow::load(escrow_path)?;
+        let mut signers: Vec<Box<dyn SignerTransport>> = Vec::new();
+        for url in &self.cfg.frost_signers {
+            if !url.trim().is_empty() {
+                signers.push(Box::new(HttpSigner::new(url.trim(), self.cfg.frost_token.clone())?));
+            }
+        }
+        for path in &self.cfg.frost_signer_shares {
+            warn!("running signer share {} in-process: no separation from the spender (development only)", path.display());
+            let host = SignerHost::load(path, &escrow, self.params, SignerPolicy::default())?;
+            signers.push(Box::new(LocalSigner { host: Arc::new(host), plan: None }));
+        }
+        FrostSpender::new(escrow, signers)
     }
 
     async fn deliver_events(&self) -> Result<()> {
@@ -315,7 +356,7 @@ impl Worker {
         db: &mut wallet::Db,
         prover: &LocalTxProver,
         account_id: zcash_client_sqlite::AccountUuid,
-        usk: &zcash_keys::keys::UnifiedSpendingKey,
+        auth: &Authority<'_>,
     ) -> Result<()> {
         let due = {
             let store = self.store.lock().await;
@@ -334,14 +375,15 @@ impl Worker {
                 client,
                 prover,
                 account_id,
-                usk,
+                auth,
                 &out,
                 self.cfg.min_confirmations,
             )
             .await;
             let store = self.store.lock().await;
             match result {
-                Ok(txid) => {
+                Ok(sent) => {
+                    let txid = sent.txid;
                     store::mark_payout_sent(&store, p.id, &txid)?;
                     if p.kind == "seller" {
                         if let Some(aid) = &p.auction_id {
@@ -358,7 +400,7 @@ impl Worker {
                         &store,
                         p.auction_id.as_deref(),
                         match p.kind.as_str() { "seller" => "seller_paid", "forfeit" => "forfeit_paid", _ => "refund_sent" },
-                        &serde_json::json!({ "payout_id": p.id, "txid": txid, "value_zats": p.value_zats }),
+                        &serde_json::json!({ "payout_id": p.id, "txid": txid, "value_zats": p.value_zats, "cosigners": sent.cosigners }),
                     )?;
                 }
                 Err(e) => {

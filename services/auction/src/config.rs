@@ -52,6 +52,21 @@ pub enum FrostCmd {
         #[arg(long)]
         out: PathBuf,
     },
+    /// Run a signer host: holds one share, inspects and co-signs every PCZT the spender submits.
+    Signer {
+        #[arg(long)]
+        share: PathBuf,
+        #[arg(long)]
+        escrow: PathBuf,
+        #[arg(long, env = "FROST_SIGNER_BIND", default_value = "127.0.0.1:8801")]
+        bind: String,
+        /// Shared secret the spender must present (header `x-frost-token`).
+        #[arg(long, env = "FROST_TOKEN")]
+        token: Option<String>,
+        /// Refuse transactions paying more than this (zatoshis) to addresses the escrow does not own.
+        #[arg(long, env = "FROST_MAX_EXTERNAL_ZATS")]
+        max_external_zats: Option<u64>,
+    },
     /// Print the unified full viewing key and first address for an escrow file.
     Show {
         #[arg(long)]
@@ -156,6 +171,23 @@ pub struct Config {
     pub viewer_url: Option<String>,
 
     /// Seconds a winner has to pay the balance after close before forfeiting the deposit.
+    /// FROST escrow file (from `frost keygen`). When set, the spender imports the escrow's viewing
+    /// key instead of deriving an account from OPERATOR_SEED_FILE and every spend is co-signed.
+    #[arg(long, env = "FROST_ESCROW")]
+    pub frost_escrow: Option<PathBuf>,
+
+    /// Signer host URLs, comma separated (at least `threshold` must be reachable to spend).
+    #[arg(long, env = "FROST_SIGNERS", value_delimiter = ',')]
+    pub frost_signers: Vec<String>,
+
+    /// Signer share files to run in-process (development only; no separation from the spender).
+    #[arg(long, env = "FROST_SIGNER_SHARES", value_delimiter = ',')]
+    pub frost_signer_shares: Vec<PathBuf>,
+
+    /// Shared secret presented to signer hosts.
+    #[arg(long, env = "FROST_TOKEN")]
+    pub frost_token: Option<String>,
+
     #[arg(long, env = "SETTLEMENT_WINDOW_SECS", default_value_t = 86_400)]
     pub settlement_window_secs: i64,
 

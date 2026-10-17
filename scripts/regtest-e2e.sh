@@ -9,6 +9,7 @@ cd "$(dirname "$0")/.."
 
 BIN=${BIN:-target/debug/bb-auction}
 UNITS=${UNITS:-1}   # 1 = single first-price lot; 2 = two-unit uniform-price edition with three bidders
+FROST=${FROST:-0}   # 1 = spender under 2-of-3 FROST escrow: two signer hosts co-sign every payout; signer 3 stays offline
 LWD=${LWD:-http://127.0.0.1:9067}
 FAUCET=${FAUCET:-http://127.0.0.1:8080}
 API=http://127.0.0.1:8797
@@ -28,13 +29,25 @@ wait_for() { # wait_for <seconds> <description> <command...>
 }
 
 cargo build -p bb-auction -q
+SIGNERS=""
+if [ "$FROST" = "1" ]; then
+  "$BIN" frost keygen --out "$DATA/frost" > "$DATA/keygen.log" 2>&1 || { cat "$DATA/keygen.log"; exit 1; }
+  for i in 1 2; do
+    FROST_TOKEN=regtest-frost "$BIN" frost signer --share "$DATA/frost/signer-$i.json" --escrow "$DATA/frost/escrow.json" \
+      --bind "127.0.0.1:880$i" --max-external-zats 500000000 > "$DATA/signer-$i.log" 2>&1 &
+    SIGNERS="$SIGNERS $!"
+  done
+  export FROST_ESCROW=$DATA/frost/escrow.json FROST_SIGNERS=http://127.0.0.1:8801,http://127.0.0.1:8802,http://127.0.0.1:8803 FROST_TOKEN=regtest-frost
+  wait_for 30 "signer hosts" bash -c "curl -sf http://127.0.0.1:8801/health && curl -sf http://127.0.0.1:8802/health"
+  pass "frost keygen done; signers 1 and 2 up, signer 3 deliberately absent"
+fi
 "$BIN" > "$DATA/service.log" 2>&1 &
 SVC=$!
-trap 'kill $SVC 2>/dev/null || true' EXIT
+trap 'kill $SVC $SIGNERS 2>/dev/null || true' EXIT
 
 wait_for 60 "service health" bash -c "curl -sf $API/health | grep -q '\"last_sync_at\":[0-9]'"
 OP=$(curl -s $API/health | j 'd["operator_address"]')
-pass "service synced; operator $OP"
+pass "service synced; operator $OP; signing: $(curl -s $API/health | j 'd["signing"]')"
 
 # Fund operator (fees + refunds) and two bidder wallets from the faucet.
 fund() { # fund <address> <zec> ; the faucet syncs between requests, so retry a few times
@@ -61,6 +74,12 @@ done
 NB=$(echo $BIDDERS | wc -w | tr -d ' ')
 wait_for 400 "operator funding sends" bash -c "[ \$(curl -sf -H 'x-admin-token: regtest' $API/admin/payouts | python3 -I -c 'import json,sys;print(sum(1 for p in json.load(sys.stdin) if p[\"kind\"]==\"manual\" and p[\"status\"]==\"sent\"))') -ge $NB ]"
 pass "operator sent 1 ZEC to each of $NB bidders (shielded sends work)"
+if [ "$FROST" = "1" ]; then
+  grep -q 'frost session complete' "$DATA/service.log" || fail "no frost session in the service log"
+  [ "$(grep -c 'signed .* spend' "$DATA/signer-1.log")" -ge "$NB" ] || fail "signer 1 did not co-sign every funding"
+  [ "$(grep -c 'signed .* spend' "$DATA/signer-2.log")" -ge "$NB" ] || fail "signer 2 did not co-sign every funding"
+  pass "every send was co-signed by signers 1 and 2 (2-of-3); the spender holds no spending key"
+fi
 
 # Auction: reserve 0.2, deposit 0.1, closes in 8 min (regtest proving + 15 s blocks per bid). Seller is the operator itself for the test.
 A=$(curl -sf -X POST $API/auctions -H 'x-admin-token: regtest' -H 'content-type: application/json' \
@@ -124,5 +143,8 @@ pass "seller payout sent"
 curl -s $API/auctions/$ID/result | python3 -I -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["disclosure"]))' > "$DATA/disclosure.json"
 "$BIN" --verify-disclosure "$DATA/disclosure.json" >/dev/null && pass "CLI verifier: OK" || fail "CLI verifier rejected the disclosure"
 curl -s -H 'x-admin-token: regtest' $API/admin/reconcile
+if [ "$FROST" = "1" ]; then
+  echo "frost sessions: $(grep -c 'frost session complete' "$DATA/service.log") (signer 1: $(curl -s http://127.0.0.1:8801/health | j 'd["signed_sessions"]'), signer 2: $(curl -s http://127.0.0.1:8802/health | j 'd["signed_sessions"]'))"
+fi
 echo
 echo "ALL PASS  (data in $DATA)"

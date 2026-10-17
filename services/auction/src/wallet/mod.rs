@@ -2,6 +2,7 @@
 
 pub mod cache;
 pub mod net;
+pub mod pczt_send;
 pub mod send;
 pub mod sync;
 
@@ -175,6 +176,47 @@ pub async fn ensure_viewer_account(
     };
     let ufvk = db.get_account(account_id)?.and_then(|a| a.ufvk().cloned());
     Ok(Operator { account_id, usk: None, ufvk })
+}
+
+/// Ensure the FROST escrow account exists in the wallet DB (spender role under escrow). The account
+/// is imported from the escrow's full viewing key with spending purpose and no ZIP 32 derivation:
+/// the wallet proposes and proves spends, and the signatures come from the signing session.
+pub async fn ensure_escrow_account(
+    db: &mut Db,
+    client: &mut Client,
+    params: &Network,
+    escrow: &crate::frost::Escrow,
+    birthday_height: Option<u32>,
+) -> anyhow::Result<Operator> {
+    use zcash_client_backend::data_api::AccountPurpose;
+    let ufvk = escrow.ufvk()?;
+    let encoded = ufvk.encode(params).map_err(|e| anyhow!("{e:?}"))?;
+    let existing = db.get_account_ids()?;
+    let account_id = if let Some(id) = existing.first() {
+        let held = db
+            .get_account(*id)?
+            .and_then(|a| a.ufvk().and_then(|u| u.encode(params).ok()));
+        if held.as_deref() != Some(encoded.as_str()) {
+            return Err(anyhow!("wallet dir already holds a different account than the escrow key; use a fresh DATA_DIR"));
+        }
+        *id
+    } else {
+        let tip = chain_tip(client).await?;
+        let birthday = get_wallet_birthday(
+            client,
+            params,
+            birthday_height.unwrap_or(tip.saturating_sub(100)).into(),
+            None,
+        )
+        .await?;
+        let account = db
+            .import_account_ufvk("escrow", &ufvk, &birthday, AccountPurpose::Spending { derivation: None }, Some("frost-escrow"))
+            .map_err(|e| anyhow!("{e:?}"))?;
+        let id = account.id();
+        info!("imported frost escrow account {id:?} with birthday {}", birthday.height());
+        id
+    };
+    Ok(Operator { account_id, usk: None, ufvk: Some(ufvk) })
 }
 
 /// Ensure the operator account exists in the wallet DB and return its id and spending key.

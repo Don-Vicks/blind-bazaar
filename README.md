@@ -135,6 +135,9 @@ the bid met the reserve. Losing bids are never disclosed.
 - Run two processes for custody separation: `ROLE=viewer OPERATOR_UFVK=uview…` (no seed on that host)
   and, elsewhere, `ROLE=spender VIEWER_URL=https://viewer ADMIN_TOKEN=…` with the seed. Get the UFVK with
   `bb-auction derive --seed-file operator.seed --ufvk`. `docs/PRIVACY.md` explains what each role can do.
+- Or run the spender without any spending key: `bb-auction frost keygen --out ./frost` makes a 2-of-3 FROST
+  escrow; signer hosts run `bb-auction frost signer --share signer-N.json --escrow escrow.json`; the spender takes
+  `FROST_ESCROW` and `FROST_SIGNERS`, and every payout is a PCZT the signers inspect and co-sign. `docs/FROST.md`.
 
 - A winner who does not pay within `SETTLEMENT_WINDOW_SECS` (default 24h) forfeits the deposit to the seller; the
   runner-up is offered the lot if their refund has not been sent yet, otherwise the auction ends unsettled.

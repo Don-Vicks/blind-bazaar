@@ -15,10 +15,12 @@ use zcash_client_backend::{
         },
     },
     fees::{DustOutputPolicy, SplitPolicy, StandardFeeRule, standard::MultiOutputChangeStrategy},
+    proposal::Proposal,
     proto::service,
     wallet::OvkPolicy,
 };
-use zcash_client_sqlite::AccountUuid;
+use zcash_client_sqlite::{AccountUuid, ReceivedNoteId};
+use zcash_protocol::TxId;
 use zcash_client_backend::util::SystemClock;
 use zcash_keys::keys::UnifiedSpendingKey;
 use zcash_proofs::prover::LocalTxProver;
@@ -123,6 +125,29 @@ pub struct Outgoing<'a> {
     pub memo: Option<&'a str>,
 }
 
+/// Who authorises spends from the account: a seed-derived spending key held by this process, or
+/// the FROST escrow whose signers co-sign each transaction.
+pub enum Authority<'a> {
+    Seed(&'a UnifiedSpendingKey),
+    Frost(&'a crate::frost::FrostSpender),
+}
+
+impl Authority<'_> {
+    pub fn describe(&self) -> String {
+        match self {
+            Authority::Seed(_) => "seed".into(),
+            Authority::Frost(f) => f.describe(),
+        }
+    }
+}
+
+/// A broadcast transaction and, under escrow, who co-signed it.
+#[derive(Debug, Clone)]
+pub struct Sent {
+    pub txid: String,
+    pub cosigners: Vec<String>,
+}
+
 pub fn build_request(out: &Outgoing<'_>) -> anyhow::Result<TransactionRequest> {
     let payment = Payment::new(
         ZcashAddress::from_str(out.address).map_err(|_| anyhow!("invalid recipient address"))?,
@@ -153,25 +178,22 @@ pub async fn send(
     client: &mut Client,
     prover: &LocalTxProver,
     account_id: AccountUuid,
-    usk: &UnifiedSpendingKey,
+    auth: &Authority<'_>,
     out: &Outgoing<'_>,
     min_confirmations: Option<u32>,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<Sent> {
     let request = build_request(out)?;
-    send_request(db, params, client, prover, account_id, usk, request, min_confirmations).await
+    send_request(db, params, client, prover, account_id, auth, request, min_confirmations).await
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn send_request(
+/// Select inputs and change for `request` from `account_id`.
+pub fn propose(
     db: &mut Db,
     params: &Network,
-    client: &mut Client,
-    prover: &LocalTxProver,
     account_id: AccountUuid,
-    usk: &UnifiedSpendingKey,
     request: TransactionRequest,
     min_confirmations: Option<u32>,
-) -> anyhow::Result<String> {
+) -> anyhow::Result<Proposal<StandardFeeRule, ReceivedNoteId>> {
     let change_strategy = MultiOutputChangeStrategy::new(
         StandardFeeRule::Zip317,
         None,
@@ -183,8 +205,7 @@ pub async fn send_request(
         ),
     );
     let input_selector = GreedyInputSelector::new();
-
-    let proposal = propose_transfer::<_, _, _, _, std::convert::Infallible>(
+    propose_transfer::<_, _, _, _, std::convert::Infallible>(
         db,
         params,
         account_id,
@@ -196,27 +217,11 @@ pub async fn send_request(
         None,
         None,
     )
-    .map_err(|e| anyhow!("propose_transfer: {e:?}"))?;
+    .map_err(|e| anyhow!("propose_transfer: {e:?}"))
+}
 
-    let txids = create_proposed_transactions::<_, _, std::convert::Infallible, _, std::convert::Infallible, _>(
-        db,
-        params,
-        &SystemClock,
-        &mut super::rng(),
-        prover,
-        prover,
-        &SpendingKeys::from_unified_spending_key(usk.clone()),
-        OvkPolicy::Sender,
-        &proposal,
-        None,
-    )
-    .map_err(|e| anyhow!("create_proposed_transactions: {e:?}"))?;
-
-    if txids.len() > 1 {
-        return Err(anyhow!("multi-transaction proposals are not supported"));
-    }
-    let txid = *txids.first();
-
+/// Read a transaction the wallet has stored and hand it to lightwalletd. Returns the display txid.
+pub async fn broadcast_stored(db: &mut Db, client: &mut Client, txid: TxId) -> anyhow::Result<String> {
     let (txid, raw_tx) = db
         .get_transaction(txid)?
         .map(|tx| {
@@ -236,4 +241,44 @@ pub async fn send_request(
     }
     info!("sent {txid}");
     Ok(txid.to_string())
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn send_request(
+    db: &mut Db,
+    params: &Network,
+    client: &mut Client,
+    prover: &LocalTxProver,
+    account_id: AccountUuid,
+    auth: &Authority<'_>,
+    request: TransactionRequest,
+    min_confirmations: Option<u32>,
+) -> anyhow::Result<Sent> {
+    let proposal = propose(db, params, account_id, request, min_confirmations)?;
+    let usk = match auth {
+        Authority::Frost(frost) => {
+            return super::pczt_send::send_proposal(db, params, client, account_id, frost, &proposal).await;
+        }
+        Authority::Seed(usk) => usk,
+    };
+
+    let txids = create_proposed_transactions::<_, _, std::convert::Infallible, _, std::convert::Infallible, _>(
+        db,
+        params,
+        &SystemClock,
+        &mut super::rng(),
+        prover,
+        prover,
+        &SpendingKeys::from_unified_spending_key((*usk).clone()),
+        OvkPolicy::Sender,
+        &proposal,
+        None,
+    )
+    .map_err(|e| anyhow!("create_proposed_transactions: {e:?}"))?;
+
+    if txids.len() > 1 {
+        return Err(anyhow!("multi-transaction proposals are not supported"));
+    }
+    let txid = broadcast_stored(db, client, *txids.first()).await?;
+    Ok(Sent { txid, cosigners: vec![] })
 }

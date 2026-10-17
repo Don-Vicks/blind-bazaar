@@ -35,6 +35,8 @@ pub struct SyncStatus {
     pub pending_payouts_zats: u64,
     pub dead_payouts: i64,
     pub low_balance: bool,
+    /// "seed" or "frost 2-of-3 (...)"; None for a viewer.
+    pub signing: Option<String>,
 }
 
 pub struct AppState {

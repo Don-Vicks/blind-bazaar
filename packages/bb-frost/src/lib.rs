@@ -12,6 +12,9 @@ use reddsa::frost::redpallas::rerandomized;
 use serde::{Deserialize, Serialize};
 
 pub use frost::Identifier;
+pub use frost::SigningPackage;
+pub use frost::keys::PublicKeyPackage;
+pub use frost::round1::SigningNonces;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -175,6 +178,12 @@ pub mod wire {
     }
     pub fn identifier_from_hex(s: &str) -> Result<Identifier> {
         Ok(Identifier::deserialize(&unhex(s)?)?)
+    }
+    pub fn public_to_hex(p: &frost::keys::PublicKeyPackage) -> Result<String> {
+        Ok(hex::encode(p.serialize()?))
+    }
+    pub fn public_from_hex(s: &str) -> Result<frost::keys::PublicKeyPackage> {
+        Ok(frost::keys::PublicKeyPackage::deserialize(&unhex(s)?)?)
     }
 }
 

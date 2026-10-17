@@ -31,8 +31,10 @@ The service runs in one of three roles (`ROLE=all|viewer|spender`):
 With the split on two hosts, a compromised viewer can misreport or censor but cannot steal: every
 refund goes to the address inside the bidder's own encrypted memo, every seller payout is bounded
 by the winning bid the spender decrypted itself, and the seller address is pinned at first sight.
-A compromised spender can steal, which is why the next step is FROST threshold signing so that
-spending needs k-of-n operators.
+A compromised spender alone can no longer steal when it runs under the FROST escrow: the spend
+authority is a 2-of-3 group key, the spender holds only the viewing key, and two signer hosts
+inspect every transaction's destinations and amounts before co-signing (`docs/FROST.md`). Theft
+needs the spender plus a signer, or two signers.
 
 ## Cross-chain bids use an envelope, not the memo
 

@@ -132,18 +132,19 @@ async fn wallet_cmd(
         let request = zip321::TransactionRequest::from_uri(&uri).map_err(|e| anyhow::anyhow!("bad URI: {e:?}"))?;
         info!("paying {} payment(s) from {uri}", request.payments().len());
         let prover = zcash_proofs::prover::LocalTxProver::bundled();
-        let txid = wallet::send::send_request(
+        let usk = me.usk.as_ref().expect("wallet subcommand always has a seed");
+        let sent = wallet::send::send_request(
             &mut db,
             &params,
             &mut client,
             &prover,
             me.account_id,
-            me.usk.as_ref().expect("wallet subcommand always has a seed"),
+            &wallet::send::Authority::Seed(usk),
             request,
             cfg.min_confirmations,
         )
         .await?;
-        println!("txid: {txid}");
+        println!("txid: {}", sent.txid);
     }
     Ok(())
 }
@@ -181,6 +182,12 @@ async fn main() -> anyhow::Result<()> {
                 let (ufvk, ua) = frost::show(&e, &cfg.net())?;
                 println!("ufvk  {ufvk}");
                 println!("first address {ua}");
+            }
+            config::FrostCmd::Signer { share, escrow, bind, token, max_external_zats } => {
+                let e = frost::Escrow::load(&escrow)?;
+                let host = frost::SignerHost::load(&share, &e, cfg.net(), frost::SignerPolicy { max_external_zats })?;
+                info!("frost signer {} for group ak {}", host.identifier(), e.ak);
+                frost::run_signer(std::sync::Arc::new(host), &bind, token).await?;
             }
         }
         return Ok(());
