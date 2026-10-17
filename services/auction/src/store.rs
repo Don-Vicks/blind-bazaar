@@ -389,6 +389,18 @@ pub fn bid_exists(conn: &Connection, txid: &str, output_index: u32) -> Result<bo
     Ok(n > 0)
 }
 
+/// The bid sealed with `nonce` on `auction_id`, whatever its status. Nonces are secrets known only to the
+/// bidder, so this is the bidder's own view.
+pub fn get_bid_by_nonce(conn: &Connection, auction_id: &str, nonce: &str) -> Result<Option<Bid>> {
+    conn.query_row(
+        &format!("SELECT {BID_COLS} FROM bids WHERE auction_id = ?1 AND nonce = ?2 ORDER BY id LIMIT 1"),
+        params![auction_id, nonce],
+        row_to_bid,
+    )
+    .optional()
+    .map_err(Into::into)
+}
+
 pub fn nonce_used(conn: &Connection, auction_id: &str, nonce: &str) -> Result<bool> {
     let n: i64 = conn.query_row(
         "SELECT COUNT(*) FROM bids WHERE auction_id = ?1 AND nonce = ?2 AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired')",

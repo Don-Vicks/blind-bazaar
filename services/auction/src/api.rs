@@ -45,6 +45,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auctions/{id}/events", get(auction_events))
         .route("/auctions/{id}/proof", get(inclusion_proof))
         .route("/auctions/{id}/fulfilment", get(winner_fulfilment))
+        .route("/auctions/{id}/standing", get(standing))
         .route("/seller/me", get(seller_me))
         .route("/seller/lots", get(seller_lots))
         .route("/seller/lots/{id}", get(seller_lot))
@@ -886,22 +887,107 @@ async fn seller_set_fulfilment(
 }
 
 #[derive(Deserialize)]
-struct FulfilmentQuery {
-    receipt: String,
+struct NonceQuery {
+    /// The bid's nonce: the secret the bidder's browser generated. Receipts are public (they are
+    /// listed for everyone), so they cannot authenticate; the nonce is their preimage.
+    nonce: String,
 }
 
-/// The seller's delivery note, visible only with a winning receipt.
+fn nonce_param(raw: &str) -> Result<String, ApiError> {
+    let n = raw.trim().to_lowercase();
+    if !memo::is_nonce(&n) {
+        return Err(bad("nonce must be 16 lowercase hex chars"));
+    }
+    Ok(n)
+}
+
+/// The seller's delivery note, visible only to a winner who presents their bid nonce.
 async fn winner_fulfilment(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Query(q): Query<FulfilmentQuery>,
+    Query(q): Query<NonceQuery>,
 ) -> ApiResult<serde_json::Value> {
-    let receipt = q.receipt.trim().to_lowercase();
+    let nonce = nonce_param(&q.nonce)?;
     let conn = state.store.lock().await;
     store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+    let receipt = memo::receipt(&nonce);
     if !store::receipt_is_winner(&conn, &id, &receipt)? {
-        return Err(ApiError(StatusCode::FORBIDDEN, "that receipt did not win this lot".into()));
+        return Err(ApiError(StatusCode::FORBIDDEN, "that bid did not win this lot".into()));
     }
     let f = store::get_fulfilment(&conn, &id)?;
     Ok(Json(serde_json::json!({ "note": f.as_ref().map(|x| x.0.clone()), "updated_at": f.map(|x| x.1) })))
+}
+
+#[derive(Serialize)]
+struct Standing {
+    receipt: String,
+    /// Raw bid status: valid, won, settled, forfeited, expired, late, wrong_deposit, duplicate_nonce, malformed.
+    status: String,
+    /// What it means for the bidder: pending, won, settled, lost, forfeited, expired, rejected.
+    outcome: &'static str,
+    format: String,
+    deposit_zats: u64,
+    /// Total the bidder owes if they won (deposit included). Null until the lot closes.
+    price_zats: Option<u64>,
+    /// What is still to pay: price minus deposit. Zero once settled or if the deposit covered it.
+    owed_zats: u64,
+    settle_by: Option<i64>,
+    /// How to pay the balance: a ZIP-321 URI with the settlement memo. Only for a winner who still owes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    settlement: Option<SettlementView>,
+    /// Refund or payout state for this bid, if any payout exists.
+    payouts: Vec<store::Payout>,
+    /// The seller's delivery note, for winners only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fulfilment: Option<String>,
+}
+
+/// Everything one bidder needs to know about their own bid, authenticated by the bid's nonce.
+async fn standing(State(state): State<Arc<AppState>>, Path(id): Path<String>, Query(q): Query<NonceQuery>) -> ApiResult<Standing> {
+    let nonce = nonce_param(&q.nonce)?;
+    let conn = state.store.lock().await;
+    let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+    let bid = store::get_bid_by_nonce(&conn, &id, &nonce)?
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "no bid with that nonce has arrived yet".into()))?;
+    let rfq = close::is_rfq(&auction.format);
+    let outcome: &'static str = match bid.status.as_str() {
+        "valid" if auction.status == "open" => "pending",
+        "valid" => "lost",
+        "won" => "won",
+        "settled" => "settled",
+        "forfeited" => "forfeited",
+        "expired" => "expired",
+        _ => "rejected",
+    };
+    let owed_zats = match (bid.status.as_str(), bid.price_zats) {
+        ("won", Some(p)) if !rfq => p.saturating_sub(bid.value_zats),
+        _ => 0,
+    };
+    let settlement = if owed_zats > 0 {
+        let memo_str = memo::encode_settlement(&memo::Settlement { auction_id: id.clone(), nonce: nonce.clone() });
+        crate::wallet::send::build_request(&crate::wallet::send::Outgoing { address: &auction.address, zats: owed_zats, memo: Some(&memo_str) })
+            .ok()
+            .map(|r| SettlementView { uri: r.to_uri(), memo: memo_str, amount_zats: owed_zats, address: auction.address.clone(), settle_by: bid.settle_by })
+    } else {
+        None
+    };
+    let payouts = store::payouts_for_auction(&conn, &id)?.into_iter().filter(|p| p.bid_id == Some(bid.id)).collect();
+    let fulfilment = if matches!(bid.status.as_str(), "won" | "settled") {
+        store::get_fulfilment(&conn, &id)?.map(|(n, _)| n)
+    } else {
+        None
+    };
+    Ok(Json(Standing {
+        receipt: bid.receipt.clone().unwrap_or_else(|| memo::receipt(&nonce)),
+        status: bid.status.clone(),
+        outcome,
+        format: auction.format.clone(),
+        deposit_zats: bid.value_zats,
+        price_zats: bid.price_zats,
+        owed_zats,
+        settle_by: bid.settle_by,
+        settlement,
+        payouts,
+        fulfilment,
+    }))
 }
