@@ -51,7 +51,7 @@ export function GoDark(opts: GoDarkOptions) {
   const [chain, setChain] = useState<Chain>(chains[0]);
   const [asset, setAsset] = useState<Asset>(ASSETS[chains[0]][0]);
   const [account, setAccount] = useState<string | null>(null);
-  const [dest, setDest] = useState<{ ua: string; transparent?: string }>({ ua: opts.to, transparent: opts.toTransparent });
+  const [dest, setDest] = useState<{ ua: string; transparent?: string }>({ ua: opts.to ?? "", transparent: opts.toTransparent });
   const [quote, setQuote] = useState<Quote | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusResponse | null>(null);
@@ -82,6 +82,7 @@ export function GoDark(opts: GoDarkOptions) {
         d = await fetchFreshAddress(opts.toEndpoint);
         setDest(d);
       }
+      if (!d.ua) throw new Error("no destination: set `to` or `toEndpoint`");
       const q = await fetchQuote(apiBase, {
         chain,
         asset,
@@ -190,7 +191,8 @@ export function GoDark(opts: GoDarkOptions) {
             <div className="gd-eyebrow">Go Dark</div>
             <div className="gd-title">Pay privately.</div>
             <div className="gd-muted">
-              Deliver {zec(opts.amountZats)} shielded to <span className="gd-mono">{dest.ua.slice(0, 12)}…</span>
+              Deliver {zec(opts.amountZats)} shielded to{" "}
+              {dest.ua ? <span className="gd-mono">{dest.ua.slice(0, 12)}…</span> : "a fresh address created for this payment"}
             </div>
           </div>
 

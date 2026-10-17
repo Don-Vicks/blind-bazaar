@@ -26,8 +26,8 @@ export interface StatusResponse {
 }
 
 export interface GoDarkOptions {
-  /** Zcash unified address that receives the shielded ZEC. */
-  to: string;
+  /** Zcash unified address that receives the shielded ZEC. Optional when `toEndpoint` is set. */
+  to?: string;
   /** Transparent receiver of `to`, offered to a rail only if it rejects the unified address. */
   toTransparent?: string;
   /** If set, the widget fetches a fresh `{ ua, transparent }` from this URL before every payment, so two

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Field Notes by M. Okafor</title>
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; font: 17px/1.65 Georgia, "Times New Roman", serif; color: #1f2a22; background: #fbfaf6; }
+  main { max-width: 640px; margin: 0 auto; padding: 56px 20px 96px; }
+  header { border-bottom: 1px solid #d9d4c7; padding-bottom: 20px; margin-bottom: 36px; }
+  header h1 { margin: 0; font-size: 30px; font-weight: 400; letter-spacing: -0.01em; }
+  header p { margin: 6px 0 0; color: #6b7366; font-size: 14px; font-family: ui-sans-serif, system-ui, sans-serif; }
+  article h2 { font-weight: 400; font-size: 24px; margin: 0 0 12px; }
+  article p { margin: 0 0 18px; }
+  .support { margin-top: 48px; padding: 24px; border: 1px solid #d9d4c7; border-radius: 6px; background: #fff; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .support h3 { margin: 0 0 6px; font-size: 16px; font-weight: 600; }
+  .support p { margin: 0 0 16px; font-size: 14px; color: #4b5349; }
+  .support small { display: block; margin-top: 14px; font-size: 12px; color: #6b7366; }
+  footer { margin-top: 48px; font-size: 12px; color: #6b7366; font-family: ui-sans-serif, system-ui, sans-serif; }
+  footer a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Field Notes</h1>
+    <p>Occasional letters on soil, seed and weather, by M. Okafor. A demo page: this is not a real publication.</p>
+  </header>
+  <article>
+    <h2>Why the dry season came early</h2>
+    <p>The rains stopped three weeks before anyone expected. By the second week of October the river had dropped to the
+      stones, and the farmers who had planted late were already counting what they would lose.</p>
+    <p>I walked the lower fields on Tuesday. The maize that went in on time is fine. Everything planted after the
+      first rain is a gamble now, and most of it will be lost. The lesson is old and nobody likes it: plant on the
+      calendar, not on hope.</p>
+    <p>Next week: what the cooperative is doing about seed for the short season.</p>
+  </article>
+
+  <section class="support">
+    <h3>Support these letters</h3>
+    <p>Tip the writer privately. Pay from a Solana or Ethereum wallet; the writer receives shielded Zcash. This page
+      never sees your wallet, and nobody can tell from the blockchain that you paid a writer.</p>
+    <div id="pay"></div>
+    <small>Private on the Zcash side and from this page. The swap service that converts your funds sees your source
+      address and the destination. <a href="/embed">How this button works</a>.</small>
+  </section>
+
+  <footer>Demo of the Blind Bazaar pay button. The button, the swap and the shielded delivery are real; the writer is not.</footer>
+</main>
+
+<script src="/go-dark.iife.js"></script>
+<script>
+  // Exactly the snippet from /embed. `toEndpoint` asks the service for a fresh address per payment.
+  GoDark.mount(document.getElementById("pay"), {
+    toEndpoint: window.location.origin + "/api/godark/address",
+    amountZats: "500000", // 0.005 ZEC
+    apiBase: window.location.origin,
+    label: "Tip 0.005 ZEC privately",
+    onStatus: function (e) { console.log("[tip-jar]", e.type, e); },
+  });
+</script>
+</body>
+</html>
