@@ -2,6 +2,7 @@ mod api;
 mod close;
 mod config;
 mod disclosure;
+mod frost;
 mod ingest;
 mod memo;
 mod merkle;
@@ -163,6 +164,26 @@ async fn main() -> anyhow::Result<()> {
     let cfg = Config::parse();
     if let Some(path) = &cfg.verify_disclosure {
         return verify_disclosure_file(&cfg, path).await;
+    }
+    if let Some(config::Cmd::Frost { cmd }) = cfg.cmd.clone() {
+        match cmd {
+            config::FrostCmd::Keygen { max, min, out } => {
+                let e = frost::keygen(max, min, &out)?;
+                let (ufvk, ua) = frost::show(&e, &cfg.net())?;
+                println!("escrow {}-of-{} written to {}", e.threshold, e.signers, out.display());
+                println!("ak    {}", e.ak);
+                println!("ufvk  {ufvk}");
+                println!("first address {ua}");
+                println!("keep signer-*.json on separate hosts; share escrow.json with the viewer");
+            }
+            config::FrostCmd::Show { escrow } => {
+                let e = frost::Escrow::load(&escrow)?;
+                let (ufvk, ua) = frost::show(&e, &cfg.net())?;
+                println!("ufvk  {ufvk}");
+                println!("first address {ua}");
+            }
+        }
+        return Ok(());
     }
     if let Some(config::Cmd::Derive { seed_file, count, check, ufvk: print_ufvk }) = cfg.cmd.clone() {
         use secrecy::ExposeSecret;

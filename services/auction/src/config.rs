@@ -41,7 +41,31 @@ impl std::str::FromStr for Role {
 }
 
 #[derive(Debug, Subcommand, Clone)]
+pub enum FrostCmd {
+    /// Trusted-dealer key generation: writes `<out>/signer-{1,2,3}.json` (each holds one share) and
+    /// `<out>/escrow.json` (the group `ak`, minted `nk`/`rivk`, and the encoded full viewing key).
+    Keygen {
+        #[arg(long, default_value_t = 3)]
+        max: u16,
+        #[arg(long, default_value_t = 2)]
+        min: u16,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Print the unified full viewing key and first address for an escrow file.
+    Show {
+        #[arg(long)]
+        escrow: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand, Clone)]
 pub enum Cmd {
+    /// FROST threshold custody tooling.
+    Frost {
+        #[command(subcommand)]
+        cmd: FrostCmd,
+    },
     /// Print the first N Orchard-only unified addresses derived from a seed file (no chain access).
     Derive {
         #[arg(long)]
