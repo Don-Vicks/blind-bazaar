@@ -79,21 +79,24 @@ pub fn ingest(store: &Connection, wallet: &Connection) -> Result<usize> {
         if store::bid_exists(store, &out.txid, out.output_index)? {
             continue;
         }
-        let (memo_str, source) = match &out.memo {
-            Some(m) => (m.clone(), "memo"),
-            None => match store::envelope_for_txid(store, &out.txid)? {
-                Some(env) => (env.payload.clone(), "envelope"),
-                None => {
-                    // Memo-less receipt with no envelope yet; re-check next pass.
-                    continue;
-                }
+        // A memo-less output is a rail delivery. It is claimed only by the envelope whose own fresh
+        // address it arrived at; nothing a client says about txids can attach a payload to someone
+        // else's money.
+        let envelope = match &out.memo {
+            Some(_) => None,
+            None => match out.to_address.as_deref().and_then(|a| store::envelope_for_address(store, a).transpose()) {
+                Some(env) => Some(env?),
+                None => continue, // unknown memo-less receipt (operator funding, tips); nothing to do
             },
         };
+        let (memo_str, source) = match (&out.memo, &envelope) {
+            (Some(m), _) => (m.clone(), "memo"),
+            (None, Some(env)) => (env.payload.clone(), "envelope"),
+            (None, None) => continue,
+        };
         let bid_id = record(store, &out, &memo_str, source)?;
-        if source == "envelope" {
-            if let Some(env) = store::envelope_for_txid(store, &out.txid)? {
-                store::mark_envelope_matched(store, &env.deposit_address, bid_id)?;
-            }
+        if let Some(env) = envelope {
+            store::mark_envelope_matched(store, &env.deposit_address, bid_id)?;
         }
         inserted += 1;
     }
@@ -128,7 +131,11 @@ fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str
             nb.status = match &auction {
                 None => "unknown_auction",
                 Some(a) if a.status != "open" => "late",
-                Some(a) if out.value_zats != a.deposit_zats => "wrong_deposit",
+                // A wallet pays the deposit exactly. A swap rail delivers at least the deposit (it
+                // quotes with a buffer), so envelope bids may overshoot; the excess is refunded with
+                // the deposit or counted towards the price.
+                Some(a) if source == "envelope" && out.value_zats < a.deposit_zats => "wrong_deposit",
+                Some(a) if source != "envelope" && out.value_zats != a.deposit_zats => "wrong_deposit",
                 Some(a) if store::nonce_used(store, &a.id, &bid.nonce)? => "duplicate_nonce",
                 Some(a) if a.address != out.to_address.clone().unwrap_or_default() => {
                     warn!(

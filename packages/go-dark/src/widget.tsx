@@ -78,7 +78,15 @@ export function GoDark(opts: GoDarkOptions) {
       const acct = chain === "solana" ? await connectSolana() : await connectEthereum();
       setAccount(acct);
       let d = dest;
-      if (opts.toEndpoint) {
+      if (opts.envelope) {
+        // Register the sealed payload first: the service binds it to a fresh address, and only money
+        // arriving there counts. The rail is told to deliver to that address.
+        const rail = chain === "ethereum" ? "maya" : "oneclick";
+        const e = await postEnvelope(opts.envelope.auctionApi, opts.envelope.auctionId, { rail, payload: opts.envelope.payload });
+        d = { ua: e.address, transparent: e.transparent ?? undefined };
+        setDest(d);
+        setReceipt(e.receipt);
+      } else if (opts.toEndpoint) {
         d = await fetchFreshAddress(opts.toEndpoint);
         setDest(d);
       }
@@ -131,14 +139,6 @@ export function GoDark(opts: GoDarkOptions) {
       emit({ type: "sent", chain: quote.chain, txHash: hash, quote });
       const trackingId = quote.rail === "oneclick" ? quote.depositAddress : hash;
       await submitDeposit(apiBase, quote.rail, quote.depositAddress, hash);
-      if (opts.envelope) {
-        const r = await postEnvelope(opts.envelope.auctionApi, opts.envelope.auctionId, {
-          deposit_address: trackingId,
-          rail: quote.rail,
-          payload: opts.envelope.payload,
-        });
-        setReceipt(r.receipt);
-      }
       setStep("tracking");
       poll.current = window.setInterval(async () => {
         try {
@@ -147,14 +147,6 @@ export function GoDark(opts: GoDarkOptions) {
           emit({ type: "status", status: s });
           if (s.status === "success" || s.status === "refunded" || s.status === "failed") {
             if (poll.current) window.clearInterval(poll.current);
-            if (s.status === "success" && opts.envelope && s.destinationTxids[0]) {
-              await postEnvelope(opts.envelope.auctionApi, opts.envelope.auctionId, {
-                deposit_address: trackingId,
-                rail: quote.rail,
-                payload: opts.envelope.payload,
-                destination_txid: s.destinationTxids[0],
-              }).catch(() => undefined);
-            }
             setStep("done");
           }
         } catch {

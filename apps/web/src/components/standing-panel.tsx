@@ -3,7 +3,8 @@
 import { useQueries } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
-import { ApiError, api, explorerTxUrl, type Standing } from "@/lib/api";
+import { GoDark } from "@blind-bazaar/go-dark";
+import { API_BASE, ApiError, api, explorerTxUrl, type Standing } from "@/lib/api";
 import { dateTime, zec } from "@/lib/format";
 import { Button, Eyebrow, Mono, Panel } from "@/components/ui";
 
@@ -54,13 +55,13 @@ export function StandingPanel({ auctionId, network }: { auctionId: string; netwo
   return (
     <div className="flex flex-col gap-6">
       {rows.map(({ b, q }) => (
-        <StandingCard key={b.nonce} saved={b} standing={q.data} error={q.isError ? (q.error as Error).message : null} network={network} />
+        <StandingCard key={b.nonce} saved={b} standing={q.data} error={q.isError ? (q.error as Error).message : null} network={network} auctionId={auctionId} />
       ))}
     </div>
   );
 }
 
-function StandingCard({ saved, standing, error, network }: { saved: SavedBid; standing?: Standing; error: string | null; network: "test" | "main" }) {
+function StandingCard({ saved, standing, error, network, auctionId }: { saved: SavedBid; standing?: Standing; error: string | null; network: "test" | "main"; auctionId: string }) {
   const [copied, setCopied] = useState(false);
   if (error) return <Panel className="text-[14px] text-muted-foreground">Could not load your bid: {error}</Panel>;
   if (!standing) return <Panel className="text-[14px] text-muted-foreground">Checking your bid…</Panel>;
@@ -116,6 +117,20 @@ function StandingCard({ saved, standing, error, network }: { saved: SavedBid; st
               </Button>
               <Mono className="block text-[12px] text-muted-foreground">{standing.settlement.memo}</Mono>
             </div>
+          </div>
+          <div className="hairline-t pt-4">
+            <Eyebrow>No ZEC?</Eyebrow>
+            {network === "main" ? (
+              <div className="mt-3">
+                <GoDark
+                  amountZats={standing.settlement.amount_zats.toString()}
+                  label="Pay the balance from Solana or Ethereum"
+                  envelope={{ auctionApi: API_BASE, auctionId, payload: standing.settlement.memo }}
+                />
+              </div>
+            ) : (
+              <p className="mt-1 text-[13px] text-muted-foreground">On mainnet, Go Dark pays the balance from a Solana or Ethereum wallet. This instance runs on testnet, where the swap rails do not operate.</p>
+            )}
           </div>
         </div>
       )}

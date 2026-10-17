@@ -3,8 +3,9 @@
 import { looksLikeShieldedAddress, parseZec, prepareBid, type PreparedBid } from "@blind-bazaar/sdk";
 import { GoDark } from "@blind-bazaar/go-dark";
 import { QRCodeSVG } from "qrcode.react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
-import { API_BASE, type AuctionView } from "@/lib/api";
+import { API_BASE, api, type AuctionView } from "@/lib/api";
 import { zec } from "@/lib/format";
 import { fmt, isRfq } from "@/lib/formats";
 import { Button, Eyebrow, Field, Mono, Panel, inputClass } from "@/components/ui";
@@ -30,6 +31,8 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
   const [copied, setCopied] = useState<"uri" | "memo" | null>(null);
   const rfq = isRfq(auction.format);
   const f = fmt(auction.format);
+  const health = useQuery({ queryKey: ["health"], queryFn: api.health });
+  const mainnet = health.data?.network === "main";
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -108,12 +111,15 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
             Go Dark swaps the {rfq ? "bond" : "deposit"} from Solana or Ethereum into shielded ZEC at the auction address and relays your
             sealed {f.verb}. The rail never sees it.
           </p>
-          <GoDark
-            to={auction.address}
-            amountZats={prepared.depositZats.toString()}
-            label="Enter with Go Dark"
-            envelope={{ auctionApi: API_BASE, auctionId: auction.id, payload: prepared.memo }}
-          />
+          {mainnet ? (
+            <GoDark
+              amountZats={prepared.depositZats.toString()}
+              label="Enter with Go Dark"
+              envelope={{ auctionApi: API_BASE, auctionId: auction.id, payload: prepared.memo }}
+            />
+          ) : (
+            <p className="text-[13px] text-muted-foreground">Mainnet only. This instance runs on testnet, where the swap rails do not operate; pay from a Zcash testnet wallet instead.</p>
+          )}
         </div>
         <Button variant="ghost" onClick={() => setPrepared(null)} className="self-start px-0">
           Start over

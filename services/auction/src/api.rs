@@ -41,6 +41,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/admin/payouts/{id}/retry", post(admin_retry_payout))
         .route("/admin/reconcile", get(admin_reconcile))
         .route("/admin/auctions", get(admin_auctions))
+        .route("/admin/envelopes", get(admin_envelopes))
         .route("/admin/payouts/sync", post(admin_payouts_sync))
         .route("/auctions/{id}/events", get(auction_events))
         .route("/auctions/{id}/proof", get(inclusion_proof))
@@ -298,45 +299,80 @@ async fn receipts(State(state): State<Arc<AppState>>, Path(id): Path<String>) ->
 
 #[derive(Deserialize)]
 struct EnvelopeReq {
-    deposit_address: String,
+    /// Which rail will deliver (informational).
+    #[serde(default)]
     rail: String,
-    /// The full `BB1|...` memo string the bidder would have put on chain.
+    /// A `BB1` bid (open lot) or a `BB1S` settlement (closed lot, matching a winning bid).
     payload: String,
-    destination_txid: Option<String>,
 }
 
+#[derive(Serialize)]
+struct EnvelopeView {
+    /// Fresh unified address this payment must be delivered to. Only money arriving here is this envelope's.
+    address: String,
+    /// Its transparent receiver, for a rail that cannot deliver shielded (funds are shielded on arrival).
+    transparent: Option<String>,
+    receipt: String,
+    id: String,
+}
+
+/// Register a sealed payload for a payment that a swap rail will deliver without a memo. The service
+/// derives a fresh address for it; the widget then asks the rail to deliver there. Matching is by
+/// address alone, so no client-supplied txid can claim anyone else's deposit.
 async fn post_envelope(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
     Json(req): Json<EnvelopeReq>,
-) -> ApiResult<serde_json::Value> {
+) -> ApiResult<EnvelopeView> {
     let parsed = memo::parse(&req.payload).map_err(|e| bad(format!("bad payload: {e}")))?;
-    let memo::Parsed::Bid(bid) = parsed else {
-        return Err(bad("payload must be a BB1 bid"));
+    let (auction_id, nonce) = match &parsed {
+        memo::Parsed::Bid(b) => (b.auction_id.clone(), b.nonce.clone()),
+        memo::Parsed::Settlement(s) => (s.auction_id.clone(), s.nonce.clone()),
     };
-    if bid.auction_id != id {
+    if auction_id != id {
         return Err(bad("payload auction id does not match path"));
     }
-    if req.deposit_address.len() < 8 || req.rail.is_empty() {
-        return Err(bad("deposit_address and rail required"));
+    {
+        let conn = state.store.lock().await;
+        let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+        match &parsed {
+            memo::Parsed::Bid(_) if auction.status != "open" => return Err(bad("auction is not open")),
+            memo::Parsed::Settlement(s) => {
+                if auction.status != "closed" {
+                    return Err(bad("nothing to settle on this lot"));
+                }
+                let won = store::get_bid_by_nonce(&conn, &id, &s.nonce)?.map(|b| b.status == "won").unwrap_or(false);
+                if !won {
+                    return Err(bad("settlement nonce does not match an unpaid winner"));
+                }
+            }
+            _ => {}
+        }
     }
+    let (tx, rx) = oneshot::channel();
+    state
+        .wallet
+        .send(WalletCmd::NewReceiveAddress { reply: tx })
+        .await
+        .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
+    let (address, transparent) = rx.await.map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??;
+    let env_id = hex::encode(rand::random::<[u8; 12]>());
     let conn = state.store.lock().await;
-    let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
-    if auction.status != "open" {
-        return Err(bad("auction is not open"));
-    }
-    store::upsert_envelope(
+    store::insert_envelope(
         &conn,
-        &req.deposit_address,
-        &id,
-        &req.rail,
-        &req.payload,
-        req.destination_txid.as_deref(),
+        &store::Envelope {
+            deposit_address: env_id.clone(),
+            auction_id: id,
+            rail: if req.rail.is_empty() { "unknown".into() } else { req.rail },
+            payload: req.payload,
+            destination_txid: None,
+            created_at: store::now(),
+            matched_bid_id: None,
+            address: Some(address.clone()),
+            transparent: transparent.clone(),
+        },
     )?;
-    Ok(Json(serde_json::json!({
-        "ok": true,
-        "receipt": memo::receipt(&bid.nonce),
-    })))
+    Ok(Json(EnvelopeView { address, transparent, receipt: memo::receipt(&nonce), id: env_id }))
 }
 
 #[derive(Serialize)]
@@ -679,6 +715,19 @@ async fn admin_auctions(State(state): State<Arc<AppState>>, headers: HeaderMap) 
             .map(|a| AdminAuction { seller_address: a.seller_address.clone(), auction: a })
             .collect(),
     ))
+}
+
+#[derive(Deserialize)]
+struct AfterQuery {
+    #[serde(default)]
+    after: i64,
+}
+
+/// Envelopes created after `after` (unix seconds), for a spender process to mirror.
+async fn admin_envelopes(State(state): State<Arc<AppState>>, headers: HeaderMap, Query(q): Query<AfterQuery>) -> ApiResult<Vec<store::Envelope>> {
+    check_admin(&state, &headers)?;
+    let conn = state.store.lock().await;
+    Ok(Json(store::envelopes_after(&conn, q.after, 500)?))
 }
 
 #[derive(Deserialize)]

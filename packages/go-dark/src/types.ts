@@ -37,7 +37,8 @@ export interface GoDarkOptions {
   amountZats: string | bigint;
   /** Origin that hosts the /api/godark/* proxy routes. Defaults to the page origin. */
   apiBase?: string;
-  /** Optional sealed-bid envelope: posted to the auction service once the swap is funded. */
+  /** Optional sealed payload (a bid or a settlement). Registered with the auction service before the
+   *  quote; the service answers with a fresh address the rail must deliver to, which overrides `to`. */
   envelope?: { auctionApi: string; auctionId: string; payload: string };
   /** Restrict the chains offered. Defaults to both. */
   chains?: Chain[];

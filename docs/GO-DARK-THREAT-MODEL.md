@@ -14,14 +14,17 @@ payer wallet (Solana or Ethereum)  →  swap rail (NEAR Intents or Maya)  →  Z
 | Payer wallet → rail | **Public.** The source chain records the payer's address, the amount, and the rail's deposit address. Anyone can see that this wallet sent, say, 12.3 USDC to a NEAR Intents deposit address at this time. | Nothing on this hop. This is the leak the organiser's own auction documented. |
 | Inside the rail | The rail operator sees the payer's source address, the amount, and the Zcash destination address. NEAR Intents screens payers against sanctions lists. | The bid. It never travels through the rail. |
 | Rail → Zcash | One shielded output lands at the destination. A chain observer sees a shielded transaction of unknown amount and recipient. | Amount, recipient, and any link to the auction. |
-| Zcash → auction service | The service, holding the viewing key, decrypts the note: amount and the fact that a deposit arrived at a lot's address. The sealed bid arrives separately as an envelope over HTTPS keyed by the rail's deposit address. | Nothing further from the service's point of view: it is the trusted reader in both the memo path and the envelope path. |
+| Zcash → auction service | The service, holding the viewing key, decrypts the note: amount and the fact that a deposit arrived at the fresh address it issued for this envelope. The sealed bid arrived earlier as an envelope over HTTPS; the service bound it to that address before the swap started. | Nothing further from the service's point of view: it is the trusted reader in both the memo path and the envelope path. |
 | Auction service → public | Receipt hashes, the ledger commitment, the result, the note-opening proof of winning outputs. | Losing bids and bidders. |
 
 ## Mitigations in the code
 
-- **Fresh address per payment.** The pay-privately mode asks the service for a new diversified unified address for
-  every payment (`GET /godark/receive-address`), so two payments to the same site cannot be linked by destination.
-  Auction entries go to the lot's own fresh address.
+- **Fresh address per payment, and per envelope.** The pay-privately mode asks the service for a new diversified
+  unified address for every payment (`GET /godark/receive-address`), so two payments to the same site cannot be
+  linked by destination. An auction entry registers its sealed payload first (`POST /auctions/{id}/envelopes`) and
+  receives its own fresh address; the rail delivers there. A memo-less deposit is matched to an envelope only by the
+  address it arrived at, never by a txid a client reports, so nobody can attach a payload to someone else's money or
+  claim its refund. A delivery that lands after close is recorded as late and refunded to the sealed refund address.
 - **Shielded delivery first.** Both rails are asked to deliver to the unified address. Maya accepts it. NEAR Intents
   accepts it at quote time; if a rail rejects it, the proxy falls back to the transparent receiver of that same
   address and tells the widget, which then says so in its "who sees what" panel.

@@ -158,6 +158,7 @@ impl Worker {
         let memo_key = if self.cfg.disclose_winning_memo { operator.ufvk.clone() } else { None };
         if self.cfg.role == Role::Spender {
             self.mirror_auctions().await?;
+            self.mirror_envelopes().await?;
         }
         wallet::sync::sync_once(client, &self.params, db_cache, db).await?;
         let enhanced = wallet::sync::enhance(client, &self.params, db).await?;
@@ -313,6 +314,36 @@ impl Worker {
                 info!("mirrored auction {} ({})", a.id, a.title);
             }
         }
+        Ok(())
+    }
+
+    /// Spender: adopt sealed envelopes from the viewer so rail deliveries to their addresses become bids here too.
+    async fn mirror_envelopes(&self) -> Result<()> {
+        let base = self.cfg.viewer_url.as_deref().unwrap_or_default();
+        let after: i64 = {
+            let store = self.store.lock().await;
+            store::get_meta(&store, "mirrored_envelope_at")?.and_then(|v| v.parse().ok()).unwrap_or(0)
+        };
+        let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?;
+        let envelopes: Vec<store::Envelope> = client
+            .get(format!("{base}/admin/envelopes?after={after}"))
+            .header("x-admin-token", &self.cfg.admin_token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if envelopes.is_empty() {
+            return Ok(());
+        }
+        let store = self.store.lock().await;
+        let mut last = after;
+        for e in &envelopes {
+            store::insert_envelope(&store, &store::Envelope { matched_bid_id: None, ..e.clone() })?;
+            last = last.max(e.created_at);
+        }
+        store::set_meta(&store, "mirrored_envelope_at", &last.to_string())?;
+        info!("mirrored {} envelope(s)", envelopes.len());
         Ok(())
     }
 

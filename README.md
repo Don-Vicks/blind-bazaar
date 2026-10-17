@@ -123,7 +123,8 @@ hosting site, not from the swap service.
 | GET | `/auctions`, `/auctions/{id}` | |
 | GET | `/auctions/{id}/receipts` | receipts of received bids |
 | GET | `/auctions/{id}/bid-uri?bid_zats=&refund_address=&nonce=` | server-side ZIP-321 builder |
-| POST | `/auctions/{id}/envelopes` | Go Dark bid envelope `{deposit_address, rail, payload, destination_txid?}` |
+| POST | `/auctions/{id}/envelopes` | register a sealed payload (`BB1` bid or `BB1S` settlement) for a rail delivery; returns the fresh address to deliver to |
+| GET | `/auctions/{id}/standing?secret=` | the bidder's own view: outcome, balance owed, settlement URI, refund, delivery note |
 | POST | `/godark/receive-address` | fresh unified address (with transparent receiver) for one Go Dark payment |
 | GET | `/auctions/{id}/result` | winner, ledger hash, refunds, disclosure |
 

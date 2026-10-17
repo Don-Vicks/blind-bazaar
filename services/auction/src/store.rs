@@ -124,6 +124,9 @@ fn init_schema(conn: &Connection) -> Result<()> {
         "ALTER TABLE auctions ADD COLUMN clearing_zats INTEGER",
         "ALTER TABLE bids ADD COLUMN price_zats INTEGER",
         "ALTER TABLE bids ADD COLUMN settle_by INTEGER",
+        "ALTER TABLE envelopes ADD COLUMN address TEXT",
+        "ALTER TABLE envelopes ADD COLUMN transparent TEXT",
+        "CREATE UNIQUE INDEX IF NOT EXISTS envelopes_address ON envelopes (address)",
     ] {
         // Ignore "duplicate column" on databases that already have it.
         let _ = conn.execute(stmt, []);
@@ -444,8 +447,9 @@ pub fn receipts_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<S
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct Envelope {
+    /// Row key. Historically the rail's deposit address; now a random id, since matching is by `address`.
     pub deposit_address: String,
     pub auction_id: String,
     pub rail: String,
@@ -453,45 +457,57 @@ pub struct Envelope {
     pub destination_txid: Option<String>,
     pub created_at: i64,
     pub matched_bid_id: Option<i64>,
+    /// The fresh unified address this envelope's payment must arrive at. Nothing else can claim it.
+    pub address: Option<String>,
+    /// Transparent receiver of `address`, for a rail that cannot deliver shielded.
+    pub transparent: Option<String>,
 }
 
-pub fn upsert_envelope(
-    conn: &Connection,
-    deposit_address: &str,
-    auction_id: &str,
-    rail: &str,
-    payload: &str,
-    destination_txid: Option<&str>,
-) -> Result<()> {
+/// Record an envelope bound to a fresh receive address the service just derived.
+pub fn insert_envelope(conn: &Connection, e: &Envelope) -> Result<()> {
     conn.execute(
-        "INSERT INTO envelopes (deposit_address, auction_id, rail, payload, destination_txid, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-         ON CONFLICT (deposit_address) DO UPDATE SET
-            destination_txid = COALESCE(excluded.destination_txid, envelopes.destination_txid)",
-        params![deposit_address, auction_id, rail, payload, destination_txid, now()],
+        "INSERT OR IGNORE INTO envelopes (deposit_address, auction_id, rail, payload, destination_txid, created_at, address, transparent)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![e.deposit_address, e.auction_id, e.rail, e.payload, e.destination_txid, e.created_at, e.address, e.transparent],
     )?;
     Ok(())
 }
 
-pub fn envelope_for_txid(conn: &Connection, txid: &str) -> Result<Option<Envelope>> {
+const ENVELOPE_COLS: &str =
+    "deposit_address, auction_id, rail, payload, destination_txid, created_at, matched_bid_id, address, transparent";
+
+fn row_to_envelope(r: &rusqlite::Row<'_>) -> rusqlite::Result<Envelope> {
+    Ok(Envelope {
+        deposit_address: r.get(0)?,
+        auction_id: r.get(1)?,
+        rail: r.get(2)?,
+        payload: r.get(3)?,
+        destination_txid: r.get(4)?,
+        created_at: r.get(5)?,
+        matched_bid_id: r.get(6)?,
+        address: r.get(7)?,
+        transparent: r.get(8)?,
+    })
+}
+
+/// The unmatched envelope whose receive address (shielded or transparent receiver) is `to_address`.
+pub fn envelope_for_address(conn: &Connection, to_address: &str) -> Result<Option<Envelope>> {
     Ok(conn
         .query_row(
-            "SELECT deposit_address, auction_id, rail, payload, destination_txid, created_at, matched_bid_id
-             FROM envelopes WHERE destination_txid = ?1 AND matched_bid_id IS NULL",
-            [txid],
-            |r| {
-                Ok(Envelope {
-                    deposit_address: r.get(0)?,
-                    auction_id: r.get(1)?,
-                    rail: r.get(2)?,
-                    payload: r.get(3)?,
-                    destination_txid: r.get(4)?,
-                    created_at: r.get(5)?,
-                    matched_bid_id: r.get(6)?,
-                })
-            },
+            &format!("SELECT {ENVELOPE_COLS} FROM envelopes WHERE (address = ?1 OR transparent = ?1) AND matched_bid_id IS NULL"),
+            [to_address],
+            row_to_envelope,
         )
         .optional()?)
+}
+
+/// Envelopes created after `after` (by rowid order of creation time), for the spender to mirror.
+pub fn envelopes_after(conn: &Connection, after: i64, limit: usize) -> Result<Vec<Envelope>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {ENVELOPE_COLS} FROM envelopes WHERE created_at > ?1 AND address IS NOT NULL ORDER BY created_at LIMIT ?2"
+    ))?;
+    let rows = stmt.query_map(params![after, limit as i64], row_to_envelope)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
 pub fn mark_envelope_matched(conn: &Connection, deposit_address: &str, bid_id: i64) -> Result<()> {

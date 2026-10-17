@@ -32,14 +32,14 @@ export async function fetchStatus(apiBase: string, rail: Quote["rail"], id: stri
 export async function postEnvelope(
   auctionApi: string,
   auctionId: string,
-  body: { deposit_address: string; rail: string; payload: string; destination_txid?: string },
-): Promise<{ receipt: string }> {
+  body: { rail: string; payload: string },
+): Promise<{ address: string; transparent?: string | null; receipt: string; id: string }> {
   const res = await fetch(`${auctionApi}/auctions/${auctionId}/envelopes`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
-  const j = (await res.json()) as { receipt: string; error?: string };
+  const j = (await res.json()) as { address: string; transparent?: string | null; receipt: string; id: string; error?: string };
   if (!res.ok) throw new Error(j.error ?? `envelope failed (${res.status})`);
   return j;
 }
