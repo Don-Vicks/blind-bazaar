@@ -59,6 +59,29 @@ export interface ProofResponse {
   proof: import("@blind-bazaar/sdk").InclusionProof;
 }
 
+export interface LotMoney {
+  bids_valid: number;
+  bids_rejected: number;
+  deposits_held_zats: number;
+  winners: number;
+  winners_settled: number;
+  seller_paid_zats: number;
+  seller_pending_zats: number;
+  refunds_sent: number;
+  refunds_pending: number;
+}
+
+export interface SellerLot extends Auction {
+  seller_address: string;
+  money: LotMoney;
+  fulfilment: string | null;
+}
+
+export interface SellerLotDetail extends SellerLot {
+  events: { id: number; kind: string; payload: Record<string, unknown>; created_at: number }[];
+  payouts: { id: number; kind: string; status: string; value_zats: number; txid: string | null; not_before: number }[];
+}
+
 export interface Health {
   network: "test" | "main";
   chain_tip: number | null;
@@ -103,12 +126,19 @@ export const api = {
   receipts: (id: string) => request<Receipts>(`/auctions/${id}/receipts`),
   result: (id: string) => request<AuctionResult>(`/auctions/${id}/result`),
   proof: (id: string, receipt: string) => request<ProofResponse>(`/auctions/${id}/proof?receipt=${encodeURIComponent(receipt)}`),
-  createAuction: (token: string, body: Record<string, unknown>) =>
+  createAuction: (credential: string, body: Record<string, unknown>) =>
     request<Auction>("/auctions", {
       method: "POST",
-      headers: { "x-admin-token": token },
+      headers: credential.startsWith("bbs_") ? { "x-seller-key": credential } : { "x-admin-token": credential },
       body: JSON.stringify(body),
     }),
+  sellerMe: (key: string) => request<{ seller_id: number; name: string }>("/seller/me", { headers: { "x-seller-key": key } }),
+  sellerLots: (key: string) => request<SellerLot[]>("/seller/lots", { headers: { "x-seller-key": key } }),
+  sellerLot: (key: string, id: string) => request<SellerLotDetail>(`/seller/lots/${id}`, { headers: { "x-seller-key": key } }),
+  setFulfilment: (key: string, id: string, note: string) =>
+    request<{ ok: boolean }>(`/seller/lots/${id}/fulfilment`, { method: "POST", headers: { "x-seller-key": key }, body: JSON.stringify({ note }) }),
+  fulfilment: (id: string, receipt: string) =>
+    request<{ note: string | null; updated_at: number | null }>(`/auctions/${id}/fulfilment?receipt=${encodeURIComponent(receipt)}`),
   postEnvelope: (id: string, body: Record<string, unknown>) =>
     request<{ ok: boolean; receipt: string }>(`/auctions/${id}/envelopes`, {
       method: "POST",

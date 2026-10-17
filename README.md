@@ -57,6 +57,10 @@ curl -X POST http://127.0.0.1:8787/auctions -H 'content-type: application/json' 
 
 Bid from Zodl (formerly Zashi), Zingo or YWallet by scanning the QR on the auction page.
 
+Sellers: create a key once with `POST /admin/sellers`, then use the **Sell** link. The dashboard shows each lot's
+bids, clearing price, settlement progress and payouts, and lets the seller post a delivery note that only a winning
+receipt can read.
+
 ## Test every money path locally
 
 With Docker running: `cargo install zeckit && zeckit up --backend lwd`, then `scripts/regtest-e2e.sh`. It funds the
@@ -91,6 +95,9 @@ the seller payout and the standalone verifier. About 15 minutes end to end.
 | POST | `/auctions` | `x-admin-token` or `x-seller-key` header |
 | GET | `/auctions/{id}/proof?receipt=` | Merkle inclusion proof of one receipt in the ledger committed at close |
 | GET | `/auctions/{id}/events` | public event log (created, bid received, closed, refund sent, settled, paid, forfeited) |
+| GET | `/seller/me`, `/seller/lots`, `/seller/lots/{id}` | seller dashboard data (`x-seller-key`): lots with money summary, events, payouts |
+| POST | `/seller/lots/{id}/fulfilment` | delivery note for the winner |
+| GET | `/auctions/{id}/fulfilment?receipt=` | the delivery note, only with a winning receipt |
 | POST | `/admin/sellers` | create a seller key (returned once, stored hashed) |
 | GET | `/admin/reconcile` | deposits and settlements in, payouts out, expected vs wallet balance |
 | POST | `/admin/payouts/{id}/retry` | requeue a dead or failed payout |

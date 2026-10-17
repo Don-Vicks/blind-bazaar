@@ -47,6 +47,9 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 
 ## Added Oct 17
 
+- Seller dashboard: `/dashboard` lists my lots with bids, clearing, settlement and payout summaries; lot detail
+  with payouts and timeline; delivery note readable only by a winning receipt, shown on the winner's result page.
+
 - Bidder inclusion proofs: the ledger hash is now a Merkle root; `/auctions/{id}/proof` returns a path; the status
   page verifies it client-side with the bid amount kept local. Shared leaf vector pinned in Rust and SDK tests.
 

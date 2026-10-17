@@ -44,6 +44,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/admin/payouts/sync", post(admin_payouts_sync))
         .route("/auctions/{id}/events", get(auction_events))
         .route("/auctions/{id}/proof", get(inclusion_proof))
+        .route("/auctions/{id}/fulfilment", get(winner_fulfilment))
+        .route("/seller/me", get(seller_me))
+        .route("/seller/lots", get(seller_lots))
+        .route("/seller/lots/{id}", get(seller_lot))
+        .route("/seller/lots/{id}/fulfilment", post(seller_set_fulfilment))
         .layer(cors)
         .with_state(state)
 }
@@ -712,4 +717,116 @@ async fn inclusion_proof(
         return Err(anyhow::anyhow!("ledger root drifted from the committed hash for {id}").into());
     }
     Ok(Json(ProofView { auction_id: id, ledger_hash, leaf_count: proof.leaf_count, proof }))
+}
+
+/// Seller-key auth only (no admin fallback): returns (seller_id, name).
+async fn require_seller(state: &AppState, headers: &HeaderMap) -> Result<(i64, String), ApiError> {
+    let key = headers
+        .get("x-seller-key")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "seller key required".into()))?;
+    let conn = state.store.lock().await;
+    store::seller_by_key_hash(&conn, &key_hash(key))?
+        .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "unknown seller key".into()))
+}
+
+async fn seller_me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiResult<serde_json::Value> {
+    let (id, name) = require_seller(&state, &headers).await?;
+    Ok(Json(serde_json::json!({ "seller_id": id, "name": name })))
+}
+
+#[derive(Serialize)]
+struct SellerLot {
+    #[serde(flatten)]
+    auction: store::Auction,
+    seller_address: String,
+    money: store::LotMoney,
+    fulfilment: Option<String>,
+}
+
+async fn seller_lots(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiResult<Vec<SellerLot>> {
+    let (sid, _) = require_seller(&state, &headers).await?;
+    let conn = state.store.lock().await;
+    let mut out = Vec::new();
+    for a in store::auctions_for_seller(&conn, sid)? {
+        let money = store::lot_money(&conn, &a.id)?;
+        let fulfilment = store::get_fulfilment(&conn, &a.id)?.map(|(n, _)| n);
+        out.push(SellerLot { seller_address: a.seller_address.clone(), auction: a, money, fulfilment });
+    }
+    Ok(Json(out))
+}
+
+#[derive(Serialize)]
+struct SellerLotDetail {
+    #[serde(flatten)]
+    lot: SellerLot,
+    events: Vec<store::Event>,
+    payouts: Vec<store::Payout>,
+}
+
+async fn seller_lot(State(state): State<Arc<AppState>>, headers: HeaderMap, Path(id): Path<String>) -> ApiResult<SellerLotDetail> {
+    let (sid, _) = require_seller(&state, &headers).await?;
+    let conn = state.store.lock().await;
+    let a = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+    if a.seller_id != Some(sid) {
+        return Err(not_found());
+    }
+    let money = store::lot_money(&conn, &a.id)?;
+    let fulfilment = store::get_fulfilment(&conn, &a.id)?.map(|(n, _)| n);
+    let events = store::events_for_auction(&conn, &id)?;
+    let payouts = store::payouts_for_auction(&conn, &id)?;
+    Ok(Json(SellerLotDetail {
+        lot: SellerLot { seller_address: a.seller_address.clone(), auction: a, money, fulfilment },
+        events,
+        payouts,
+    }))
+}
+
+#[derive(Deserialize)]
+struct FulfilmentReq {
+    /// Delivery instructions for the winner: a download link, a shipping handshake, a contact. Shown only to
+    /// a bidder who can present a winning receipt. Keep it under 2000 characters.
+    note: String,
+}
+
+async fn seller_set_fulfilment(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<FulfilmentReq>,
+) -> ApiResult<serde_json::Value> {
+    let (sid, _) = require_seller(&state, &headers).await?;
+    let note = req.note.trim();
+    if note.is_empty() || note.len() > 2000 {
+        return Err(bad("note must be 1 to 2000 characters"));
+    }
+    let conn = state.store.lock().await;
+    let a = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+    if a.seller_id != Some(sid) {
+        return Err(not_found());
+    }
+    store::set_fulfilment(&conn, &id, sid, note)?;
+    store::insert_event(&conn, Some(&id), "fulfilment_posted", &serde_json::json!({}))?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+#[derive(Deserialize)]
+struct FulfilmentQuery {
+    receipt: String,
+}
+
+/// The seller's delivery note, visible only with a winning receipt.
+async fn winner_fulfilment(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(q): Query<FulfilmentQuery>,
+) -> ApiResult<serde_json::Value> {
+    let receipt = q.receipt.trim().to_lowercase();
+    let conn = state.store.lock().await;
+    store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+    if !store::receipt_is_winner(&conn, &id, &receipt)? {
+        return Err(ApiError(StatusCode::FORBIDDEN, "that receipt did not win this lot".into()));
+    }
+    let f = store::get_fulfilment(&conn, &id)?;
+    Ok(Json(serde_json::json!({ "note": f.as_ref().map(|x| x.0.clone()), "updated_at": f.map(|x| x.1) })))
 }

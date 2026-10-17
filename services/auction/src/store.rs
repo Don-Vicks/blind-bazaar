@@ -82,6 +82,13 @@ fn init_schema(conn: &Connection) -> Result<()> {
             key_hash TEXT NOT NULL UNIQUE,
             created_at INTEGER NOT NULL
          );
+         CREATE TABLE IF NOT EXISTS fulfilments (
+            auction_id TEXT PRIMARY KEY,
+            seller_id INTEGER NOT NULL,
+            note TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+         );
          CREATE TABLE IF NOT EXISTS events (
             id INTEGER PRIMARY KEY,
             auction_id TEXT,
@@ -751,6 +758,88 @@ pub fn seller_by_key_hash(conn: &Connection, key_hash: &str) -> Result<Option<(i
         .optional()?)
 }
 
+pub fn auctions_for_seller(conn: &Connection, seller_id: i64) -> Result<Vec<Auction>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {AUCTION_COLS} FROM auctions WHERE seller_id = ?1 ORDER BY created_at DESC"
+    ))?;
+    let rows = stmt.query_map([seller_id], row_to_auction)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct LotMoney {
+    pub bids_valid: i64,
+    pub bids_rejected: i64,
+    pub deposits_held_zats: u64,
+    pub winners: i64,
+    pub winners_settled: i64,
+    pub seller_paid_zats: u64,
+    pub seller_pending_zats: u64,
+    pub refunds_sent: i64,
+    pub refunds_pending: i64,
+}
+
+pub fn lot_money(conn: &Connection, auction_id: &str) -> Result<LotMoney> {
+    let mut m = LotMoney::default();
+    let (v, r, held): (i64, i64, i64) = conn.query_row(
+        "SELECT SUM(CASE WHEN status IN ('valid','won','settled','forfeited') THEN 1 ELSE 0 END),
+                SUM(CASE WHEN status IN ('malformed','wrong_deposit','duplicate_nonce','late','unknown_auction') THEN 1 ELSE 0 END),
+                COALESCE(SUM(CASE WHEN status IN ('valid','won') THEN value_zats ELSE 0 END), 0)
+         FROM bids WHERE auction_id = ?1",
+        [auction_id],
+        |row| Ok((row.get::<_, Option<i64>>(0)?.unwrap_or(0), row.get::<_, Option<i64>>(1)?.unwrap_or(0), row.get(2)?)),
+    )?;
+    m.bids_valid = v;
+    m.bids_rejected = r;
+    m.deposits_held_zats = held as u64;
+    let (w, ws): (i64, i64) = conn.query_row(
+        "SELECT SUM(CASE WHEN status IN ('won','settled') THEN 1 ELSE 0 END), SUM(CASE WHEN status = 'settled' THEN 1 ELSE 0 END)
+         FROM bids WHERE auction_id = ?1",
+        [auction_id],
+        |row| Ok((row.get::<_, Option<i64>>(0)?.unwrap_or(0), row.get::<_, Option<i64>>(1)?.unwrap_or(0))),
+    )?;
+    m.winners = w;
+    m.winners_settled = ws;
+    let (paid, pending, rs, rp): (i64, i64, i64, i64) = conn.query_row(
+        "SELECT COALESCE(SUM(CASE WHEN kind IN ('seller','forfeit') AND status = 'sent' THEN value_zats ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN kind IN ('seller','forfeit') AND status IN ('queued','failed') THEN value_zats ELSE 0 END), 0),
+                SUM(CASE WHEN kind = 'refund' AND status = 'sent' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN kind = 'refund' AND status IN ('queued','failed') THEN 1 ELSE 0 END)
+         FROM payouts WHERE auction_id = ?1",
+        [auction_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get::<_, Option<i64>>(2)?.unwrap_or(0), row.get::<_, Option<i64>>(3)?.unwrap_or(0))),
+    )?;
+    m.seller_paid_zats = paid as u64;
+    m.seller_pending_zats = pending as u64;
+    m.refunds_sent = rs;
+    m.refunds_pending = rp;
+    Ok(m)
+}
+
+pub fn set_fulfilment(conn: &Connection, auction_id: &str, seller_id: i64, note: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO fulfilments (auction_id, seller_id, note, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?4)
+         ON CONFLICT (auction_id) DO UPDATE SET note = excluded.note, updated_at = excluded.updated_at",
+        params![auction_id, seller_id, note, now()],
+    )?;
+    Ok(())
+}
+
+pub fn get_fulfilment(conn: &Connection, auction_id: &str) -> Result<Option<(String, i64)>> {
+    Ok(conn
+        .query_row("SELECT note, updated_at FROM fulfilments WHERE auction_id = ?1", [auction_id], |r| Ok((r.get(0)?, r.get(1)?)))
+        .optional()?)
+}
+
+pub fn receipt_is_winner(conn: &Connection, auction_id: &str, receipt: &str) -> Result<bool> {
+    let n: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM bids WHERE auction_id = ?1 AND receipt = ?2 AND status IN ('won','settled')",
+        params![auction_id, receipt],
+        |r| r.get(0),
+    )?;
+    Ok(n > 0)
+}
+
 // ---- events ----
 
 pub fn insert_event(conn: &Connection, auction_id: Option<&str>, kind: &str, payload: &serde_json::Value) -> Result<i64> {
@@ -943,4 +1032,37 @@ pub fn mark_payout_sent_by_match(
         params![txid, now(), kind, to_address, value_zats as i64, auction_id, bid_txid],
     )?;
     Ok(n > 0)
+}
+
+#[cfg(test)]
+mod money_tests {
+    use super::*;
+
+    #[test]
+    fn lot_money_sums_bids_and_payouts() {
+        let c = open_in_memory().unwrap();
+        insert_auction(&c, &NewAuction { id: "mmmmmmmm", title: "t", description: "", reserve_zats: 2, deposit_zats: 1, seller_address: "u1x", address: "u1y", diversifier_index: None, close_at: 0, seller_id: Some(7), image_url: None, units: 2, format: "uniform" }).unwrap();
+        fn mk<'a>(txid: &'a str, status: &'a str, val: u64) -> NewBid<'a> {
+            NewBid { auction_id: Some("mmmmmmmm"), txid, output_index: 0, pool: 3, mined_height: Some(1), value_zats: val, memo: None, bid_zats: Some(5), refund_address: Some("u1r"), nonce: Some("n"), receipt: Some("r"), status, source: "memo" }
+        }
+        let a = insert_bid(&c, &mk("a", "won", 100)).unwrap();
+        let _b = insert_bid(&c, &mk("b", "settled", 100)).unwrap();
+        let _c2 = insert_bid(&c, &mk("c", "valid", 100)).unwrap();
+        let _d = insert_bid(&c, &mk("d", "wrong_deposit", 50)).unwrap();
+        queue_payout(&c, Some("mmmmmmmm"), Some(a), "seller", "u1x", 400, None, 0).unwrap();
+        let p = queue_payout(&c, Some("mmmmmmmm"), None, "seller", "u1x", 300, None, 0).unwrap();
+        mark_payout_sent(&c, p, "tx").unwrap();
+        let r = queue_payout(&c, Some("mmmmmmmm"), None, "refund", "u1r", 100, None, 0).unwrap();
+        mark_payout_sent(&c, r, "tx2").unwrap();
+        queue_payout(&c, Some("mmmmmmmm"), None, "refund", "u1r", 100, None, 0).unwrap();
+        let m = lot_money(&c, "mmmmmmmm").unwrap();
+        assert_eq!(m.bids_valid, 3);
+        assert_eq!(m.bids_rejected, 1);
+        assert_eq!(m.deposits_held_zats, 200, "valid + won deposits are still held; settled is not");
+        assert_eq!((m.winners, m.winners_settled), (2, 1));
+        assert_eq!((m.seller_paid_zats, m.seller_pending_zats), (300, 400));
+        assert_eq!((m.refunds_sent, m.refunds_pending), (1, 1));
+        assert_eq!(auctions_for_seller(&c, 7).unwrap().len(), 1);
+        assert!(auctions_for_seller(&c, 8).unwrap().is_empty());
+    }
 }

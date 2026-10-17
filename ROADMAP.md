@@ -49,7 +49,8 @@ Remove the single operator who can both read bids and move funds.
 
 ## Phase 3 — Product (Q1 2027)
 
-- planned: seller onboarding, reputation and listing pages; item delivery and escrow flows for digital goods
+- done: seller dashboard (lots, money, payouts, events) and a winner-gated delivery note
+- planned: seller reputation; escrow for physical goods
 - planned: winner notifications (email, push, wallet memo) and seller dashboard
 - planned: auction formats: Vickrey (second price), Dutch, OTC request-for-quote
 - planned: Go Dark receiver onboarding (in-browser 24-word wallet, Zodl/Zingo import), per-payment address

@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { api, explorerTxUrl } from "@/lib/api";
 import { duration, zec } from "@/lib/format";
 import { LotImage } from "@/components/lot-plate";
@@ -16,6 +17,29 @@ export function ResultClient({ id }: { id: string }) {
     retry: false,
   });
   const network = health.data?.network ?? "test";
+  const [mine, setMine] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const all = JSON.parse(localStorage.getItem("bb.receipts") ?? "{}") as Record<string, { receipt: string }[]>;
+      setMine((all[id] ?? []).map((r) => r.receipt));
+    } catch {
+      /* no storage */
+    }
+  }, [id]);
+  const fulfil = useQuery({
+    queryKey: ["fulfilment", id, mine],
+    queryFn: async () => {
+      for (const r of mine) {
+        try {
+          return await api.fulfilment(id, r);
+        } catch {
+          /* not a winning receipt */
+        }
+      }
+      return null;
+    },
+    enabled: mine.length > 0 && data !== undefined && data.status !== "open",
+  });
 
   if (isPending) {
     return (

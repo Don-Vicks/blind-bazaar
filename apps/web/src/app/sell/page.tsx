@@ -8,6 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import { Button, Eyebrow, Field, Panel, inputClass } from "@/components/ui";
 
 const TOKEN_KEY = "bb.adminToken";
+const SELLER_KEY = "bb.sellerKey";
 
 export default function SellPage() {
   const router = useRouter();
@@ -24,7 +25,7 @@ export default function SellPage() {
 
   useEffect(() => {
     try {
-      setToken(sessionStorage.getItem(TOKEN_KEY) ?? "");
+      setToken(sessionStorage.getItem(SELLER_KEY) ?? sessionStorage.getItem(TOKEN_KEY) ?? "");
     } catch {
       /* no storage */
     }
@@ -32,7 +33,7 @@ export default function SellPage() {
 
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.createAuction(token, body),
-    onSuccess: (a) => router.push(`/a/${a.id}`),
+    onSuccess: (a) => router.push(token.startsWith("bbs_") ? `/dashboard/${a.id}` : `/a/${a.id}`),
   });
 
   function onSubmit(e: React.FormEvent) {
@@ -40,7 +41,7 @@ export default function SellPage() {
     const next: Record<string, string> = {};
     let reserveZats = 0n;
     let depositZats = 0n;
-    if (!token.trim()) next.token = "Enter the operator's admin token.";
+    if (!token.trim()) next.token = "Enter your seller key.";
     if (!title.trim()) next.title = "Give the lot a title.";
     try {
       reserveZats = parseZec(reserve);
@@ -64,7 +65,7 @@ export default function SellPage() {
     setErrors(next);
     if (Object.keys(next).length) return;
     try {
-      sessionStorage.setItem(TOKEN_KEY, token.trim());
+      sessionStorage.setItem(token.trim().startsWith("bbs_") ? SELLER_KEY : TOKEN_KEY, token.trim());
     } catch {
       /* no storage */
     }
@@ -83,7 +84,7 @@ export default function SellPage() {
   const serverError =
     create.error instanceof ApiError
       ? create.error.status === 401
-        ? "The admin token was rejected."
+        ? "That key was rejected."
         : create.error.message
       : create.error
         ? "Could not reach the auction service."
@@ -136,7 +137,7 @@ export default function SellPage() {
           <Field label="Open for (hours)" htmlFor="hours" error={errors.hours}>
             <input id="hours" name="hours" type="number" min="0.1" max="336" step="0.1" className={`${inputClass} num`} value={hours} onChange={(e) => setHours(e.target.value)} aria-invalid={!!errors.hours} />
           </Field>
-          <Field label="Admin token" htmlFor="token" error={errors.token} hint="Set by the operator running the service. Kept in this tab only.">
+          <Field label="Seller key" htmlFor="token" error={errors.token} hint="Your bbs_ key from the operator (or the admin token). Kept in this tab only.">
             <input id="token" name="token" type="password" autoComplete="off" className={`${inputClass} num`} value={token} onChange={(e) => setToken(e.target.value)} aria-invalid={!!errors.token} />
           </Field>
           {serverError && (
