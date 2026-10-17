@@ -45,6 +45,11 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 | Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
 | Memo passthrough in Zodl, Zingo, YWallet from a ZIP-321 QR | one bid from each wallet |
 
+## Added Oct 17
+
+- Bidder inclusion proofs: the ledger hash is now a Merkle root; `/auctions/{id}/proof` returns a path; the status
+  page verifies it client-side with the bid amount kept local. Shared leaf vector pinned in Rust and SDK tests.
+
 ## Added Oct 13 night (unit-tested; chain tests pending)
 
 - In-browser verifier: `packages/bb-verify-wasm` recomputes note commitments and decrypts disclosed memos; the

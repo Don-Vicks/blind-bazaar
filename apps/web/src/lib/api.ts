@@ -52,6 +52,13 @@ export interface AuctionResult {
   disclosure: unknown | null;
 }
 
+export interface ProofResponse {
+  auction_id: string;
+  ledger_hash: string;
+  leaf_count: number;
+  proof: import("@blind-bazaar/sdk").InclusionProof;
+}
+
 export interface Health {
   network: "test" | "main";
   chain_tip: number | null;
@@ -95,6 +102,7 @@ export const api = {
   auction: (id: string) => request<AuctionView>(`/auctions/${id}`),
   receipts: (id: string) => request<Receipts>(`/auctions/${id}/receipts`),
   result: (id: string) => request<AuctionResult>(`/auctions/${id}/result`),
+  proof: (id: string, receipt: string) => request<ProofResponse>(`/auctions/${id}/proof?receipt=${encodeURIComponent(receipt)}`),
   createAuction: (token: string, body: Record<string, unknown>) =>
     request<Auction>("/auctions", {
       method: "POST",

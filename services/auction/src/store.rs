@@ -405,6 +405,16 @@ pub fn get_bid(conn: &Connection, id: i64) -> Result<Option<Bid>> {
         .optional()?)
 }
 
+/// The committed ledger of a closed auction: every bid that was valid at close, as (receipt, bid).
+pub fn ledger_entries(conn: &Connection, auction_id: &str) -> Result<Vec<(String, u64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT receipt, bid_zats FROM bids WHERE auction_id = ?1
+           AND status IN ('valid', 'won', 'settled', 'forfeited') AND receipt IS NOT NULL AND bid_zats IS NOT NULL",
+    )?;
+    let rows = stmt.query_map([auction_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64)))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
 pub fn receipts_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
         "SELECT receipt FROM bids WHERE auction_id = ?1 AND status IN ('valid', 'won', 'settled', 'forfeited')

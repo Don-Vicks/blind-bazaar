@@ -10,10 +10,10 @@ import { Button, Eyebrow, Field, Mono, Panel, inputClass } from "@/components/ui
 
 const RECEIPTS_KEY = "bb.receipts";
 
-export function rememberReceipt(auctionId: string, receipt: string, nonce: string) {
+export function rememberReceipt(auctionId: string, receipt: string, nonce: string, bidZats?: bigint) {
   try {
-    const all = JSON.parse(localStorage.getItem(RECEIPTS_KEY) ?? "{}") as Record<string, { receipt: string; nonce: string }[]>;
-    (all[auctionId] ??= []).push({ receipt, nonce });
+    const all = JSON.parse(localStorage.getItem(RECEIPTS_KEY) ?? "{}") as Record<string, { receipt: string; nonce: string; bid?: string }[]>;
+    (all[auctionId] ??= []).push({ receipt, nonce, bid: bidZats?.toString() });
     localStorage.setItem(RECEIPTS_KEY, JSON.stringify(all));
   } catch {
     /* private mode or storage blocked */
@@ -43,7 +43,7 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
     setErrors(next);
     if (Object.keys(next).length) return;
     const p = await prepareBid(auction, bidZats, refund.trim());
-    rememberReceipt(auction.id, p.receipt, p.bid.nonce);
+    rememberReceipt(auction.id, p.receipt, p.bid.nonce, p.bid.bidZats);
     setPrepared(p);
   }
 

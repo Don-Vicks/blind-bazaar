@@ -59,7 +59,7 @@ pub fn close_due(
             .iter()
             .map(|b| (b.receipt.clone().unwrap_or_default(), b.bid_zats.unwrap_or(0)))
             .collect();
-        let ledger_hash = memo::ledger_hash(&ledger);
+        let ledger_hash = crate::merkle::root(&ledger);
 
         let ranked = rank(&valid, auction.reserve_zats, &[]);
         let units = auction.units.max(1) as usize;

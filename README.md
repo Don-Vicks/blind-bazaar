@@ -89,6 +89,7 @@ the seller payout and the standalone verifier. About 15 minutes end to end.
 |---|---|---|
 | GET | `/health` | sync lag, operator address, balance |
 | POST | `/auctions` | `x-admin-token` or `x-seller-key` header |
+| GET | `/auctions/{id}/proof?receipt=` | Merkle inclusion proof of one receipt in the ledger committed at close |
 | GET | `/auctions/{id}/events` | public event log (created, bid received, closed, refund sent, settled, paid, forfeited) |
 | POST | `/admin/sellers` | create a seller key (returned once, stored hashed) |
 | GET | `/admin/reconcile` | deposits and settlements in, payouts out, expected vs wallet balance |

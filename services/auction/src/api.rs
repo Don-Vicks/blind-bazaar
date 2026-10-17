@@ -43,6 +43,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/admin/auctions", get(admin_auctions))
         .route("/admin/payouts/sync", post(admin_payouts_sync))
         .route("/auctions/{id}/events", get(auction_events))
+        .route("/auctions/{id}/proof", get(inclusion_proof))
         .layer(cors)
         .with_state(state)
 }
@@ -673,4 +674,42 @@ async fn godark_receive_address(State(state): State<Arc<AppState>>) -> ApiResult
         .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
     let (ua, transparent) = rx.await.map_err(|_| anyhow::anyhow!("wallet worker dropped reply"))??;
     Ok(Json(serde_json::json!({ "ua": ua, "transparent": transparent })))
+}
+
+#[derive(Deserialize)]
+struct ProofQuery {
+    receipt: String,
+}
+
+#[derive(Serialize)]
+struct ProofView {
+    auction_id: String,
+    ledger_hash: String,
+    leaf_count: usize,
+    proof: crate::merkle::Proof,
+}
+
+/// Inclusion proof of one receipt in the ledger committed at close. The bidder supplies the bid amount
+/// client-side to verify; the server never reveals it.
+async fn inclusion_proof(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(q): Query<ProofQuery>,
+) -> ApiResult<ProofView> {
+    let receipt = q.receipt.trim().to_lowercase();
+    if receipt.len() != 64 || !receipt.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(bad("receipt must be 64 hex characters"));
+    }
+    let conn = state.store.lock().await;
+    let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+    if auction.status == "open" {
+        return Err(bad("the ledger is committed at close"));
+    }
+    let entries = store::ledger_entries(&conn, &id)?;
+    let proof = crate::merkle::prove(&entries, &receipt).ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "receipt not in the ledger".into()))?;
+    let ledger_hash = auction.ledger_hash.clone().unwrap_or_default();
+    if proof.root != ledger_hash {
+        return Err(anyhow::anyhow!("ledger root drifted from the committed hash for {id}").into());
+    }
+    Ok(Json(ProofView { auction_id: id, ledger_hash, leaf_count: proof.leaf_count, proof }))
 }

@@ -43,7 +43,7 @@ Remove the single operator who can both read bids and move funds.
   definitions immutably, recomputes outcomes from its own wallet view, and only executes payouts its own ledger
   derives
 - planned: FROST threshold signing for the spender so refunds and payouts need k-of-n operators
-- planned: bidder-side inclusion proofs: Merkle commitment of the bid ledger at close, per-receipt proof
+- done: bidder-side inclusion proofs: Merkle commitment of the bid ledger at close, per-receipt proof verified in the browser
 - planned: encrypted-to-auction-key bid envelopes for cross-chain entries (rail and relay see ciphertext only)
 - planned: refund batching and timing analysis with documented k-anonymity targets
 

@@ -11,6 +11,8 @@ import {
   parseZec,
   prepareBid,
   receipt,
+  leafHash,
+  verifyInclusion,
 } from "../src";
 
 const UA =
@@ -62,5 +64,17 @@ describe("prepareBid", () => {
     expect(p.memo.startsWith("BB1|7k2m9q4e|5000000|")).toBe(true);
     expect(parsePaymentUri(p.uri).memo).toBe(p.memo);
     expect(p.receipt).toBe(await receipt(p.bid.nonce));
+  });
+});
+
+describe("merkle", () => {
+  it("leaf hash matches the Rust layout", async () => {
+    // Pinned from `cargo test -p bb-auction vectors -- --nocapture`: sha256(0x00 || "ab" || 0x0000000000000001)
+    expect(await leafHash("ab", 1n)).toBe("61d06cec3eef4d7e316abe4db7ee13ebe849d3ff7d0ab236578b7701ea3e143d");
+  });
+  it("verifies a single-leaf proof", async () => {
+    const leaf = await leafHash("r1", 5n);
+    expect(await verifyInclusion("r1", 5n, { leaf, index: 0, leaf_count: 1, path: [], root: leaf })).toBe(true);
+    expect(await verifyInclusion("r1", 6n, { leaf, index: 0, leaf_count: 1, path: [], root: leaf })).toBe(false);
   });
 });

@@ -4,6 +4,7 @@ mod config;
 mod disclosure;
 mod ingest;
 mod memo;
+mod merkle;
 mod state;
 mod store;
 mod wallet;
