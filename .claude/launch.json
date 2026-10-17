@@ -10,7 +10,7 @@
     {
       "name": "auction",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["ADMIN_TOKEN=dev", "DATA_DIR=./data", "BIND=127.0.0.1:8787", "SYNC_INTERVAL_SECS=10", "target/debug/bb-auction"],
+      "runtimeArgs": ["ADMIN_TOKEN=dev-admin-token", "DATA_DIR=./data", "BIND=127.0.0.1:8787", "SYNC_INTERVAL_SECS=10", "target/debug/bb-auction"],
       "port": 8787
     }
   ]

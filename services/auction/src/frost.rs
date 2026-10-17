@@ -150,7 +150,9 @@ pub struct ActionToSign {
     pub rk: [u8; 32],
 }
 
-/// What a signer can see about the transaction before authorising it.
+/// What a signer can see about the transaction before authorising it. Every output counted here had
+/// its note commitment recomputed from the recipient, value and randomness the PCZT carries, so the
+/// summary describes the transaction the sighash commits to, not what the spender claims.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TxSummary {
     pub spends: usize,
@@ -158,6 +160,8 @@ pub struct TxSummary {
     pub external_outputs: Vec<(String, u64)>,
     pub external_zats: u64,
     pub change_zats: u64,
+    /// Inputs minus outputs across the Orchard-protocol bundles: the miner fee.
+    pub fee_zats: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -201,16 +205,33 @@ pub fn plan_from_pczt(pczt: &pczt::Pczt, fvk: &orchard::keys::FullViewingKey, pa
     let sighash = pczt::roles::signer::Signer::new(pczt.clone())
         .map_err(|e| anyhow!("pczt is not signable: {e:?}"))?
         .shielded_sighash();
+    // The sighash covers every bundle. The escrow is Orchard-only, so anything transparent or Sapling
+    // is value leaving by a route the summary below cannot describe: refuse it outright.
+    if !pczt.transparent().inputs().is_empty() || !pczt.transparent().outputs().is_empty() {
+        return Err(anyhow!("transaction has transparent inputs or outputs; the escrow signs Orchard-only transactions"));
+    }
+    if !pczt.sapling().spends().is_empty() || !pczt.sapling().outputs().is_empty() {
+        return Err(anyhow!("transaction has Sapling spends or outputs; the escrow signs Orchard-only transactions"));
+    }
     let external_ivk = fvk.to_ivk(Scope::External);
     let internal_ivk = fvk.to_ivk(Scope::Internal);
 
     let actions = Mutex::new(Vec::new());
     let summary = Mutex::new(TxSummary::default());
+    let totals = Mutex::new((0u64, 0u64)); // (spent, created)
     let collect = |pool: Pool, bundle: &mut orchard::pczt::Bundle| -> std::result::Result<(), LlErr> {
         let mut actions = actions.lock().unwrap();
         let mut summary = summary.lock().unwrap();
+        let mut totals = totals.lock().unwrap();
         for (index, action) in bundle.actions().iter().enumerate() {
             let spend = action.spend();
+            // Every action's value commitment must match the values the PCZT states for it, so the
+            // spent and created amounts below are the ones the chain will enforce.
+            action
+                .verify_cv_net()
+                .map_err(|e| anyhow!("{pool:?} action {index}: value commitment does not match stated values ({e:?})"))?;
+            let spent = spend.value().ok_or_else(|| anyhow!("{pool:?} action {index}: spend value missing"))?.inner();
+            totals.0 += spent;
             if spend.spend_auth_sig().is_none() {
                 let alpha = spend
                     .alpha()
@@ -221,21 +242,26 @@ pub fn plan_from_pczt(pczt: &pczt::Pczt, fvk: &orchard::keys::FullViewingKey, pa
                 summary.spends += 1;
             }
             let output = action.output();
-            if let (Some(addr), Some(value)) = (output.recipient(), output.value()) {
-                let zats = value.inner();
-                if zats == 0 {
-                    continue; // dummy output
-                }
-                let ours = external_ivk.diversifier_index(addr).is_some() || internal_ivk.diversifier_index(addr).is_some();
-                if ours {
-                    summary.change_zats += zats;
-                } else {
-                    let encoded = zcash_keys::address::UnifiedAddress::from_receivers(Some(*addr), None, None, None, None)
-                        .map(|ua| ua.encode(params))
-                        .unwrap_or_else(|| hex::encode(addr.to_raw_address_bytes()));
-                    summary.external_outputs.push((encoded, zats));
-                    summary.external_zats += zats;
-                }
+            // The recipient and value are PCZT metadata. Recomputing the note commitment ties them to
+            // the cmx the transaction carries; a spender cannot describe one payee and pay another.
+            output
+                .verify_note_commitment(spend)
+                .map_err(|e| anyhow!("{pool:?} action {index}: output does not match its stated recipient and value ({e:?})"))?;
+            let addr = output.recipient().as_ref().ok_or_else(|| anyhow!("{pool:?} action {index}: recipient missing"))?;
+            let zats = output.value().ok_or_else(|| anyhow!("{pool:?} action {index}: output value missing"))?.inner();
+            totals.1 += zats;
+            if zats == 0 {
+                continue; // dummy output
+            }
+            let ours = external_ivk.diversifier_index(addr).is_some() || internal_ivk.diversifier_index(addr).is_some();
+            if ours {
+                summary.change_zats += zats;
+            } else {
+                let encoded = zcash_keys::address::UnifiedAddress::from_receivers(Some(*addr), None, None, None, None)
+                    .map(|ua| ua.encode(params))
+                    .unwrap_or_else(|| hex::encode(addr.to_raw_address_bytes()));
+                summary.external_outputs.push((encoded, zats));
+                summary.external_zats += zats;
             }
         }
         Ok(())
@@ -251,10 +277,15 @@ pub fn plan_from_pczt(pczt: &pczt::Pczt, fvk: &orchard::keys::FullViewingKey, pa
             .sign_ironwood_with::<LlErr, _>(|_, bundle, _| collect(Pool::Ironwood, bundle))
             .map_err(|e| anyhow!("ironwood bundle: {e}"))?;
     }
+    let (spent, created) = totals.into_inner().unwrap();
+    let mut summary = summary.into_inner().unwrap();
+    summary.fee_zats = spent
+        .checked_sub(created)
+        .ok_or_else(|| anyhow!("outputs exceed inputs; the transaction cannot balance"))?;
     Ok(SigningPlan {
         sighash,
         actions: actions.into_inner().unwrap(),
-        summary: summary.into_inner().unwrap(),
+        summary,
     })
 }
 
@@ -311,10 +342,18 @@ pub struct Round2Response {
 // ---------------------------------------------------------------------------------------------
 // Signer host: holds one share, inspects every PCZT it is asked to sign.
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct SignerPolicy {
     /// Refuse to sign a transaction paying more than this to addresses the escrow key does not own.
     pub max_external_zats: Option<u64>,
+    /// Refuse to sign a transaction whose fee (inputs minus outputs) exceeds this. Default 0.002 ZEC.
+    pub max_fee_zats: u64,
+}
+
+impl Default for SignerPolicy {
+    fn default() -> Self {
+        Self { max_external_zats: None, max_fee_zats: 200_000 }
+    }
 }
 
 struct Session {
@@ -411,6 +450,11 @@ impl SignerHost {
         if plan.actions.is_empty() {
             return Err(anyhow!("nothing to sign"));
         }
+        if plan.summary.fee_zats > self.policy.max_fee_zats {
+            let reason = format!("policy: fee {} exceeds {}", plan.summary.fee_zats, self.policy.max_fee_zats);
+            self.audit(session, &plan.sighash, &plan.summary, format!("refused: {reason}"));
+            return Err(anyhow!(reason));
+        }
         if let Some(max) = self.policy.max_external_zats {
             if plan.summary.external_zats > max {
                 warn!(
@@ -424,11 +468,12 @@ impl SignerHost {
         }
         self.audit(session, &plan.sighash, &plan.summary, "committed");
         info!(
-            "session {session}: {} spend(s), {} external output(s) totalling {} zats, change {} zats",
+            "session {session}: {} spend(s), {} external output(s) totalling {} zats, change {} zats, fee {} zats",
             plan.actions.len(),
             plan.summary.external_outputs.len(),
             plan.summary.external_zats,
-            plan.summary.change_zats
+            plan.summary.change_zats,
+            plan.summary.fee_zats
         );
         let mut nonces = HashMap::new();
         let mut commitments = Vec::with_capacity(plan.actions.len());
@@ -509,7 +554,7 @@ pub async fn run_signer(host: Arc<SignerHost>, bind: &str, token: Option<String>
             None => Ok(()),
             Some(t) => {
                 let got = headers.get("x-frost-token").and_then(|v| v.to_str().ok()).unwrap_or("");
-                if got == t { Ok(()) } else { Err((StatusCode::UNAUTHORIZED, "bad token".into())) }
+                if crate::api::token_eq(got, t) { Ok(()) } else { Err((StatusCode::UNAUTHORIZED, "bad token".into())) }
             }
         }
     }
@@ -796,7 +841,7 @@ mod tests {
         SigningPlan {
             sighash,
             actions,
-            summary: TxSummary { spends: n, external_outputs: vec![("u1test".into(), external_zats)], external_zats, change_zats: 0 },
+            summary: TxSummary { spends: n, external_outputs: vec![("u1test".into(), external_zats)], external_zats, change_zats: 0, fee_zats: 10_000 },
         }
     }
 
@@ -855,7 +900,7 @@ mod tests {
 
     #[tokio::test]
     async fn signer_policy_refuses_large_external_value() {
-        let (escrow, hosts) = setup(SignerPolicy { max_external_zats: Some(10_000) });
+        let (escrow, hosts) = setup(SignerPolicy { max_external_zats: Some(10_000), ..SignerPolicy::default() });
         let public = escrow.public_key_package().unwrap();
         let plan = plan(&public, 1, 10_001);
         let err = hosts[0].round1_plan("s1", plan).unwrap_err();
@@ -867,6 +912,16 @@ mod tests {
 
     fn plan_ok(public: &bb_frost::PublicKeyPackage) -> SigningPlan {
         plan(public, 1, 10_000)
+    }
+
+    #[tokio::test]
+    async fn signer_policy_refuses_an_excessive_fee() {
+        let (escrow, hosts) = setup(SignerPolicy::default());
+        let public = escrow.public_key_package().unwrap();
+        let mut p = plan(&public, 1, 1);
+        p.summary.fee_zats = 5_000_000;
+        let err = hosts[0].round1_plan("fee", p).unwrap_err();
+        assert!(err.to_string().contains("fee"), "{err}");
     }
 
     #[tokio::test]

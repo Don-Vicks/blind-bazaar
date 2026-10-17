@@ -144,12 +144,19 @@ struct CreateAuction {
     format: Option<String>,
 }
 
+/// Constant-time string equality for tokens.
+pub fn token_eq(a: &str, b: &str) -> bool {
+    use subtle::ConstantTimeEq;
+    a.len() == b.len() && a.as_bytes().ct_eq(b.as_bytes()).into()
+}
+
 fn check_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
-    let ok = headers
-        .get("x-admin-token")
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v == state.admin_token)
-        .unwrap_or(false);
+    let ok = !state.admin_token.is_empty()
+        && headers
+            .get("x-admin-token")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| token_eq(v, &state.admin_token))
+            .unwrap_or(false);
     if ok {
         Ok(())
     } else {

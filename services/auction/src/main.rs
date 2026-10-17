@@ -186,7 +186,7 @@ async fn main() -> anyhow::Result<()> {
             }
             config::FrostCmd::Signer { share, escrow, bind, token, max_external_zats } => {
                 let e = frost::Escrow::load(&escrow)?;
-                let host = frost::SignerHost::load(&share, &e, cfg.net(), frost::SignerPolicy { max_external_zats })?;
+                let host = frost::SignerHost::load(&share, &e, cfg.net(), frost::SignerPolicy { max_external_zats, ..frost::SignerPolicy::default() })?;
                 info!("frost signer {} for group ak {}", host.identifier(), e.ak);
                 frost::run_signer(std::sync::Arc::new(host), &bind, token).await?;
             }
@@ -243,6 +243,9 @@ async fn main() -> anyhow::Result<()> {
     }
     let params = cfg.net();
     let network_name = cfg.network_name();
+    if cfg.admin_token.trim().len() < 8 {
+        anyhow::bail!("ADMIN_TOKEN must be set to at least 8 characters; an empty token would let anyone queue payouts");
+    }
     std::fs::create_dir_all(&cfg.data_dir)?;
 
     let store = Arc::new(Mutex::new(store::open(&cfg.store_path())?));

@@ -17,7 +17,7 @@ API=http://127.0.0.1:8797
 DATA=$(mktemp -d /tmp/bb-regtest.XXXX)
 export NETWORK=regtest REGTEST_NU_HEIGHT=1 REGTEST_LATEST_NU=${REGTEST_LATEST_NU:-nu6_1}
 export LIGHTWALLETD_URL=$LWD DATA_DIR=$DATA OPERATOR_SEED_FILE=$DATA/operator.seed BIRTHDAY_HEIGHT=100
-export ADMIN_TOKEN=regtest BIND=127.0.0.1:8797 SYNC_INTERVAL_SECS=5 MIN_CONFIRMATIONS=1
+export ADMIN_TOKEN=regtest-admin BIND=127.0.0.1:8797 SYNC_INTERVAL_SECS=5 MIN_CONFIRMATIONS=1
 export REFUND_DELAY_MIN_SECS=1 REFUND_DELAY_MAX_SECS=2 SETTLEMENT_WINDOW_SECS=600 DISCLOSE_WINNING_MEMO=true RUST_LOG=${RUST_LOG:-info,zcash_client_backend=warn}
 
 pass() { echo "PASS  $*"; }
@@ -69,11 +69,11 @@ BIDDERS="b1 b2"; [ "$UNITS" = "2" ] && BIDDERS="b1 b2 b3"; [ "$FORMAT" = "rfq" ]
 for b in $BIDDERS; do
   ADDR=$("$BIN" wallet --dir "$DATA/$b" --seed-file "$DATA/$b.seed" 2>/dev/null | awk '/^address:/{print $2}')
   echo "$ADDR" > "$DATA/$b.addr"
-  curl -sf -X POST $API/admin/payouts -H 'x-admin-token: regtest' -H 'content-type: application/json' \
+  curl -sf -X POST $API/admin/payouts -H 'x-admin-token: regtest-admin' -H 'content-type: application/json' \
     -d "{\"to_address\":\"$ADDR\",\"value_zats\":100000000,\"memo\":\"test funding\"}" >/dev/null || fail "queue funding for $b"
 done
 NB=$(echo $BIDDERS | wc -w | tr -d ' ')
-wait_for 400 "operator funding sends" bash -c "[ \$(curl -sf -H 'x-admin-token: regtest' $API/admin/payouts | python3 -I -c 'import json,sys;print(sum(1 for p in json.load(sys.stdin) if p[\"kind\"]==\"manual\" and p[\"status\"]==\"sent\"))') -ge $NB ]"
+wait_for 400 "operator funding sends" bash -c "[ \$(curl -sf -H 'x-admin-token: regtest-admin' $API/admin/payouts | python3 -I -c 'import json,sys;print(sum(1 for p in json.load(sys.stdin) if p[\"kind\"]==\"manual\" and p[\"status\"]==\"sent\"))') -ge $NB ]"
 pass "operator sent 1 ZEC to each of $NB bidders (shielded sends work)"
 if [ "$FROST" = "1" ]; then
   grep -q 'frost session complete' "$DATA/service.log" || fail "no frost session in the service log"
@@ -84,10 +84,10 @@ fi
 
 # Auction: reserve 0.2 (RFQ: budget 0.3), deposit 0.1, closes in 8 min (regtest proving + 15 s blocks per bid).
 # Seller is the operator itself, except for an RFQ where the requester wallet "rq" creates the lot with a seller key.
-SELLER_HDR="x-admin-token: regtest"; SELLER_ADDR=$OP; RESERVE=20000000; FMT_ARG=""
+SELLER_HDR="x-admin-token: regtest-admin"; SELLER_ADDR=$OP; RESERVE=20000000; FMT_ARG=""
 if [ "$UNITS" = "2" ]; then FMT_ARG=""; else FMT_ARG=",\"format\":\"$FORMAT\""; fi
 if [ "$FORMAT" = "rfq" ]; then
-  SKEY=$(curl -sf -X POST $API/admin/sellers -H 'x-admin-token: regtest' -H 'content-type: application/json' -d '{"name":"requester"}' | j 'd["key"]')
+  SKEY=$(curl -sf -X POST $API/admin/sellers -H 'x-admin-token: regtest-admin' -H 'content-type: application/json' -d '{"name":"requester"}' | j 'd["key"]')
   SELLER_HDR="x-seller-key: $SKEY"; SELLER_ADDR=$(cat "$DATA/rq.addr"); RESERVE=30000000
 fi
 A=$(curl -sf -X POST $API/auctions -H "$SELLER_HDR" -H 'content-type: application/json' \
@@ -180,7 +180,7 @@ fi
 
 curl -s $API/auctions/$ID/result | python3 -I -c 'import json,sys; print(json.dumps(json.load(sys.stdin)["disclosure"]))' > "$DATA/disclosure.json"
 "$BIN" --verify-disclosure "$DATA/disclosure.json" >/dev/null && pass "CLI verifier: OK" || fail "CLI verifier rejected the disclosure"
-curl -s -H 'x-admin-token: regtest' $API/admin/reconcile
+curl -s -H 'x-admin-token: regtest-admin' $API/admin/reconcile
 if [ "$FROST" = "1" ]; then
   echo "frost sessions: $(grep -c 'frost session complete' "$DATA/service.log") (signer 1: $(curl -s http://127.0.0.1:8801/health | j 'd["signed_sessions"]'), signer 2: $(curl -s http://127.0.0.1:8802/health | j 'd["signed_sessions"]'))"
 fi

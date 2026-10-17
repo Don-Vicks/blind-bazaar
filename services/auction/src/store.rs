@@ -744,7 +744,7 @@ pub fn mark_payout_dead(conn: &Connection, id: i64, error: &str) -> Result<()> {
 pub fn requeue_payout(conn: &Connection, id: i64) -> Result<bool> {
     let n = conn.execute(
         "UPDATE payouts SET status = 'queued', attempts = 0, error = NULL, not_before = ?2
-         WHERE id = ?1 AND status IN ('dead', 'failed', 'cancelled')",
+         WHERE id = ?1 AND status IN ('dead', 'failed')",
         params![id, now()],
     )?;
     Ok(n > 0)

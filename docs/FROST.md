@@ -28,10 +28,12 @@ checked under `rk` outside the circuit, so a threshold `ak` needs no change to p
    (`create_pczt_from_proposal`) and proves it (`pczt::roles::prover`). Dummy spends are signed by the
    IO finalizer; real spends carry `alpha` and `rk` and no signature.
 2. Spender → signers (`POST /frost/round1 {session, pczt}`): the whole PCZT, hex. The signer parses it
-   itself, recomputes the shielded sighash, reads every unsigned spend's `alpha`, and sums the outputs
-   it can see: change (recipients owned by the escrow viewing key) versus external value. It refuses
-   anything over its `--max-external-zats`, logs the summary, generates fresh nonces per spend, and
-   returns commitments.
+   itself, recomputes the shielded sighash, refuses any transparent or Sapling component, recomputes
+   every action's value commitment and every output's note commitment from the recipient, value and
+   randomness the PCZT states (so a spender cannot describe one payee and pay another), reads every
+   unsigned spend's `alpha`, and sums the outputs: change (recipients owned by the escrow viewing key)
+   versus external value, plus the fee. It refuses anything over its `--max-external-zats` or fee cap,
+   logs the summary, generates fresh nonces per spend, and returns commitments.
 3. Spender: with `threshold` commitments in hand, builds one signing package per spend
    (sighash + all commitments) and sends them (`POST /frost/round2 {session, packages}`).
 4. Signer: checks each package's message is the session's sighash, requires exactly one package per
