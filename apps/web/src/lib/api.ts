@@ -9,7 +9,7 @@ export interface Auction {
   address: string;
   created_at: number;
   close_at: number;
-  status: "open" | "closed" | "no_sale" | "settled" | "paid";
+  status: "open" | "closed" | "no_sale" | "settled" | "paid" | "unsettled";
   closed_at: number | null;
   ledger_hash: string | null;
   settlement_txid: string | null;
@@ -87,6 +87,20 @@ export interface SellerLotDetail extends SellerLot {
   settlement?: { uri: string; memo: string; amount_zats: number; address: string; settle_by: number | null };
 }
 
+export interface Standing {
+  receipt: string;
+  status: string;
+  outcome: "pending" | "won" | "settled" | "lost" | "forfeited" | "expired" | "rejected";
+  format: import("./formats").Format;
+  deposit_zats: number;
+  price_zats: number | null;
+  owed_zats: number;
+  settle_by: number | null;
+  settlement?: { uri: string; memo: string; amount_zats: number; address: string; settle_by: number | null };
+  payouts: { id: number; kind: string; status: string; value_zats: number; txid: string | null }[];
+  fulfilment?: string;
+}
+
 export interface Health {
   network: "test" | "main";
   chain_tip: number | null;
@@ -144,8 +158,9 @@ export const api = {
   sellerLot: (key: string, id: string) => request<SellerLotDetail>(`/seller/lots/${id}`, { headers: { "x-seller-key": key } }),
   setFulfilment: (key: string, id: string, note: string) =>
     request<{ ok: boolean }>(`/seller/lots/${id}/fulfilment`, { method: "POST", headers: { "x-seller-key": key }, body: JSON.stringify({ note }) }),
-  fulfilment: (id: string, receipt: string) =>
-    request<{ note: string | null; updated_at: number | null }>(`/auctions/${id}/fulfilment?receipt=${encodeURIComponent(receipt)}`),
+  fulfilment: (id: string, nonce: string) =>
+    request<{ note: string | null; updated_at: number | null }>(`/auctions/${id}/fulfilment?nonce=${encodeURIComponent(nonce)}`),
+  standing: (id: string, nonce: string) => request<Standing>(`/auctions/${id}/standing?nonce=${encodeURIComponent(nonce)}`),
   postEnvelope: (id: string, body: Record<string, unknown>) =>
     request<{ ok: boolean; receipt: string }>(`/auctions/${id}/envelopes`, {
       method: "POST",

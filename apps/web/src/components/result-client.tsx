@@ -1,13 +1,13 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
 import { verifyInclusion } from "@blind-bazaar/sdk";
 import { api, explorerTxUrl } from "@/lib/api";
 import { duration, zec } from "@/lib/format";
 import { fmt, isRfq } from "@/lib/formats";
 import { LotImage } from "@/components/lot-plate";
 import { Eyebrow, Fact, LinkButton, Mono, Panel, Skeleton, StatusDot } from "@/components/ui";
+import { StandingPanel } from "@/components/standing-panel";
 
 export function ResultClient({ id }: { id: string }) {
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
@@ -19,15 +19,6 @@ export function ResultClient({ id }: { id: string }) {
     retry: false,
   });
   const network = health.data?.network ?? "test";
-  const [mine, setMine] = useState<string[]>([]);
-  useEffect(() => {
-    try {
-      const all = JSON.parse(localStorage.getItem("bb.receipts") ?? "{}") as Record<string, { receipt: string }[]>;
-      setMine((all[id] ?? []).map((r) => r.receipt));
-    } catch {
-      /* no storage */
-    }
-  }, [id]);
   const priceProof = useQuery({
     queryKey: ["price-proof", id, data?.price_proof?.receipt],
     queryFn: async () => {
@@ -36,20 +27,6 @@ export function ResultClient({ id }: { id: string }) {
       return ok && p.proof.root === data!.ledger_hash;
     },
     enabled: !!data?.price_proof && !!data?.ledger_hash,
-  });
-  const fulfil = useQuery({
-    queryKey: ["fulfilment", id, mine],
-    queryFn: async () => {
-      for (const r of mine) {
-        try {
-          return await api.fulfilment(id, r);
-        } catch {
-          /* not a winning receipt */
-        }
-      }
-      return null;
-    },
-    enabled: mine.length > 0 && data !== undefined && data.status !== "open",
   });
 
   if (isPending) {
@@ -189,7 +166,8 @@ export function ResultClient({ id }: { id: string }) {
             )}
           </div>
         </div>
-        <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
+        <aside className="rise rise-2 flex flex-col gap-6 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
+          <StandingPanel auctionId={id} network={network} />
           <Panel className="flex flex-col gap-5">
             <div>
               <Eyebrow>Proof</Eyebrow>

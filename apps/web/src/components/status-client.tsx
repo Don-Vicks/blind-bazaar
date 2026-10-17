@@ -3,7 +3,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { verifyInclusion } from "@blind-bazaar/sdk";
+import { parseZec, verifyInclusion } from "@blind-bazaar/sdk";
+import { StandingPanel } from "@/components/standing-panel";
 import { zec } from "@/lib/format";
 import { Button, Eyebrow, Field, LinkButton, Mono, Panel, Skeleton, inputClass } from "@/components/ui";
 import { LotImage } from "@/components/lot-plate";
@@ -28,6 +29,7 @@ export function StatusClient({ id }: { id: string }) {
   });
 
   const lot = useQuery({ queryKey: ["auction", id], queryFn: () => api.auction(id) });
+  const health = useQuery({ queryKey: ["health"], queryFn: api.health });
   const lookup = receipt.trim().toLowerCase();
   const found = data?.receipts.includes(lookup);
   const closed = lot.data ? lot.data.status !== "open" : false;
@@ -35,14 +37,19 @@ export function StatusClient({ id }: { id: string }) {
 
   async function checkInclusion() {
     setInclusion(null);
-    const bidStr = (bidInput.trim() || rememberedBid || "").replace(/[^0-9]/g, "");
-    if (!bidStr) {
-      setInclusion({ error: "Enter the bid amount in zatoshis you sealed with this receipt." });
+    let bidZats: bigint;
+    try {
+      bidZats = rememberedBid ? BigInt(rememberedBid) : parseZec(bidInput.trim());
+    } catch {
+      bidZats = 0n;
+    }
+    if (bidZats <= 0n) {
+      setInclusion({ error: "Enter the bid amount in ZEC you sealed with this receipt." });
       return;
     }
     try {
       const r = await api.proof(id, lookup);
-      const ok = await verifyInclusion(lookup, BigInt(bidStr), r.proof);
+      const ok = await verifyInclusion(lookup, bidZats, r.proof);
       setInclusion({ ok, leafCount: r.leaf_count, root: r.ledger_hash });
     } catch (e) {
       setInclusion({ error: e instanceof ApiError ? e.message : "Could not fetch the proof." });
@@ -89,7 +96,8 @@ export function StatusClient({ id }: { id: string }) {
           )}
         </div>
       </div>
-      <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
+      <aside className="rise rise-2 flex flex-col gap-6 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
+        <StandingPanel auctionId={id} network={health.data?.network ?? "test"} />
         <Panel className="flex flex-col gap-6">
           <Field label="Your receipt" htmlFor="receipt" hint="64 hex characters, shown when you created the payment request.">
             <input
@@ -116,8 +124,8 @@ export function StatusClient({ id }: { id: string }) {
                 from your receipt, your bid, and the path the service returns. The service never learns anything new.
               </p>
               {!rememberedBid && (
-                <Field label="Your bid (zatoshis)" htmlFor="bid-zats" hint="The amount you sealed. Not sent to the server.">
-                  <input id="bid-zats" name="bid-zats" type="text" inputMode="numeric" autoComplete="off" className={`${inputClass} num`} value={bidInput} onChange={(e) => setBidInput(e.target.value)} />
+                <Field label="Your bid (ZEC)" htmlFor="bid-zats" hint="The amount you sealed. Checked here; not sent to the server.">
+                  <input id="bid-zats" name="bid-zats" type="text" inputMode="decimal" autoComplete="off" placeholder="0.25" className={`${inputClass} num`} value={bidInput} onChange={(e) => setBidInput(e.target.value)} />
                 </Field>
               )}
               <Button variant="secondary" onClick={checkInclusion}>
