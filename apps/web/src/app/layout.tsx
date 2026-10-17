@@ -41,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   Sell
                 </Link>
                 <Link href="/embed" className={nav}>
-                  Go Dark
+                  Pay button
                 </Link>
                 <HealthBadge />
               </nav>
