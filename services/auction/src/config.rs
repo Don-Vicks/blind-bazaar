@@ -123,6 +123,21 @@ pub enum Cmd {
         #[command(subcommand)]
         cmd: FrostCmd,
     },
+    /// Simulate how linkable refunds are to lots by timing, naive versus batched (prints a Markdown table).
+    SimulateRefunds {
+        #[arg(long, default_value_t = 4)]
+        losers_per_lot: u32,
+        #[arg(long, default_value_t = 600)]
+        delay_min: i64,
+        #[arg(long, default_value_t = 14_400)]
+        delay_max: i64,
+        #[arg(long, default_value_t = 600)]
+        window_secs: i64,
+        #[arg(long, default_value_t = 8)]
+        batch_max: usize,
+        #[arg(long, default_value_t = 42)]
+        seed: u64,
+    },
     /// Print the first N Orchard-only unified addresses derived from a seed file (no chain access).
     Derive {
         #[arg(long)]

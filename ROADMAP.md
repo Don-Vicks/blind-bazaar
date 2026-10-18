@@ -48,7 +48,8 @@ Remove the single operator who can both read bids and move funds.
 - planned: signer-side check of payouts against the viewer's ledger; rolling spend caps
 - done: bidder-side inclusion proofs: Merkle commitment of the bid ledger at close, per-receipt proof verified in the browser
 - planned: encrypted-to-auction-key bid envelopes for cross-chain entries (rail and relay see ciphertext only)
-- planned: refund batching and timing analysis with documented k-anonymity targets
+- done: refund batching across lots per window, with a measured timing-linkability table (`docs/evidence/refund-linkability.md`)
+- planned: denomination splitting of refunds across lots
 
 ## Phase 3 — Product (Q1 2027)
 

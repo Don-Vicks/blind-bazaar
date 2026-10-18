@@ -48,6 +48,18 @@ the deposit back in full and cannot win, so there is no penalty beyond losing th
 second step for bidders and a delay equal to the reveal window; the classic mode remains for sellers who prefer a
 result the moment the lot closes.
 
+## Refund timing and batching
+
+Every losing deposit goes back as a shielded payment. When it leaves is a random delay after close
+(`REFUND_DELAY_MIN_SECS` to `REFUND_DELAY_MAX_SECS`), rounded up to the next `REFUND_WINDOW_SECS` boundary, and
+every refund due in the same window, from any lot, is sent in one transaction of up to `REFUND_BATCH_MAX` outputs.
+A chain observer therefore sees one shielded transaction per window rather than one per bidder, cannot count
+losers, and cannot tell which of the lots that closed in the last `REFUND_DELAY_MAX_SECS` a transaction belongs
+to when more than one did. What batching does not do is hide a lot that closed alone: timing linkability is set
+by lot density and the delay range, and `docs/evidence/refund-linkability.md` gives the measured numbers for
+the demo and production settings. Refund amounts equal the lot's fixed deposit, so amount is not a signal
+between bidders of one lot; denomination splitting across lots is not built.
+
 ## Cross-chain bids use an envelope, not the memo
 
 No swap rail can attach a memo to the ZEC it delivers. Go Dark therefore sends the

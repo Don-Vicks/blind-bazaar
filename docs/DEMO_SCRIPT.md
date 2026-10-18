@@ -21,7 +21,9 @@ private and what is not.
   refunded automatically. No live settlement transaction is needed.
 - Create the lot at least 45 minutes before recording with an absolute `close_at`. Stage three lots with
   `close_at` six minutes apart so one closes inside the take; keep the raw recordings and link them.
-- Recording-only settings: `SYNC_INTERVAL_SECS=5`, `REFUND_DELAY_MIN_SECS=5`, `REFUND_DELAY_MAX_SECS=15`.
+- Recording-only settings: `SYNC_INTERVAL_SECS=5`, `REFUND_DELAY_MIN_SECS=5`, `REFUND_DELAY_MAX_SECS=15`,
+  `REFUND_WINDOW_SECS=10`. Say on screen that production uses minutes to hours and that at demo density a refund
+  is linkable by timing (`docs/evidence/refund-linkability.md`).
 
 ## Take (close_at = 0:35 of the take)
 

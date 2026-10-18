@@ -3,6 +3,7 @@ mod close;
 mod config;
 mod disclosure;
 mod frost;
+mod linkability;
 mod ratelimit;
 mod ingest;
 mod memo;
@@ -209,6 +210,11 @@ async fn main() -> anyhow::Result<()> {
                 frost::run_signer(std::sync::Arc::new(host), &bind, token).await?;
             }
         }
+        return Ok(());
+    }
+    if let Some(config::Cmd::SimulateRefunds { losers_per_lot, delay_min, delay_max, window_secs, batch_max, seed }) = cfg.cmd.clone() {
+        println!("delay {delay_min}-{delay_max}s, window {window_secs}s, batch max {batch_max}, {losers_per_lot} losers per lot, 48 h, seed {seed}\n");
+        print!("{}", linkability::table(seed, losers_per_lot, delay_min, delay_max, window_secs, batch_max));
         return Ok(());
     }
     if let Some(config::Cmd::Derive { seed_file, count, check, ufvk: print_ufvk }) = cfg.cmd.clone() {
