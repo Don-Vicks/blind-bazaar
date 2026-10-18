@@ -70,15 +70,16 @@ export function StandingPanel({ auctionId, network }: { auctionId: string; netwo
 function StandingCard({ saved, standing, error, network, auctionId }: { saved: SavedBid; standing?: Standing; error: string | null; network: "test" | "main"; auctionId: string }) {
   const [copied, setCopied] = useState(false);
   const qc = useQueryClient();
+  // Hooks come before any early return so their order never changes between renders.
+  const reveal = useMutation({
+    mutationFn: () => api.reveal(auctionId, saved.secret!, BigInt(saved.bid ?? "0"), saved.salt ?? ""),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["standing", auctionId, saved.secret] }),
+  });
   if (error) return <Panel className="text-[14px] text-muted-foreground">Could not load your bid: {error}</Panel>;
   if (!standing) return <Panel className="text-[14px] text-muted-foreground">Checking your bid…</Panel>;
   const o = OUTCOME[standing.outcome] ?? OUTCOME.rejected;
   const rfq = standing.format === "rfq";
   const refund = standing.payouts.find((p) => p.kind === "refund");
-  const reveal = useMutation({
-    mutationFn: () => api.reveal(auctionId, saved.secret!, BigInt(saved.bid ?? "0"), saved.salt ?? ""),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["standing", auctionId, saved.secret] }),
-  });
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);

@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { LinkButton } from "@/components/ui";
 
@@ -31,7 +32,11 @@ export function Term({ children, of }: { children: React.ReactNode; of: keyof ty
 /** Which Zcash network this instance runs on, in words a visitor understands. */
 export function NetworkNotice({ compact = false }: { compact?: boolean }) {
   const { data } = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 30_000 });
-  if (!data) return null;
+  // Cached health data can be present on the client's first render but not in the server HTML; render
+  // only after mount so both agree.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  if (!mounted || !data) return null;
   const test = data.network !== "main";
   const custody = data.signing?.startsWith("frost")
     ? "Funds are held by a 2-of-3 key split across separate signers; no single server can move them."
