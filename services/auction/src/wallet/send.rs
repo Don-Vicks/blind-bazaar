@@ -149,20 +149,30 @@ pub struct Sent {
 }
 
 pub fn build_request(out: &Outgoing<'_>) -> anyhow::Result<TransactionRequest> {
-    let payment = Payment::new(
-        ZcashAddress::from_str(out.address).map_err(|_| anyhow!("invalid recipient address"))?,
-        Some(Zatoshis::from_u64(out.zats).map_err(|_| anyhow!("invalid amount"))?),
-        out.memo
-            .map(Memo::from_str)
-            .transpose()
-            .map_err(|_| anyhow!("invalid memo"))?
-            .map(MemoBytes::from),
-        None,
-        None,
-        vec![],
-    )
-    .map_err(|e| anyhow!("{e:?}"))?;
-    TransactionRequest::new(vec![payment]).map_err(|e| anyhow!("{e:?}"))
+    build_batch_request(std::slice::from_ref(out))
+}
+
+/// One transaction paying several recipients: refunds from different lots leave together.
+pub fn build_batch_request(outs: &[Outgoing<'_>]) -> anyhow::Result<TransactionRequest> {
+    let mut payments = Vec::with_capacity(outs.len());
+    for out in outs {
+        payments.push(
+            Payment::new(
+                ZcashAddress::from_str(out.address).map_err(|_| anyhow!("invalid recipient address"))?,
+                Some(Zatoshis::from_u64(out.zats).map_err(|_| anyhow!("invalid amount"))?),
+                out.memo
+                    .map(Memo::from_str)
+                    .transpose()
+                    .map_err(|_| anyhow!("invalid memo"))?
+                    .map(MemoBytes::from),
+                None,
+                None,
+                vec![],
+            )
+            .map_err(|e| anyhow!("{e:?}"))?,
+        );
+    }
+    TransactionRequest::new(payments).map_err(|e| anyhow!("{e:?}"))
 }
 
 pub fn confirmations_policy(min: Option<u32>) -> ConfirmationsPolicy {

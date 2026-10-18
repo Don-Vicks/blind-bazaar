@@ -215,6 +215,7 @@ impl Worker {
             let close_cfg = close::CloseConfig {
                 delay_min: self.cfg.refund_delay_min_secs,
                 delay_max: self.cfg.refund_delay_max_secs,
+                refund_window_secs: self.cfg.refund_window_secs,
                 settlement_window_secs: self.cfg.settlement_window_secs,
             };
             close::close_due(&store, Some(wallet_ro), &self.params, self.network_name, &close_cfg, memo_key.as_ref())?;
@@ -451,21 +452,59 @@ impl Worker {
             let store = self.store.lock().await;
             store::due_payouts(&store, store::now(), MAX_PAYOUT_ATTEMPTS)?
         };
+        // Refunds that are due together leave together: one transaction with several outputs, so a chain
+        // observer sees one shielded transaction per window, not one per bidder, and refunds for several
+        // lots share it. Seller payouts and forfeits go one per transaction so each has its own txid.
+        let mut batches: Vec<Vec<store::Payout>> = Vec::new();
+        let mut refunds: Vec<store::Payout> = Vec::new();
         for p in due {
-            info!("sending payout {} ({}) of {} zats", p.id, p.kind, p.value_zats);
-            let out = Outgoing {
-                address: &p.to_address,
-                zats: p.value_zats,
-                memo: p.memo.as_deref(),
+            if matches!(p.kind.as_str(), "refund" | "invalid_refund") {
+                refunds.push(p);
+            } else {
+                batches.push(vec![p]);
+            }
+        }
+        let max = self.cfg.refund_batch_max.max(1);
+        while !refunds.is_empty() {
+            let mut batch: Vec<store::Payout> = Vec::new();
+            let mut rest = Vec::new();
+            for p in refunds.drain(..) {
+                // One output per address per transaction; a repeated address waits for the next batch.
+                if batch.len() < max && !batch.iter().any(|q| q.to_address == p.to_address) {
+                    batch.push(p);
+                } else {
+                    rest.push(p);
+                }
+            }
+            batches.push(batch);
+            refunds = rest;
+        }
+        for batch in batches {
+            let ids: Vec<i64> = batch.iter().map(|p| p.id).collect();
+            let total: u64 = batch.iter().map(|p| p.value_zats).sum();
+            info!("sending {} payout(s) {:?} totalling {} zats", batch.len(), ids, total);
+            let outs: Vec<Outgoing<'_>> = batch
+                .iter()
+                .map(|p| Outgoing { address: &p.to_address, zats: p.value_zats, memo: p.memo.as_deref() })
+                .collect();
+            let request = match wallet::send::build_batch_request(&outs) {
+                Ok(r) => r,
+                Err(e) => {
+                    let store = self.store.lock().await;
+                    for p in &batch {
+                        store::mark_payout_dead(&store, p.id, &format!("bad payout: {e:#}"))?;
+                    }
+                    continue;
+                }
             };
-            let result = wallet::send::send(
+            let result = wallet::send::send_request(
                 db,
                 &self.params,
                 client,
                 prover,
                 account_id,
                 auth,
-                &out,
+                request,
                 self.cfg.min_confirmations,
             )
             .await;
@@ -473,38 +512,42 @@ impl Worker {
             match result {
                 Ok(sent) => {
                     let txid = sent.txid;
-                    store::mark_payout_sent(&store, p.id, &txid)?;
-                    if p.kind == "seller" {
-                        if let Some(aid) = &p.auction_id {
-                            if store::pending_seller_payouts(&store, aid)? == 0 {
-                                if let Some(a) = store::get_auction(&store, aid)? {
-                                    if a.status == "settled" {
-                                        store::set_auction_payout(&store, aid, &txid)?;
+                    for p in &batch {
+                        store::mark_payout_sent(&store, p.id, &txid)?;
+                        if p.kind == "seller" {
+                            if let Some(aid) = &p.auction_id {
+                                if store::pending_seller_payouts(&store, aid)? == 0 {
+                                    if let Some(a) = store::get_auction(&store, aid)? {
+                                        if a.status == "settled" {
+                                            store::set_auction_payout(&store, aid, &txid)?;
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    store::insert_event(
-                        &store,
-                        p.auction_id.as_deref(),
-                        match p.kind.as_str() { "seller" => "seller_paid", "forfeit" => "forfeit_paid", _ => "refund_sent" },
-                        &serde_json::json!({ "payout_id": p.id, "txid": txid, "value_zats": p.value_zats, "cosigners": sent.cosigners }),
-                    )?;
-                }
-                Err(e) => {
-                    warn!("payout {} failed: {e:#}", p.id);
-                    if p.attempts + 1 >= MAX_PAYOUT_ATTEMPTS {
-                        store::mark_payout_dead(&store, p.id, &format!("{e:#}"))?;
                         store::insert_event(
                             &store,
                             p.auction_id.as_deref(),
-                            "payout_dead",
-                            &serde_json::json!({ "payout_id": p.id, "error": format!("{e:#}") }),
+                            match p.kind.as_str() { "seller" => "seller_paid", "forfeit" => "forfeit_paid", _ => "refund_sent" },
+                            &serde_json::json!({ "payout_id": p.id, "txid": txid, "value_zats": p.value_zats, "batch_size": batch.len(), "cosigners": sent.cosigners }),
                         )?;
-                    } else {
-                        let backoff = 60 * (1 << p.attempts.min(5));
-                        store::mark_payout_failed(&store, p.id, &format!("{e:#}"), store::now() + backoff)?;
+                    }
+                }
+                Err(e) => {
+                    warn!("payout batch {ids:?} failed: {e:#}");
+                    for p in &batch {
+                        if p.attempts + 1 >= MAX_PAYOUT_ATTEMPTS {
+                            store::mark_payout_dead(&store, p.id, &format!("{e:#}"))?;
+                            store::insert_event(
+                                &store,
+                                p.auction_id.as_deref(),
+                                "payout_dead",
+                                &serde_json::json!({ "payout_id": p.id, "error": format!("{e:#}") }),
+                            )?;
+                        } else {
+                            let backoff = 60 * (1 << p.attempts.min(5));
+                            store::mark_payout_failed(&store, p.id, &format!("{e:#}"), store::now() + backoff)?;
+                        }
                     }
                 }
             }

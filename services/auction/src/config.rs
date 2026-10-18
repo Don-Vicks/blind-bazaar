@@ -274,6 +274,15 @@ pub struct Config {
     pub refund_delay_min_secs: u64,
     #[arg(long, env = "REFUND_DELAY_MAX_SECS", default_value_t = 300)]
     pub refund_delay_max_secs: u64,
+
+    /// Refund send times are rounded up to a multiple of this, so refunds from every lot that fall in the
+    /// same window leave in one transaction. Larger windows mix more lots; 0 disables batching.
+    #[arg(long, env = "REFUND_WINDOW_SECS", default_value_t = 60)]
+    pub refund_window_secs: u64,
+
+    /// Most refunds placed in one transaction.
+    #[arg(long, env = "REFUND_BATCH_MAX", default_value_t = 8)]
+    pub refund_batch_max: usize,
 }
 
 impl Config {

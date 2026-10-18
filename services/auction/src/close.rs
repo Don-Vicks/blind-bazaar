@@ -12,6 +12,21 @@ pub struct CloseConfig {
     pub delay_min: u64,
     pub delay_max: u64,
     pub settlement_window_secs: i64,
+    /// Refund times are rounded up to a multiple of this (0 = no rounding).
+    pub refund_window_secs: u64,
+}
+
+/// When a refund queued now should leave: a random delay in `[delay_min, delay_max]`, rounded up to the
+/// next window boundary so refunds from different lots share a transaction. Timing alone then says
+/// only "some lots closed in the last `delay_max` seconds".
+pub fn refund_time<R: rand::Rng>(rng: &mut R, now: i64, cfg: &CloseConfig) -> i64 {
+    let delay = rng.random_range(cfg.delay_min..=cfg.delay_max.max(cfg.delay_min)) as i64;
+    let t = now + delay;
+    if cfg.refund_window_secs == 0 {
+        return t;
+    }
+    let w = cfg.refund_window_secs as i64;
+    ((t + w - 1) / w) * w
 }
 
 /// Viewing key used to disclose winning memos (reserve-met proof), if the operator enabled it.
@@ -140,6 +155,7 @@ pub fn finalize_reveals(
     for auction in store::due_revealing_auctions(store, now)? {
         let bids = store::bids_for_auction(store, &auction.id)?;
         let mut unrevealed = 0;
+        let mut rng = rand::rng();
         for b in bids.iter().filter(|b| b.status == "sealed") {
             store::set_bid_status(store, b.id, "unrevealed")?;
             let memo_text = format!("BB1R|{}", auction.id);
@@ -151,7 +167,7 @@ pub fn finalize_reveals(
                 b.refund_address.as_deref().unwrap_or_default(),
                 b.value_zats,
                 Some(&memo_text),
-                now + 30,
+                refund_time(&mut rng, now, cfg),
             )?;
             unrevealed += 1;
         }
@@ -180,7 +196,6 @@ fn close_lot(
     auction: &store::Auction,
     close_height: Option<u32>,
 ) -> Result<()> {
-    let (delay_min, delay_max) = (cfg.delay_min, cfg.delay_max);
     let now = store::now();
     let bids = store::bids_for_auction(store, &auction.id)?;
     let valid: Vec<&store::Bid> = bids.iter().filter(|b| b.status == "valid").collect();
@@ -275,7 +290,6 @@ fn close_lot(
         if winner_ids.contains(&b.id) {
             continue;
         }
-        let delay = rng.random_range(delay_min..=delay_max.max(delay_min)) as i64;
         let memo_text = format!("BB1R|{}", auction.id);
         store::queue_payout(
             store,
@@ -285,7 +299,7 @@ fn close_lot(
             b.refund_address.as_deref().unwrap_or_default(),
             b.value_zats,
             Some(&memo_text),
-            now + delay,
+            refund_time(&mut rng, now, cfg),
         )?;
     }
     // A winner whose deposit already covers the price owes nothing: settle on the spot. In an RFQ the
@@ -475,7 +489,7 @@ mod tests {
     const UA: &str = "utest1zkkkjfxkamagznjr6ayemffj2d2gacdwpzcyw669pvg06xevzqslpmm27zjsctlkstl2vsw62xrjktmzqcu4yu9zdhdxqz3kafa4j2q85y6mv74rzjcgjg8c0ytrg7dwyzwtgnuc76h";
 
     fn cfg() -> CloseConfig {
-        CloseConfig { delay_min: 0, delay_max: 0, settlement_window_secs: 3600 }
+        CloseConfig { delay_min: 0, delay_max: 0, settlement_window_secs: 3600, refund_window_secs: 0 }
     }
 
     fn auction(store: &Connection, id: &str, close_at: i64) {
@@ -846,6 +860,20 @@ mod tests {
         assert!(payouts.iter().any(|p| p.kind == "refund" && p.bid_id == Some(a)), "loser refunded");
         let entries = store::ledger_entries(&store, "ssssssss").unwrap();
         assert_eq!(entries.len(), 2, "ledger covers revealed bids only");
+    }
+
+    #[test]
+    fn refund_times_land_on_window_boundaries_within_the_delay_range() {
+        let c = CloseConfig { delay_min: 30, delay_max: 300, settlement_window_secs: 3600, refund_window_secs: 60 };
+        let mut rng = rand::rng();
+        for _ in 0..200 {
+            let t = refund_time(&mut rng, 1_000_000, &c);
+            assert_eq!(t % 60, 0, "rounded up to the window");
+            assert!(t >= 1_000_030 && t <= 1_000_360, "within [min, max + window): {t}");
+        }
+        let plain = CloseConfig { refund_window_secs: 0, ..c };
+        let t = refund_time(&mut rng, 1_000_000, &plain);
+        assert!((1_000_030..=1_000_300).contains(&t));
     }
 
     #[test]
