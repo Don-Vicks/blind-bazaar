@@ -637,6 +637,28 @@ pub struct Payout {
     pub from_account: Option<String>,
 }
 
+/// Bids whose transaction should still be in a block, plus reorged ones that may have come back.
+pub fn bids_to_recheck(conn: &Connection) -> Result<Vec<Bid>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {BID_COLS} FROM bids WHERE mined_height IS NOT NULL AND status NOT IN ('malformed') ORDER BY id"
+    ))?;
+    let rows = stmt.query_map([], row_to_bid)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn mark_bid_reorged(conn: &Connection, id: i64) -> Result<()> {
+    conn.execute("UPDATE bids SET status = 'reorged' WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+pub fn reinstate_bid(conn: &Connection, id: i64, status: &str, mined_height: u32) -> Result<()> {
+    conn.execute(
+        "UPDATE bids SET status = ?2, mined_height = ?3, received_at = ?4 WHERE id = ?1",
+        params![id, status, mined_height as i64, now()],
+    )?;
+    Ok(())
+}
+
 /// Every payout the ledger has produced after `after_id`, oldest first, whatever its send status. Sweeps are
 /// internal moves and are not exported.
 pub fn payouts_after_id(conn: &Connection, after_id: i64, limit: usize) -> Result<Vec<Payout>> {

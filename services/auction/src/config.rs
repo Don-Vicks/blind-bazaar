@@ -281,6 +281,11 @@ pub struct Config {
     #[arg(long, env = "CORS_ORIGIN")]
     pub cors_origin: Option<String>,
 
+    /// Blocks a deposit must have on top of it before it counts as a bid. One-block reorgs are common; two
+    /// confirmations keep a deposit from entering the ledger and leaving the chain.
+    #[arg(long, env = "INGEST_CONFIRMATIONS", default_value_t = 2)]
+    pub ingest_confirmations: u32,
+
     /// Read-only token for `/ledger/*` (what the auction rules expect to pay). Signers and the spender use it;
     /// it cannot queue or change anything. Falls back to the admin token when unset.
     #[arg(long, env = "LEDGER_TOKEN")]

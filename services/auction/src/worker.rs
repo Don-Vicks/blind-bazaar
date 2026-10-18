@@ -219,7 +219,11 @@ impl Worker {
 
         {
             let store = self.store.lock().await;
-            let n = ingest::ingest(&store, wallet_ro)?;
+            let reorg = ingest::reorg_check(&store, wallet_ro)?;
+            if !reorg.reorged.is_empty() || !reorg.reinstated.is_empty() {
+                warn!("reorg: {} bid(s) set aside, {} reinstated, {} after close", reorg.reorged.len(), reorg.reinstated.len(), reorg.after_close.len());
+            }
+            let n = ingest::ingest(&store, wallet_ro, height, self.cfg.ingest_confirmations)?;
             if n > 0 {
                 info!("ingested {n} new outputs");
             }
