@@ -108,6 +108,12 @@ pub enum FrostCmd {
         /// Refuse transactions paying more than this (zatoshis) to addresses the escrow does not own.
         #[arg(long, env = "FROST_MAX_EXTERNAL_ZATS")]
         max_external_zats: Option<u64>,
+        /// Viewer base URL whose `/ledger/payouts` lists the payouts the auction rules produced. With it set,
+        /// every external output must match one of them, once.
+        #[arg(long, env = "FROST_LEDGER_URL")]
+        ledger_url: Option<String>,
+        #[arg(long, env = "FROST_LEDGER_TOKEN")]
+        ledger_token: Option<String>,
     },
     /// Print the unified full viewing key and first address for an escrow file.
     Show {
@@ -274,6 +280,11 @@ pub struct Config {
     /// Allowed browser origin for the API (CORS). Default allows any origin, for development.
     #[arg(long, env = "CORS_ORIGIN")]
     pub cors_origin: Option<String>,
+
+    /// Read-only token for `/ledger/*` (what the auction rules expect to pay). Signers and the spender use it;
+    /// it cannot queue or change anything. Falls back to the admin token when unset.
+    #[arg(long, env = "LEDGER_TOKEN")]
+    pub ledger_token: Option<String>,
 
     /// Behind a reverse proxy that sets `x-forwarded-for`: rate-limit by that address instead of the socket peer.
     #[arg(long, env = "TRUST_PROXY", default_value_t = false)]

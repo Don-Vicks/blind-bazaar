@@ -204,9 +204,17 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            config::FrostCmd::Signer { share, escrow, bind, token, max_external_zats } => {
+            config::FrostCmd::Signer { share, escrow, bind, token, max_external_zats, ledger_url, ledger_token } => {
                 let e = frost::Escrow::load(&escrow)?;
-                let host = frost::SignerHost::load(&share, &e, cfg.net(), frost::SignerPolicy { max_external_zats, ..frost::SignerPolicy::default() })?;
+                let mut host = frost::SignerHost::load(&share, &e, cfg.net(), frost::SignerPolicy { max_external_zats, ..frost::SignerPolicy::default() })?;
+                match (ledger_url, ledger_token) {
+                    (Some(url), Some(tok)) => {
+                        host = host.with_ledger(frost::LedgerClient::new(&url, &tok)?);
+                        info!("ledger check on: every output must match a payout from {url}");
+                    }
+                    (Some(_), None) => anyhow::bail!("FROST_LEDGER_URL needs FROST_LEDGER_TOKEN"),
+                    _ => tracing::warn!("ledger check off: this signer enforces only the value and fee caps"),
+                }
                 info!("frost signer {} for group ak {}", host.identifier(), e.ak);
                 frost::run_signer(std::sync::Arc::new(host), &bind, token).await?;
             }
@@ -310,6 +318,7 @@ async fn main() -> anyhow::Result<()> {
     let app_state = Arc::new(state::AppState {
         network_name,
         admin_token: cfg.admin_token.clone(),
+        ledger_token: cfg.ledger_token.clone(),
         cors_origin: cfg.cors_origin.clone(),
         trust_proxy: cfg.trust_proxy,
         store,

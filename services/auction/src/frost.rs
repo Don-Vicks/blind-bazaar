@@ -264,6 +264,10 @@ pub struct TxSummary {
     pub spends: usize,
     /// (encoded unified address, zatoshis) for every output not owned by the escrow key.
     pub external_outputs: Vec<(String, u64)>,
+    /// (Orchard receiver, hex, zatoshis) for the same outputs: what the ledger check matches on, since a
+    /// bidder's refund address may carry other receivers too.
+    #[serde(default)]
+    pub external_receivers: Vec<(String, u64)>,
     pub external_zats: u64,
     pub change_zats: u64,
     /// Inputs minus outputs across the Orchard-protocol bundles: the miner fee.
@@ -367,6 +371,7 @@ pub fn plan_from_pczt(pczt: &pczt::Pczt, fvk: &orchard::keys::FullViewingKey, pa
                     .map(|ua| ua.encode(params))
                     .unwrap_or_else(|| hex::encode(addr.to_raw_address_bytes()));
                 summary.external_outputs.push((encoded, zats));
+                summary.external_receivers.push((hex::encode(addr.to_raw_address_bytes()), zats));
                 summary.external_zats += zats;
             }
         }
@@ -454,11 +459,67 @@ pub struct SignerPolicy {
     pub max_external_zats: Option<u64>,
     /// Refuse to sign a transaction whose fee (inputs minus outputs) exceeds this. Default 0.002 ZEC.
     pub max_fee_zats: u64,
+    /// When set, every external output must match a payout the viewer's ledger expects (same Orchard
+    /// receiver, same amount), and each expected payout can be used once. A compromised spender then
+    /// cannot pay anyone the auction rules did not name.
+    pub require_ledger: bool,
 }
 
 impl Default for SignerPolicy {
     fn default() -> Self {
-        Self { max_external_zats: None, max_fee_zats: 200_000 }
+        Self { max_external_zats: None, max_fee_zats: 200_000, require_ledger: false }
+    }
+}
+
+/// A payout the viewer's ledger expects: derived by the viewer from bids and auctions it reads with the
+/// viewing key alone. The viewer cannot spend, so this list is as trustworthy as the viewer process.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExpectedPayout {
+    pub id: i64,
+    pub auction_id: Option<String>,
+    pub kind: String,
+    pub to_address: String,
+    pub value_zats: u64,
+}
+
+impl ExpectedPayout {
+    /// Orchard receiver (hex) of the destination, the part of a unified address a shielded payout lands on.
+    pub fn orchard_receiver_hex(&self) -> Option<String> {
+        use zcash_address::unified::{Address as UA, Container, Encoding, Receiver};
+        let (_, _, decoded) = UA::decode(&self.to_address).ok()?;
+        decoded.items().into_iter().find_map(|r| match r {
+            Receiver::Orchard(b) => Some(hex::encode(b)),
+            _ => None,
+        })
+    }
+}
+
+/// Fetches expected payouts from the viewer's `/ledger/payouts`.
+pub struct LedgerClient {
+    url: String,
+    token: String,
+    client: reqwest::Client,
+}
+
+impl LedgerClient {
+    pub fn new(url: &str, token: &str) -> Result<Self> {
+        Ok(Self {
+            url: url.trim_end_matches('/').to_string(),
+            token: token.to_string(),
+            client: reqwest::Client::builder().timeout(Duration::from_secs(20)).build()?,
+        })
+    }
+    pub async fn expected(&self, after: i64) -> Result<Vec<ExpectedPayout>> {
+        let resp = self
+            .client
+            .get(format!("{}/ledger/payouts?after={after}", self.url))
+            .header("x-ledger-token", &self.token)
+            .send()
+            .await
+            .with_context(|| format!("ledger {} unreachable", self.url))?
+            .error_for_status()
+            .with_context(|| format!("ledger {} refused", self.url))?;
+        Ok(resp.json().await?)
     }
 }
 
@@ -466,6 +527,8 @@ struct Session {
     plan: SigningPlan,
     nonces: HashMap<(Pool, usize), bb_frost::SigningNonces>,
     created: Instant,
+    /// Expected payouts this session's outputs were matched to; consumed when the session signs.
+    matched: Vec<i64>,
 }
 
 /// One line of the signer's audit log: what it was asked to authorise and what it did.
@@ -487,6 +550,10 @@ pub struct SignerHost {
     sessions: Mutex<HashMap<String, Session>>,
     audit: Mutex<std::collections::VecDeque<AuditEntry>>,
     pub signed: AtomicU64,
+    /// Expected payouts seen so far (by id) and the ones already paid by a signed session.
+    expected: Mutex<HashMap<i64, ExpectedPayout>>,
+    consumed: Mutex<std::collections::HashSet<i64>>,
+    pub ledger: Option<LedgerClient>,
 }
 
 const AUDIT_KEEP: usize = 200;
@@ -506,7 +573,55 @@ impl SignerHost {
             sessions: Mutex::new(HashMap::new()),
             audit: Mutex::new(std::collections::VecDeque::new()),
             signed: AtomicU64::new(0),
+            expected: Mutex::new(HashMap::new()),
+            consumed: Mutex::new(std::collections::HashSet::new()),
+            ledger: None,
         })
+    }
+
+    /// Attach the viewer's ledger as the source of expected payouts and require every output to match it.
+    pub fn with_ledger(mut self, ledger: LedgerClient) -> Self {
+        self.ledger = Some(ledger);
+        self.policy.require_ledger = true;
+        self
+    }
+
+    /// Add expected payouts (from the ledger, or a test). Returns the highest id seen.
+    pub fn add_expected(&self, list: Vec<ExpectedPayout>) -> i64 {
+        let mut e = self.expected.lock().unwrap();
+        let mut last = 0;
+        for p in list {
+            last = last.max(p.id);
+            e.insert(p.id, p);
+        }
+        last
+    }
+
+    pub fn highest_expected_id(&self) -> i64 {
+        self.expected.lock().unwrap().keys().copied().max().unwrap_or(0)
+    }
+
+    /// Match every external output to one unconsumed expected payout (same Orchard receiver, same amount).
+    fn match_ledger(&self, plan: &SigningPlan) -> Result<Vec<i64>> {
+        let expected = self.expected.lock().unwrap();
+        let consumed = self.consumed.lock().unwrap();
+        let mut used: Vec<i64> = Vec::new();
+        for (receiver, zats) in &plan.summary.external_receivers {
+            let found = expected
+                .values()
+                .filter(|p| !consumed.contains(&p.id) && !used.contains(&p.id))
+                .find(|p| p.value_zats == *zats && p.orchard_receiver_hex().as_deref() == Some(receiver.as_str()));
+            match found {
+                Some(p) => used.push(p.id),
+                None => {
+                    return Err(anyhow!(
+                        "ledger: no expected payout of {zats} zats to receiver {}…; the viewer's ledger does not name this payment",
+                        &receiver[..12.min(receiver.len())]
+                    ));
+                }
+            }
+        }
+        Ok(used)
     }
 
     fn audit(&self, session: &str, sighash: &[u8; 32], summary: &TxSummary, outcome: impl Into<String>) {
@@ -572,6 +687,18 @@ impl SignerHost {
                 return Err(anyhow!(reason));
             }
         }
+        let matched = if self.policy.require_ledger {
+            match self.match_ledger(&plan) {
+                Ok(m) => m,
+                Err(e) => {
+                    warn!("refusing session {session}: {e}");
+                    self.audit(session, &plan.sighash, &plan.summary, format!("refused: {e}"));
+                    return Err(e);
+                }
+            }
+        } else {
+            Vec::new()
+        };
         self.audit(session, &plan.sighash, &plan.summary, "committed");
         info!(
             "session {session}: {} spend(s), {} external output(s) totalling {} zats, change {} zats, fee {} zats",
@@ -595,7 +722,7 @@ impl SignerHost {
         let summary = plan.summary.clone();
         let mut sessions = self.sessions.lock().unwrap();
         sessions.retain(|_, s| s.created.elapsed() < SESSION_TTL);
-        sessions.insert(session.to_string(), Session { plan, nonces, created: Instant::now() });
+        sessions.insert(session.to_string(), Session { plan, nonces, created: Instant::now(), matched });
         Ok(Round1Response { identifier: self.identifier(), commitments, summary })
     }
 
@@ -640,6 +767,9 @@ impl SignerHost {
             shares.push(Share { pool: item.pool, index: item.index, share: bb_frost::wire::share_to_hex(&share) });
         }
         self.signed.fetch_add(1, Ordering::Relaxed);
+        // The expected payouts this transaction pays are spent: a second transaction to the same
+        // recipient for the same amount needs a new entry in the viewer's ledger.
+        self.consumed.lock().unwrap().extend(session.matched.iter().copied());
         self.audit(&req.session, &session.plan.sighash, &session.plan.summary, "signed");
         info!("session {}: signed {} spend(s)", req.session, shares.len());
         Ok(Round2Response { identifier: self.identifier(), shares })
@@ -669,6 +799,7 @@ pub async fn run_signer(host: Arc<SignerHost>, bind: &str, token: Option<String>
             "identifier": st.host.identifier(),
             "signed_sessions": st.host.signed.load(Ordering::Relaxed),
             "policy_max_external_zats": st.host.policy.max_external_zats,
+            "ledger_check": st.host.policy.require_ledger,
         }))
     }
     async fn log(State(st): State<St>, headers: HeaderMap) -> std::result::Result<Json<Vec<AuditEntry>>, (StatusCode, String)> {
@@ -681,6 +812,15 @@ pub async fn run_signer(host: Arc<SignerHost>, bind: &str, token: Option<String>
         Json(req): Json<Round1Request>,
     ) -> std::result::Result<Json<Round1Response>, (StatusCode, String)> {
         authed(&st, &headers)?;
+        if let Some(ledger) = &st.host.ledger {
+            let after = st.host.highest_expected_id();
+            match ledger.expected(after).await {
+                Ok(list) => {
+                    st.host.add_expected(list);
+                }
+                Err(e) => return Err((StatusCode::SERVICE_UNAVAILABLE, format!("cannot reach the ledger; refusing to sign: {e:#}"))),
+            }
+        }
         st.host.round1(&req).map(Json).map_err(|e| (StatusCode::BAD_REQUEST, format!("{e:#}")))
     }
     async fn round2(
@@ -947,7 +1087,7 @@ mod tests {
         SigningPlan {
             sighash,
             actions,
-            summary: TxSummary { spends: n, external_outputs: vec![("u1test".into(), external_zats)], external_zats, change_zats: 0, fee_zats: 10_000 },
+            summary: TxSummary { spends: n, external_outputs: vec![("u1test".into(), external_zats)], external_receivers: vec![], external_zats, change_zats: 0, fee_zats: 10_000 },
         }
     }
 
@@ -1051,6 +1191,55 @@ mod tests {
         // The session was consumed by the failed attempt.
         let err = hosts[0].round2(&req).unwrap_err();
         assert!(err.to_string().contains("unknown"), "{err}");
+    }
+
+    // Real testnet unified addresses (an Orchard-only receiver each), so the receiver extraction runs for real.
+    const UA_A: &str = "utest1phxskj2u3phwse5pql5dazp4katjgtx265pnxgputh9p6vgjpc4pt33gmwgmdmqd3gnucf7f073cxlk6c7f6gkzxu3yvgwuysyplaj24";
+    const UA_B: &str = "utest1ghcgeshaswuuamd7hg982eugnqaz76qguwg30f2e9gshv5mqp7j5qsmpfq367g4zyz39xxa0k75xs4zx6p0add6tnyuaxmhjuceskj03";
+
+    fn expected(id: i64, to: &str, zats: u64) -> ExpectedPayout {
+        ExpectedPayout { id, auction_id: Some("aaaaaaaa".into()), kind: "refund".into(), to_address: to.into(), value_zats: zats }
+    }
+
+    fn plan_paying(public: &bb_frost::PublicKeyPackage, outputs: &[(&str, u64)]) -> SigningPlan {
+        let mut p = plan(public, 1, outputs.iter().map(|o| o.1).sum());
+        p.summary.external_outputs = outputs.iter().map(|(a, z)| (a.to_string(), *z)).collect();
+        p.summary.external_receivers = outputs
+            .iter()
+            .map(|(a, z)| (expected(0, a, 0).orchard_receiver_hex().expect("orchard receiver"), *z))
+            .collect();
+        p
+    }
+
+    #[tokio::test]
+    async fn ledger_check_signs_only_payouts_the_viewer_expects_and_only_once() {
+        let (escrow, hosts) = setup(SignerPolicy { require_ledger: true, ..SignerPolicy::default() });
+        let public = escrow.public_key_package().unwrap();
+        let host = &hosts[0];
+        host.add_expected(vec![expected(1, UA_A, 1_000_000), expected(2, UA_A, 1_000_000)]);
+
+        // An output the ledger never named is refused, whatever its size.
+        let err = host.round1_plan("s1", plan_paying(&public, &[(UA_B, 1_000_000)])).unwrap_err();
+        assert!(err.to_string().contains("ledger"), "{err}");
+        // The right recipient with the wrong amount is refused.
+        let err = host.round1_plan("s2", plan_paying(&public, &[(UA_A, 999_999)])).unwrap_err();
+        assert!(err.to_string().contains("ledger"), "{err}");
+        // Two refunds the ledger expects, in one batched transaction: accepted, and signing consumes both.
+        let plan3 = plan_paying(&public, &[(UA_A, 1_000_000), (UA_A, 1_000_000)]);
+        let r1b = host.round1_plan("s4", plan3.clone()).unwrap();
+        let mut c = BTreeMap::new();
+        c.insert(bb_frost::wire::identifier_from_hex(&r1b.identifier).unwrap(), bb_frost::wire::commitments_from_hex(&r1b.commitments[0].commitments).unwrap());
+        let peer = bb_frost::generate(3, 2).unwrap().remove(1);
+        let (_, pc) = bb_frost::round1(&peer);
+        c.insert(peer.identifier, pc);
+        let package = bb_frost::signing_package(&plan3.sighash, c);
+        let req = Round2Request { session: "s4".into(), packages: vec![PackageItem { pool: Pool::Orchard, index: 0, package: bb_frost::wire::package_to_hex(&package).unwrap() }] };
+        host.round2(&req).unwrap();
+        // Both expected payouts are now consumed: paying either again is refused until the ledger lists new ones.
+        let err = host.round1_plan("s5", plan_paying(&public, &[(UA_A, 1_000_000)])).unwrap_err();
+        assert!(err.to_string().contains("ledger"), "{err}");
+        host.add_expected(vec![expected(3, UA_A, 1_000_000)]);
+        host.round1_plan("s6", plan_paying(&public, &[(UA_A, 1_000_000)])).unwrap();
     }
 
     #[tokio::test]

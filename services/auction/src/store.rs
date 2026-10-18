@@ -637,6 +637,33 @@ pub struct Payout {
     pub from_account: Option<String>,
 }
 
+/// Every payout the ledger has produced after `after_id`, oldest first, whatever its send status. Sweeps are
+/// internal moves and are not exported.
+pub fn payouts_after_id(conn: &Connection, after_id: i64, limit: usize) -> Result<Vec<Payout>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error, from_account
+         FROM payouts WHERE id > ?1 AND kind != 'sweep' ORDER BY id ASC LIMIT ?2",
+    )?;
+    let rows = stmt.query_map(params![after_id, limit as i64], |r| {
+        Ok(Payout {
+            id: r.get(0)?,
+            auction_id: r.get(1)?,
+            bid_id: r.get(2)?,
+            kind: r.get(3)?,
+            to_address: r.get(4)?,
+            value_zats: r.get::<_, i64>(5)? as u64,
+            memo: r.get(6)?,
+            not_before: r.get(7)?,
+            txid: r.get(8)?,
+            status: r.get(9)?,
+            attempts: r.get(10)?,
+            error: r.get(11)?,
+            from_account: r.get(12)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
 /// Queue a payment that spends from a specific wallet account (an auditable lot's sweep).
 pub fn queue_payout_from(
     conn: &Connection,

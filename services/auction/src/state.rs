@@ -55,6 +55,8 @@ pub struct SyncStatus {
 pub struct AppState {
     pub network_name: &'static str,
     pub admin_token: String,
+    /// Read-only token for the ledger endpoints; None falls back to the admin token.
+    pub ledger_token: Option<String>,
     pub cors_origin: Option<String>,
     /// Trust the first `x-forwarded-for` entry as the client address (set behind a reverse proxy).
     pub trust_proxy: bool,

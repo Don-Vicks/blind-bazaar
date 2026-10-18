@@ -54,6 +54,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/admin/auctions", get(admin_auctions))
         .route("/admin/envelopes", get(admin_envelopes))
         .route("/admin/reveals", get(admin_reveals))
+        .route("/ledger/payouts", get(ledger_payouts))
         .route("/admin/payouts/sync", post(admin_payouts_sync))
         .route("/auctions/{id}/events", get(auction_events))
         .route("/seller/me", get(seller_me))
@@ -844,6 +845,43 @@ async fn admin_auctions(State(state): State<Arc<AppState>>, headers: HeaderMap) 
 struct AfterQuery {
     #[serde(default)]
     after: i64,
+}
+
+fn check_ledger(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
+    if check_admin(state, headers).is_ok() {
+        return Ok(());
+    }
+    let ok = match &state.ledger_token {
+        Some(t) if !t.is_empty() => headers
+            .get("x-ledger-token")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| token_eq(v, t))
+            .unwrap_or(false),
+        _ => false,
+    };
+    if ok { Ok(()) } else { Err(ApiError(StatusCode::UNAUTHORIZED, "ledger token required".into())) }
+}
+
+#[derive(Deserialize)]
+struct LedgerQuery {
+    #[serde(default)]
+    after: i64,
+    kind: Option<String>,
+}
+
+/// The payouts this ledger has derived (refunds to sealed refund addresses, seller payouts, forfeits, manual
+/// operator sends), oldest first after `after`. Signers match every output they are asked to sign against this
+/// list; the spender mirrors manual entries. Read-only.
+async fn ledger_payouts(State(state): State<Arc<AppState>>, headers: HeaderMap, Query(q): Query<LedgerQuery>) -> ApiResult<Vec<crate::frost::ExpectedPayout>> {
+    check_ledger(&state, &headers)?;
+    let conn = state.store.lock().await;
+    Ok(Json(
+        store::payouts_after_id(&conn, q.after, 500)?
+            .into_iter()
+            .filter(|p| q.kind.as_deref().map(|k| k == p.kind).unwrap_or(true))
+            .map(|p| crate::frost::ExpectedPayout { id: p.id, auction_id: p.auction_id, kind: p.kind, to_address: p.to_address, value_zats: p.value_zats })
+            .collect(),
+    ))
 }
 
 /// Envelopes created after `after` (unix seconds), for a spender process to mirror.
