@@ -106,6 +106,15 @@ go to the bid mined first (height, then txid, then output index). None of this d
 transaction, so the viewer and the spender, reading the same chain, always close on the same ledger and the same
 winner.
 
+## Optional email, and what it costs
+
+A bidder may leave an email for one bid and a seller for their lots: received, reveal window open, won or lost,
+refund sent, lot closed, winner paid, payout sent. This is the one place the design lets a person tie themselves to a
+bid, so it is opt-in, said plainly on the form, stored only on the auction's server, returned by no endpoint, and
+purged a week after the lot reaches a final state. Without `NOTIFY_SMTP_URL` the service records and logs
+notifications but sends nothing, so an instance can run with no mail at all. Bid cards and links (the key in a URL
+fragment, which browsers never send to a server) are the no-email way to keep a bid reachable from another device.
+
 ## Reorgs
 
 A deposit counts only once it has `INGEST_CONFIRMATIONS` blocks on top of it (two by default), and every pass

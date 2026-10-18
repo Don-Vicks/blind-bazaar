@@ -172,6 +172,13 @@ export const api = {
     request<{ ok: boolean }>(`/seller/lots/${id}/fulfilment`, { method: "POST", headers: { "x-seller-key": key }, body: JSON.stringify({ note }) }),
   fulfilment: (id: string, secret: string) =>
     request<{ note: string | null; updated_at: number | null }>(`/auctions/${id}/fulfilment?secret=${encodeURIComponent(secret)}`),
+  notify: (id: string, secret: string, email: string) =>
+    request<{ ok: boolean }>(`/auctions/${id}/notify`, { method: "POST", body: JSON.stringify({ secret, email }) }),
+  unnotify: (id: string, secret: string) =>
+    request<{ ok: boolean }>(`/auctions/${id}/notify`, { method: "DELETE", body: JSON.stringify({ secret }) }),
+  sellerNotifyGet: (key: string) => request<{ subscribed: boolean }>("/seller/notify", { headers: { "x-seller-key": key } }),
+  sellerNotifySet: (key: string, email: string | null) =>
+    request<{ ok: boolean; subscribed: boolean }>("/seller/notify", { method: "POST", headers: { "x-seller-key": key }, body: JSON.stringify({ email }) }),
   reveal: (id: string, secret: string, bidZats: bigint, salt: string) =>
     request<{ ok: boolean; receipt: string }>(`/auctions/${id}/reveals`, { method: "POST", body: JSON.stringify({ secret, bid_zats: Number(bidZats), salt }) }),
   standing: (id: string, secret: string) => request<Standing>(`/auctions/${id}/standing?secret=${encodeURIComponent(secret)}`),

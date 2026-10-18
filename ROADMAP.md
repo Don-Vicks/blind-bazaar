@@ -58,7 +58,7 @@ Remove the single operator who can both read bids and move funds.
 
 - done: seller dashboard (lots, money, payouts, events) and a winner-gated delivery note
 - planned: seller reputation; escrow for physical goods
-- planned: winner notifications (email, push, wallet memo) and seller dashboard
+- done: opt-in email notifications for bidders and sellers; bid cards and a my-bids page
 - done: Vickrey (second price, winning bid sealed, price proven from the ledger) and private request-for-quote
 - done: sealed-reveal mode (commitment in the memo, reveal window, unrevealed bids refunded) so the operator cannot read bids before close
 - planned: Dutch format; batch markets (private order matching) on the same rails

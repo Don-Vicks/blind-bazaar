@@ -281,6 +281,17 @@ pub struct Config {
     #[arg(long, env = "CORS_ORIGIN")]
     pub cors_origin: Option<String>,
 
+    /// SMTP URL for opt-in notifications, e.g. `smtps://user:pass@smtp.example:465`. Unset = notifications are
+    /// recorded and logged, not sent.
+    #[arg(long, env = "NOTIFY_SMTP_URL")]
+    pub notify_smtp_url: Option<String>,
+    /// From address for notifications.
+    #[arg(long, env = "NOTIFY_FROM")]
+    pub notify_from: Option<String>,
+    /// Public site URL used in notification links.
+    #[arg(long, env = "SITE_URL", default_value = "http://localhost:3000")]
+    pub site_url: String,
+
     /// Blocks a deposit must have on top of it before it counts as a bid. One-block reorgs are common; two
     /// confirmations keep a deposit from entering the ledger and leaving the chain.
     #[arg(long, env = "INGEST_CONFIRMATIONS", default_value_t = 2)]

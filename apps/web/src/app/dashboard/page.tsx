@@ -16,6 +16,9 @@ export default function DashboardPage() {
   const me = useQuery({ queryKey: ["seller-me", key], queryFn: () => api.sellerMe(key), enabled: key.length > 0, retry: false });
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
   const demo = useMutation({ mutationFn: api.demoSeller, onSuccess: (r) => setKey(r.key) });
+  const notify = useQuery({ queryKey: ["seller-notify", key], queryFn: () => api.sellerNotifyGet(key), enabled: me.isSuccess });
+  const [sellerEmail, setSellerEmail] = useState("");
+  const setNotify = useMutation({ mutationFn: (email: string | null) => api.sellerNotifySet(key, email), onSuccess: () => notify.refetch() });
   const lots = useQuery({ queryKey: ["seller-lots", key], queryFn: () => api.sellerLots(key), enabled: me.isSuccess, refetchInterval: 15_000 });
 
   if (!keyReady) return <Skeleton className="h-64" />;
@@ -69,6 +72,18 @@ export default function DashboardPage() {
         <div className="rise rise-2 flex items-center gap-3">
           <LinkButton href="/sell">List a lot</LinkButton>
           <Button variant="ghost" onClick={() => setKey("")}>Sign out</Button>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2 rounded-md border border-hairline p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-[14px]">Email when a lot closes, a winner pays, or you are paid.</p>
+          <p className="text-[12px] text-muted-foreground">{notify.data?.subscribed ? "On. Clear the field to stop." : "Optional. Stored only to send these mails."}</p>
+        </div>
+        <div className="flex gap-2">
+          <input type="email" placeholder="you@example.com" className={`${inputClass} w-64 text-[14px]`} value={sellerEmail} onChange={(e) => setSellerEmail(e.target.value)} />
+          <Button variant="secondary" disabled={setNotify.isPending} onClick={() => setNotify.mutate(sellerEmail.trim() || null)}>
+            {setNotify.isPending ? "Saving…" : sellerEmail.trim() ? "Notify me" : "Stop"}
+          </Button>
         </div>
       </div>
 

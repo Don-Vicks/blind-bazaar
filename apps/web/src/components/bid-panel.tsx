@@ -41,6 +41,8 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
   const [errors, setErrors] = useState<{ amount?: string; refund?: string; confirm?: string }>({});
   const [prepared, setPrepared] = useState<PreparedBid | null>(null);
   const [copied, setCopied] = useState<"uri" | "memo" | null>(null);
+  const [email, setEmail] = useState("");
+  const [notifyState, setNotifyState] = useState<"idle" | "saving" | "on" | "error">("idle");
   const rfq = isRfq(auction.format);
   const f = fmt(auction.format);
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
@@ -134,6 +136,43 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
             <p className="mt-3 text-[12px] text-muted-foreground">Reveal code (needed with the bid key to reveal after close): <span className="num">{prepared.salt}</span></p>
           )}
           <p className="mt-3 text-[12px] text-muted-foreground">Public receipt, listed by the auction once your {f.verb} lands: <span className="num">{prepared.receipt.slice(0, 24)}…</span></p>
+          <div className="mt-4 flex flex-col gap-2">
+            <label htmlFor="notify-email" className="eyebrow text-foreground">Email me when this {f.verb} needs me (optional)</label>
+            <div className="flex gap-2">
+              <input
+                id="notify-email"
+                type="email"
+                autoComplete="email"
+                placeholder="you@example.com"
+                className={`${inputClass} text-[14px]`}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={notifyState === "on"}
+              />
+              <Button
+                variant="secondary"
+                disabled={notifyState === "saving" || notifyState === "on" || !email.includes("@")}
+                onClick={async () => {
+                  setNotifyState("saving");
+                  try {
+                    await api.notify(auction.id, prepared.secret, email.trim());
+                    setNotifyState("on");
+                  } catch {
+                    setNotifyState("error");
+                  }
+                }}
+              >
+                {notifyState === "on" ? "On" : notifyState === "saving" ? "Saving…" : "Notify me"}
+              </Button>
+            </div>
+            <p className="text-[12px] leading-relaxed text-muted-foreground">
+              {notifyState === "on"
+                ? "You will get a mail when the bid is received, when it is time to reveal or pay, and when a refund leaves."
+                : notifyState === "error"
+                  ? "Could not save that address."
+                  : "Ties an address to this one bid on the auction's server, which the rest of the design avoids; nobody else sees it, and it is deleted a week after the lot ends."}
+            </p>
+          </div>
           <details className="mt-3 text-[13px]">
             <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Open this bid on another device</summary>
             <div className="mt-3 flex items-start gap-4">

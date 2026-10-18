@@ -36,6 +36,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auctions/{id}/fulfilment", get(winner_fulfilment))
         .route("/auctions/{id}/standing", get(standing))
         .route("/auctions/{id}/reveals", post(reveal))
+        .route("/auctions/{id}/notify", post(notify_bidder).delete(unnotify_bidder))
         .route("/sellers/demo", post(demo_seller))
         .route_layer(axum::middleware::from_fn_with_state(limiter, crate::ratelimit::limit));
     Router::new()
@@ -61,6 +62,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/seller/lots", get(seller_lots))
         .route("/seller/lots/{id}", get(seller_lot))
         .route("/seller/lots/{id}/fulfilment", post(seller_set_fulfilment))
+        .route("/seller/notify", get(seller_notify_get).post(seller_notify_set))
         .layer(cors)
         .with_state(state)
 }
@@ -1301,6 +1303,70 @@ async fn reveal(State(state): State<Arc<AppState>>, Path(id): Path<String>, Json
     store::reveal_bid(&conn, bid.id, req.bid_zats, &salt)?;
     store::insert_event(&conn, Some(&id), "bid_revealed", &serde_json::json!({ "receipt": bid.receipt }))?;
     Ok(Json(serde_json::json!({ "ok": true, "receipt": bid.receipt })))
+}
+
+fn valid_email(e: &str) -> bool {
+    let e = e.trim();
+    e.len() >= 6 && e.len() <= 254 && e.contains('@') && !e.contains(' ') && e.rsplit('@').next().map(|d| d.contains('.')).unwrap_or(false)
+}
+
+#[derive(Deserialize)]
+struct NotifyReq {
+    secret: String,
+    email: String,
+}
+
+#[derive(Deserialize)]
+struct NotifyKey {
+    secret: String,
+}
+
+/// Opt in to email for one bid: received, reveal window, won or lost, refund sent. The address is tied to the
+/// bid's nonce, never returned by any endpoint, and purged a week after the lot ends.
+async fn notify_bidder(State(state): State<Arc<AppState>>, Path(id): Path<String>, Json(req): Json<NotifyReq>) -> ApiResult<serde_json::Value> {
+    let nonce = nonce_param(&req.secret)?;
+    if !valid_email(&req.email) {
+        return Err(bad("that does not look like an email address"));
+    }
+    let conn = state.store.lock().await;
+    store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+    store::subscribe_bidder(&conn, &id, &nonce, req.email.trim())?;
+    Ok(Json(serde_json::json!({ "ok": true })))
+}
+
+async fn unnotify_bidder(State(state): State<Arc<AppState>>, Path(id): Path<String>, Json(req): Json<NotifyKey>) -> ApiResult<serde_json::Value> {
+    let nonce = nonce_param(&req.secret)?;
+    let conn = state.store.lock().await;
+    let removed = store::unsubscribe_bidder(&conn, &id, &nonce)?;
+    Ok(Json(serde_json::json!({ "ok": true, "removed": removed })))
+}
+
+#[derive(Deserialize)]
+struct SellerNotifyReq {
+    /// Empty or absent clears it.
+    email: Option<String>,
+}
+
+async fn seller_notify_get(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiResult<serde_json::Value> {
+    let (sid, _) = require_seller(&state, &headers).await?;
+    let conn = state.store.lock().await;
+    Ok(Json(serde_json::json!({ "subscribed": sid != 0 && store::seller_has_subscription(&conn, sid)? })))
+}
+
+async fn seller_notify_set(State(state): State<Arc<AppState>>, headers: HeaderMap, Json(req): Json<SellerNotifyReq>) -> ApiResult<serde_json::Value> {
+    let (sid, _) = require_seller(&state, &headers).await?;
+    if sid == 0 {
+        return Err(bad("the operator account has no seller subscription; use WEBHOOK_URL"));
+    }
+    let email = req.email.as_deref().map(str::trim).filter(|e| !e.is_empty());
+    if let Some(e) = email {
+        if !valid_email(e) {
+            return Err(bad("that does not look like an email address"));
+        }
+    }
+    let conn = state.store.lock().await;
+    store::subscribe_seller(&conn, sid, email)?;
+    Ok(Json(serde_json::json!({ "ok": true, "subscribed": email.is_some() })))
 }
 
 /// Reveals since `after`, for the spender to mirror (it re-checks every commitment itself).

@@ -24,6 +24,12 @@ pages; no wallet transaction was involved in those checks.
 - Demo script rewritten around what exists (Vickrey lot where the deposit covers the second price, staged Go Dark
   swap, chain-timed close); `docs/evidence/` skeleton with the txid table format and verifier commands.
 - CI: GitHub Actions runs the Rust tests and the SDK tests and typechecks the web app on every push.
+- Bid cards and my-bids page: a bid card file and a QR link carry the bid key (in the URL fragment) to another
+  device; `/bids` lists every bid this browser holds with its standing and what needs attention.
+- Opt-in notifications: `POST /auctions/{id}/notify` (bid key + email) and `/seller/notify`; events become mails
+  (received, reveal open, won, lost, second chance, refund sent, lot closed, winner paid, paid) through
+  `NOTIFY_SMTP_URL`, or are logged without it; addresses purged a week after the lot ends. Not yet sent through a
+  real SMTP server.
 - Reorg handling: deposits count after `INGEST_CONFIRMATIONS` (default 2); every pass re-checks counted bids and
   settlements against the wallet's view of the chain, sets aside reorged ones (cancelling their refunds),
   reinstates re-mined ones under the same acceptance rules, and flags any that vanish after close for the

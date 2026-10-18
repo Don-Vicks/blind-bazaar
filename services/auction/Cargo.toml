@@ -34,6 +34,7 @@ subtle = "2"
 bip0039 = { version = "0.14", features = ["std"] }
 secrecy = "0.8"
 uuid = "1"
+lettre = { version = "0.11", default-features = false, features = ["smtp-transport", "builder", "tokio1", "tokio1-rustls-tls"] }
 time = { version = "0.3", features = ["serde", "formatting", "parsing"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 nonempty = { version = "0.11", default-features = false }

@@ -53,7 +53,7 @@ export function LotPlate({ id, className = "", ratio = "4/3" }: { id: string; cl
         </filter>
       </defs>
       <rect width="100" height="75" fill={paper} />
-      <rect y={horizon} width="100" height={75 - horizon} fill="#1b1511" opacity="0.08" />
+      <rect y={Math.min(horizon, 75)} width="100" height={Math.max(0, 75 - horizon)} fill="#1b1511" opacity="0.08" />
       {shapes.map((s, i) => (
         <ellipse
           key={i}

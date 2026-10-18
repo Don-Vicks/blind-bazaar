@@ -128,6 +128,27 @@ fn init_schema(conn: &Connection) -> Result<()> {
         "ALTER TABLE auctions ADD COLUMN reveal_secs INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE auctions ADD COLUMN reveal_until INTEGER",
         "ALTER TABLE auctions ADD COLUMN commit_hash TEXT",
+        "CREATE TABLE IF NOT EXISTS subscriptions (
+            id INTEGER PRIMARY KEY,
+            auction_id TEXT,
+            nonce TEXT,
+            seller_id INTEGER,
+            email TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+         )",
+        "CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_bidder ON subscriptions (auction_id, nonce)",
+        "CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_seller ON subscriptions (seller_id)",
+        "CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY,
+            subscription_id INTEGER NOT NULL,
+            event_id INTEGER NOT NULL,
+            kind TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            sent_at INTEGER,
+            error TEXT
+         )",
         "ALTER TABLE auctions ADD COLUMN audit_account TEXT",
         "ALTER TABLE auctions ADD COLUMN audit_key TEXT",
         "ALTER TABLE auctions ADD COLUMN audit_birthday INTEGER",
@@ -635,6 +656,131 @@ pub struct Payout {
     pub error: Option<String>,
     /// Wallet account to spend from; None = the operator account.
     pub from_account: Option<String>,
+}
+
+// ---- notifications ----
+
+/// A bidder asks to be told about one bid (keyed by its nonce), or a seller about all their lots.
+pub fn subscribe_bidder(conn: &Connection, auction_id: &str, nonce: &str, email: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO subscriptions (auction_id, nonce, email, created_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT (auction_id, nonce) DO UPDATE SET email = excluded.email",
+        params![auction_id, nonce, email, now()],
+    )?;
+    Ok(())
+}
+
+pub fn unsubscribe_bidder(conn: &Connection, auction_id: &str, nonce: &str) -> Result<bool> {
+    Ok(conn.execute("DELETE FROM subscriptions WHERE auction_id = ?1 AND nonce = ?2", params![auction_id, nonce])? > 0)
+}
+
+pub fn subscribe_seller(conn: &Connection, seller_id: i64, email: Option<&str>) -> Result<()> {
+    match email {
+        Some(e) => {
+            conn.execute(
+                "INSERT INTO subscriptions (seller_id, email, created_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (seller_id) DO UPDATE SET email = excluded.email",
+                params![seller_id, e, now()],
+            )?;
+        }
+        None => {
+            conn.execute("DELETE FROM subscriptions WHERE seller_id = ?1", [seller_id])?;
+        }
+    }
+    Ok(())
+}
+
+pub fn seller_has_subscription(conn: &Connection, seller_id: i64) -> Result<bool> {
+    let n: i64 = conn.query_row("SELECT COUNT(*) FROM subscriptions WHERE seller_id = ?1", [seller_id], |r| r.get(0))?;
+    Ok(n > 0)
+}
+
+pub fn subscriptions_for_receipt(conn: &Connection, auction_id: &str, receipt: &str) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id FROM subscriptions s JOIN bids b ON b.auction_id = s.auction_id AND b.nonce = s.nonce
+         WHERE s.auction_id = ?1 AND b.receipt = ?2",
+    )?;
+    let rows = stmt.query_map(params![auction_id, receipt], |r| r.get::<_, i64>(0))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn subscriptions_for_bid_status(conn: &Connection, auction_id: &str, status: &str) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id FROM subscriptions s JOIN bids b ON b.auction_id = s.auction_id AND b.nonce = s.nonce
+         WHERE s.auction_id = ?1 AND b.status = ?2",
+    )?;
+    let rows = stmt.query_map(params![auction_id, status], |r| r.get::<_, i64>(0))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn subscriptions_for_payout(conn: &Connection, payout_id: i64) -> Result<Vec<i64>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id FROM subscriptions s JOIN bids b ON b.auction_id = s.auction_id AND b.nonce = s.nonce
+         JOIN payouts p ON p.bid_id = b.id WHERE p.id = ?1",
+    )?;
+    let rows = stmt.query_map([payout_id], |r| r.get::<_, i64>(0))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn subscriptions_for_seller(conn: &Connection, seller_id: Option<i64>) -> Result<Vec<i64>> {
+    let Some(sid) = seller_id else { return Ok(vec![]) };
+    let mut stmt = conn.prepare("SELECT id FROM subscriptions WHERE seller_id = ?1")?;
+    let rows = stmt.query_map([sid], |r| r.get::<_, i64>(0))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+/// Bidder subscriptions on lots that reached a final state more than a week ago are deleted: the address
+/// has done its job and should not outlive it.
+pub fn purge_stale_subscriptions(conn: &Connection) -> Result<usize> {
+    let cutoff = now() - 7 * 86_400;
+    Ok(conn.execute(
+        "DELETE FROM subscriptions WHERE nonce IS NOT NULL AND auction_id IN (
+            SELECT id FROM auctions WHERE status IN ('paid', 'no_sale', 'unsettled') AND COALESCE(closed_at, created_at) < ?1)",
+        [cutoff],
+    )?)
+}
+
+pub fn events_after(conn: &Connection, after_id: i64, limit: usize) -> Result<Vec<Event>> {
+    let mut stmt = conn.prepare("SELECT id, auction_id, kind, payload, created_at FROM events WHERE id > ?1 ORDER BY id ASC LIMIT ?2")?;
+    let rows = stmt.query_map(params![after_id, limit as i64], |r| {
+        Ok(Event {
+            id: r.get(0)?,
+            auction_id: r.get(1)?,
+            kind: r.get(2)?,
+            payload: serde_json::from_str(&r.get::<_, String>(3)?).unwrap_or(serde_json::Value::Null),
+            created_at: r.get(4)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn insert_notification(conn: &Connection, subscription_id: i64, event_id: i64, kind: &str, subject: &str, body: &str) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO notifications (subscription_id, event_id, kind, subject, body, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![subscription_id, event_id, kind, subject, body, now()],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub struct PendingNotification {
+    pub id: i64,
+    pub email: String,
+    pub subject: String,
+    pub body: String,
+}
+
+pub fn unsent_notifications(conn: &Connection, limit: usize) -> Result<Vec<PendingNotification>> {
+    let mut stmt = conn.prepare(
+        "SELECT n.id, s.email, n.subject, n.body FROM notifications n JOIN subscriptions s ON s.id = n.subscription_id
+         WHERE n.sent_at IS NULL ORDER BY n.id ASC LIMIT ?1",
+    )?;
+    let rows = stmt.query_map([limit as i64], |r| Ok(PendingNotification { id: r.get(0)?, email: r.get(1)?, subject: r.get(2)?, body: r.get(3)? }))?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn mark_notification_sent(conn: &Connection, id: i64, error: Option<&str>) -> Result<()> {
+    conn.execute("UPDATE notifications SET sent_at = ?2, error = ?3 WHERE id = ?1", params![id, now(), error])?;
+    Ok(())
 }
 
 /// Bids whose transaction should still be in a block, plus reorged ones that may have come back.

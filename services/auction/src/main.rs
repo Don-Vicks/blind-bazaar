@@ -5,6 +5,7 @@ mod disclosure;
 mod frost;
 mod audit;
 mod linkability;
+mod notify;
 mod ratelimit;
 mod ingest;
 mod memo;

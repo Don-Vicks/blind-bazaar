@@ -272,6 +272,12 @@ impl Worker {
         }
         self.deliver_events().await?;
         {
+            let mailer = crate::notify::Mailer::from_env(self.cfg.notify_smtp_url.clone(), self.cfg.notify_from.clone());
+            if let Err(e) = crate::notify::run_pass(&self.store, mailer.as_ref(), self.cfg.site_url.trim_end_matches('/')).await {
+                warn!("notifications: {e:#}");
+            }
+        }
+        {
             let store = self.store.lock().await;
             let t = store::totals(&store)?;
             let mut s = self.status.write().await;
