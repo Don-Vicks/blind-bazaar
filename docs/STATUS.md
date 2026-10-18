@@ -24,6 +24,10 @@ pages; no wallet transaction was involved in those checks.
 - Demo script rewritten around what exists (Vickrey lot where the deposit covers the second price, staged Go Dark
   swap, chain-timed close); `docs/evidence/` skeleton with the txid table format and verifier commands.
 - CI: GitHub Actions runs the Rust tests and the SDK tests and typechecks the web app on every push.
+- Reorg handling: deposits count after `INGEST_CONFIRMATIONS` (default 2); every pass re-checks counted bids and
+  settlements against the wallet's view of the chain, sets aside reorged ones (cancelling their refunds),
+  reinstates re-mined ones under the same acceptance rules, and flags any that vanish after close for the
+  operator. Unit-tested against a stand-in wallet table; no chain reorg exercised.
 - Signer ledger check: the viewer exposes `/ledger/payouts` (read-only token); a signer started with
   `--ledger-url` matches every external output of a PCZT against those expected payouts by Orchard receiver and
   exact amount, consuming each once; unknown recipients, wrong amounts and repeats are refused. The spender mirrors

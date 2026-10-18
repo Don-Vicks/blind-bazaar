@@ -30,7 +30,8 @@ Make the money paths safe before anyone who is not us uses them.
 - done: rate limit and origin allow-list on the Go Dark quote proxy; quote expiry enforced in the widget
 - done: Docker images and a Compose file with HTTPS (Caddy) for a single-VPS deployment
 - done: integration test against a regtest chain (zeckit) covering every money path (`scripts/regtest-e2e.sh`)
-- planned: wallet rescan and reorg handling exercised deliberately; checkpoint backups of both databases
+- done: confirmation gate on ingest and per-pass reorg re-checks with reinstatement (unit-tested; not yet exercised on a chain reorg)
+- planned: checkpoint backups of both databases
 - planned: structured audit log with no addresses; metrics (sync lag, queue depth, balance) to Prometheus
 - planned: pin to a released librustzcash line once NU7 ships on mainnet (Nov 5 target)
 

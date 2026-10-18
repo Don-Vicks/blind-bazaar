@@ -106,6 +106,16 @@ go to the bid mined first (height, then txid, then output index). None of this d
 transaction, so the viewer and the spender, reading the same chain, always close on the same ledger and the same
 winner.
 
+## Reorgs
+
+A deposit counts only once it has `INGEST_CONFIRMATIONS` blocks on top of it (two by default), and every pass
+re-checks that each counted deposit and settlement is still in a block. One that a reorg removed is set aside,
+drops out of the receipt list and the ledger, and its queued refund is cancelled; if the chain mines it again it is
+classified afresh under the same rules, including lateness by its new block's timestamp. A deposit that vanishes
+after the lot has closed cannot be undone, because the ledger root was published over it; it is marked and an
+event asks the operator to intervene. Payments the service itself broadcasts are not re-checked here; a reorged
+payout would be rebuilt by the wallet on retry.
+
 ## Ledger commitment and inclusion proofs
 
 At close the ledger hash is the root of a Merkle tree over every valid bid: leaves are
