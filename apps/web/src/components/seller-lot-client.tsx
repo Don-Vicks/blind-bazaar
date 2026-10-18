@@ -119,7 +119,7 @@ export function SellerLotClient({ id }: { id: string }) {
               <p className="serif mt-2 text-[26px] leading-tight">Only the winner reads this.</p>
             </div>
             <p className="text-[14px] leading-relaxed text-muted-foreground">
-              A download link, a shipping handshake, a contact. A bidder sees it only by presenting a receipt that won
+              A download link, a shipping handshake, a contact. A bidder sees it only by presenting the bid key of a bid that won
               this lot. Post it once a winner has settled.
             </p>
             <Field label="Note to the winner" htmlFor="note">

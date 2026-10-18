@@ -255,6 +255,12 @@ export function GoDark(opts: GoDarkOptions) {
                     <td>The rail sees</td>
                     <td>Your source address and the Zcash destination address. Not the memo.</td>
                   </tr>
+                  {chain === "ethereum" && (
+                    <tr>
+                      <td>Ethereum shows</td>
+                      <td>The Zcash destination address, in the public calldata of your transaction. With a fixed address, payments to the same recipient are linkable there; a fresh address per payment is not.</td>
+                    </tr>
+                  )}
                   <tr>
                     <td>Zcash sees</td>
                     <td>
@@ -269,7 +275,7 @@ export function GoDark(opts: GoDarkOptions) {
                   </tr>
                   <tr>
                     <td>This site sees</td>
-                    <td>Nothing. Quotes are proxied without logging addresses.</td>
+                    <td>The wallet you connect, since the button runs inside the page. The quote proxy logs no addresses.</td>
                   </tr>
                 </tbody>
               </table>

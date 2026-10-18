@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { parseZec, verifyInclusion } from "@blind-bazaar/sdk";
-import { StandingPanel } from "@/components/standing-panel";
+import { StandingPanel, savedBids } from "@/components/standing-panel";
+import { ImportBidKey } from "@/components/import-bid-key";
 import { zec } from "@/lib/format";
 import { Button, Eyebrow, Field, LinkButton, Mono, Panel, Skeleton, inputClass } from "@/components/ui";
 import { LotImage } from "@/components/lot-plate";
@@ -105,6 +106,7 @@ export function StatusClient({ id }: { id: string }) {
       </div>
       <aside className="rise rise-2 flex flex-col gap-6 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
         <StandingPanel auctionId={id} network={health.data?.network ?? "test"} />
+        <ImportBidKey auctionId={id} onImported={() => setMine(savedBids(id))} />
         <Panel className="flex flex-col gap-6">
           <Field label="Your receipt" htmlFor="receipt" hint="64 hex characters, shown when you created the payment request.">
             <input

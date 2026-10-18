@@ -155,6 +155,7 @@ export const api = {
       headers: credential.startsWith("bbs_") ? { "x-seller-key": credential } : { "x-admin-token": credential },
       body: JSON.stringify(body),
     }),
+  demoSeller: () => request<{ seller_id: number; name: string; key: string }>("/sellers/demo", { method: "POST" }),
   sellerMe: (key: string) => request<{ seller_id: number; name: string }>("/seller/me", { headers: { "x-seller-key": key } }),
   sellerLots: (key: string) => request<SellerLot[]>("/seller/lots", { headers: { "x-seller-key": key } }),
   sellerLot: (key: string, id: string) => request<SellerLotDetail>(`/seller/lots/${id}`, { headers: { "x-seller-key": key } }),

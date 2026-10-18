@@ -35,6 +35,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auctions/{id}/proof", get(inclusion_proof))
         .route("/auctions/{id}/fulfilment", get(winner_fulfilment))
         .route("/auctions/{id}/standing", get(standing))
+        .route("/sellers/demo", post(demo_seller))
         .route_layer(axum::middleware::from_fn_with_state(limiter, crate::ratelimit::limit));
     Router::new()
         .merge(limited)
@@ -846,7 +847,12 @@ async fn inclusion_proof(
 }
 
 /// Seller-key auth only (no admin fallback): returns (seller_id, name).
+/// A seller key identifies one seller. The admin token also opens the seller pages, as seller 0 ("operator"),
+/// which sees every lot; so the person running the instance never needs to mint a key just to look.
 async fn require_seller(state: &AppState, headers: &HeaderMap) -> Result<(i64, String), ApiError> {
+    if check_admin(state, headers).is_ok() {
+        return Ok((0, "operator".into()));
+    }
     let key = headers
         .get("x-seller-key")
         .and_then(|v| v.to_str().ok())
@@ -854,6 +860,18 @@ async fn require_seller(state: &AppState, headers: &HeaderMap) -> Result<(i64, S
     let conn = state.store.lock().await;
     store::seller_by_key_hash(&conn, &key_hash(key))?
         .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "unknown seller key".into()))
+}
+
+/// On a test network anyone can mint a demo seller key, so a visitor can list a lot without the operator.
+async fn demo_seller(State(state): State<Arc<AppState>>) -> ApiResult<serde_json::Value> {
+    if state.network_name == "main" {
+        return Err(ApiError(StatusCode::FORBIDDEN, "demo keys are only issued on test networks".into()));
+    }
+    let raw: [u8; 24] = rand::random();
+    let key = format!("bbs_{}", hex::encode(raw));
+    let conn = state.store.lock().await;
+    let id = store::insert_seller(&conn, "demo seller", &key_hash(&key))?;
+    Ok(Json(serde_json::json!({ "seller_id": id, "name": "demo seller", "key": key })))
 }
 
 async fn seller_me(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiResult<serde_json::Value> {
@@ -874,7 +892,8 @@ async fn seller_lots(State(state): State<Arc<AppState>>, headers: HeaderMap) -> 
     let (sid, _) = require_seller(&state, &headers).await?;
     let conn = state.store.lock().await;
     let mut out = Vec::new();
-    for a in store::auctions_for_seller(&conn, sid)? {
+    let lots = if sid == 0 { store::list_auctions(&conn)? } else { store::auctions_for_seller(&conn, sid)? };
+    for a in lots {
         let money = store::lot_money(&conn, &a.id)?;
         let fulfilment = store::get_fulfilment(&conn, &a.id)?.map(|(n, _)| n);
         out.push(SellerLot { seller_address: a.seller_address.clone(), auction: a, money, fulfilment });
@@ -918,7 +937,7 @@ async fn seller_lot(State(state): State<Arc<AppState>>, headers: HeaderMap, Path
     let (sid, _) = require_seller(&state, &headers).await?;
     let conn = state.store.lock().await;
     let a = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
-    if a.seller_id != Some(sid) {
+    if sid != 0 && a.seller_id != Some(sid) {
         return Err(not_found());
     }
     let money = store::lot_money(&conn, &a.id)?;
@@ -985,10 +1004,10 @@ async fn seller_set_fulfilment(
     }
     let conn = state.store.lock().await;
     let a = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
-    if a.seller_id != Some(sid) {
+    if sid != 0 && a.seller_id != Some(sid) {
         return Err(not_found());
     }
-    store::set_fulfilment(&conn, &id, sid, note)?;
+    store::set_fulfilment(&conn, &id, a.seller_id.unwrap_or(sid), note)?;
     store::insert_event(&conn, Some(&id), "fulfilment_posted", &serde_json::json!({}))?;
     Ok(Json(serde_json::json!({ "ok": true })))
 }

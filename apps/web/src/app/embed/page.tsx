@@ -4,7 +4,7 @@ import { LotPlate } from "@/components/lot-plate";
 import { PayButtonBuilder } from "@/components/pay-button-builder";
 
 export default function EmbedPage() {
-  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "https://blindbazaar.example";
+  const site = process.env.NEXT_PUBLIC_SITE_URL ?? "";
   return (
     <div className="flex flex-col gap-16 sm:gap-24">
       <section className="grid gap-10 sm:grid-cols-12 sm:gap-10">
@@ -17,8 +17,8 @@ export default function EmbedPage() {
           </h1>
           <p className="rise rise-3 mt-8 max-w-[48ch] text-[17px] leading-[1.6] text-muted-foreground">
             Paste one snippet and your page gets a button. A visitor pays from Phantom or MetaMask, in SOL, USDC or
-            ETH. You receive shielded Zcash at a private address. Your page never sees their wallet, and nobody can
-            tell from the blockchain that they paid you. No account, no Zcash wallet needed to pay.
+            ETH. You receive shielded Zcash at a private address. Nothing is sent to your server, and on the Zcash
+            side nobody can tell from the blockchain that they paid you. No account, no Zcash wallet needed to pay.
           </p>
           <div className="rise rise-4 mt-8 flex flex-wrap gap-3">
             <LinkButton href="#build">Build your button</LinkButton>
@@ -69,9 +69,9 @@ export default function EmbedPage() {
         </div>
         <dl className="grid gap-6 text-[14px] sm:grid-cols-2">
           {[
-            ["Your page", "Nothing. It loads the button; the button talks to this service and to the payer's wallet. No addresses are logged."],
+            ["Your page", "The wallet the payer connects, because the button runs inside your page. The quote proxy logs no addresses; nothing is sent to your server."],
             ["The payer's chain (Solana or Ethereum)", "A public transfer from their wallet to the swap service. If their wallet is known to be theirs, that transfer is visible. The button tells them so."],
-            ["The swap service", "The payer's source address, the amount, and the Zcash address it delivers to. Never a memo, never your page. This is the limit of the privacy: it is private on the Zcash side and from your site, not from the rail."],
+            ["The swap service", "The payer's source address, the amount, and the Zcash address it delivers to. Never a memo. On Ethereum the destination also sits in public calldata, so a fixed address links payments to you; the fresh-address mode avoids that. This is the limit of the privacy: it is private on the Zcash side, not from the rail."],
             ["Zcash", "One shielded payment of unknown amount and recipient. Each payment can go to a fresh address, so two payments to you cannot be linked."],
           ].map(([k, v]) => (
             <div key={k}>

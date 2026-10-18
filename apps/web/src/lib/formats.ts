@@ -42,7 +42,7 @@ export const FORMATS: Record<
     amountLabel: "Your bid",
     verb: "bid",
     rule: "Highest bid wins but pays the second-highest bid, or the reserve if there is none. Bid what the lot is worth to you; the winning bid itself is never revealed.",
-    settle: "Losers are refunded shielded. The winner pays the second price. The price is proven from the ledger without opening anyone's bid.",
+    settle: "Losers are refunded shielded. The winner pays the second price. The second-highest amount is published with its ledger proof; nobody learns who placed it, and the winning bid stays sealed.",
   },
   rfq: {
     name: "Request for quotes",

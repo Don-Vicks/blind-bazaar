@@ -101,7 +101,7 @@ export function VerifyClient({ id }: { id: string }) {
         <div className="rise">
           <Eyebrow>Lot {id} · verify in your browser</Eyebrow>
           <h1 className="serif mt-4 text-[44px] leading-[1.02] sm:text-[64px]">
-            {checks === null && !wasmError ? "Checking…" : all ? "The result checks out." : wasmError ? "Verifier unavailable." : "Something does not match."}
+            {checks === null && !wasmError ? "Checking…" : all ? "The opening matches what the service reports." : wasmError ? "Verifier unavailable." : "Something does not match."}
           </h1>
           <p className="dropcap mt-8 max-w-[52ch] text-[17px] leading-[1.6] text-muted-foreground">
             Your browser rebuilds each winning note from the published opening and recomputes its commitment with the
@@ -162,7 +162,7 @@ export function VerifyClient({ id }: { id: string }) {
         <Panel className="flex flex-col gap-5">
           <div>
             <Eyebrow>What this proves</Eyebrow>
-            <p className="serif mt-2 text-[26px] leading-tight">One output, nothing else.</p>
+            <p className="serif mt-2 text-[26px] leading-tight">One output, nothing else. For a chain check, run the command.</p>
           </div>
           <p className="text-[14px] leading-relaxed text-muted-foreground">
             A note opening lets anyone confirm the recipient and value of exactly one shielded output. The viewing key

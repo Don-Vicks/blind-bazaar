@@ -77,7 +77,7 @@ export function StartHere() {
       lines: [
         "Every closed lot has a result page with the winning price.",
         "It publishes a fingerprint of all bids and a proof of the winning payment on the Zcash chain.",
-        "Your browser can re-check that proof itself. No trust in us required.",
+        "Your browser re-derives the proof, and a one-line command checks it against the chain itself.",
       ],
       href: "/#closed",
       cta: "See closed lots",
@@ -160,7 +160,7 @@ export function WhyTrust() {
         ))}
       </div>
       <p className="text-[13px] text-muted-foreground">
-        The honest limit: the auction operator can read bids while a lot is open. It cannot change them, hide them from the fingerprint, or spend the money alone.
+        The honest limit: the auction operator can read bids while a lot is open. It cannot change them or hide them from the fingerprint{frost ? ", and it cannot spend the money alone" : "; on this instance it also holds the spending key"}.
       </p>
     </section>
   );

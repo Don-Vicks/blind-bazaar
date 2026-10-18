@@ -8,8 +8,14 @@ import { api } from "@/lib/api";
 import { Button, Eyebrow, Field, Mono, Panel, inputClass } from "@/components/ui";
 
 /** Configure a pay button, see it live, copy the snippet. */
-export function PayButtonBuilder({ site }: { site: string }) {
+export function PayButtonBuilder({ site: siteProp }: { site: string }) {
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
+  // The snippet points at the site that serves this page unless NEXT_PUBLIC_SITE_URL pins it.
+  const [site, setSite] = useState(siteProp);
+  useEffect(() => {
+    if (!siteProp && typeof window !== "undefined") setSite(window.location.origin);
+  }, [siteProp]);
+  const mainnet = health.data?.network === "main";
   const [label, setLabel] = useState("Pay 0.01 ZEC privately");
   const [amount, setAmount] = useState("0.01");
   const [mode, setMode] = useState<"fresh" | "own">("own");
@@ -91,9 +97,11 @@ ${mode === "fresh" ? `    toEndpoint: "${site}/api/godark/address", // a fresh a
       <div className="flex flex-col gap-8 sm:col-span-7">
         <div className="rounded-md border border-hairline p-6">
           <Eyebrow>Live preview</Eyebrow>
-          <p className="mt-1 text-[13px] text-muted-foreground">This is the real button, on {health.data?.network === "main" ? "mainnet" : "mainnet rails with a testnet recipient; do not send"}. Click it to see what a payer sees.</p>
+          <p className="mt-1 text-[13px] text-muted-foreground">{mainnet ? "This is the real button. Click it to see what a payer sees." : "This instance runs on testnet. The swap rails are mainnet only, so the preview is off here; on a mainnet instance the real button renders in this spot."}</p>
           <div className="mt-4">
-            {mounted && previewTo && amountOk && ownOk ? (
+            {!mainnet ? (
+              <button type="button" disabled className="inline-flex min-h-11 cursor-not-allowed items-center rounded-[2px] bg-foreground/40 px-5 text-[13px] font-medium text-background">{label}</button>
+            ) : mounted && previewTo && amountOk && ownOk ? (
               <GoDark key={`${mode}-${previewTo}-${zats}-${label}`} to={previewTo} toEndpoint={mode === "fresh" ? "/api/godark/address" : undefined} amountZats={zats.toString()} label={label} />
             ) : (
               <p className="text-[13px] text-muted-foreground">{!amountOk ? "Enter an amount to preview." : !ownOk ? "Enter a valid address to preview." : "Waiting for the service…"}</p>

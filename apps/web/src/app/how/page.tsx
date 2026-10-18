@@ -19,10 +19,10 @@ const formats = [
 ];
 
 const parties = [
-  ["Other bidders", "That a lot exists, its result, and the list of receipts.", "Any bid amount, who bid, or how many people bid."],
+  ["Other bidders", "That a lot exists, how many bids arrived, its result, and the list of receipts.", "Any losing bid amount, or who bid. (Vickrey publishes the second-highest amount, not who placed it.)"],
   ["Someone watching the blockchain", "Private transactions of unknown amount and origin.", "Which transactions belong to the lot."],
   ["The seller", "The winning price and the payout.", "Losing bids and losing bidders."],
-  ["The auction operator", "The bids, while a lot is open (it holds the read-only key).", "It cannot move the money alone: payouts need separate signers, each of which inspects the payment first."],
+  ["The auction operator", "The bids, while a lot is open (it holds the read-only key).", "Under the escrow setup it cannot move the money alone: payouts need separate signers, each of which inspects the payment first. (A single-key instance, used for development, can.)"],
   ["The swap service (Go Dark)", "Where your Solana or Ethereum funds came from, and the Zcash address paid.", "The bid, which never passes through it."],
 ];
 
@@ -102,8 +102,9 @@ export default function HowPage() {
         </div>
         <p className="max-w-[60ch] text-[14px] leading-relaxed text-muted-foreground">
           The honest limit: the operator reads bids while a lot is open. What stops it from cheating is that it
-          cannot alter the published fingerprint, cannot forge the proof, and cannot move money alone: the funds sit
-          under a key split three ways, and two separate signers must inspect and approve every payout. Hiding bids
+          cannot alter the published fingerprint and cannot forge the proof. With the escrow setup it also cannot move
+          money alone: the funds sit under a key split three ways, and two separate signers must inspect and approve
+          every payout (built and unit-tested; the first on-chain run is pending). Hiding bids
           from the operator too is the next step on the{" "}
           <Link href="https://github.com/Don-Vicks/blind-bazaar/blob/main/ROADMAP.md" className="text-foreground underline decoration-hairline-strong underline-offset-4 hover:decoration-accent">
             roadmap
@@ -118,7 +119,7 @@ export default function HowPage() {
         </div>
         <ul className="grid gap-6 text-[14px] leading-relaxed text-muted-foreground sm:grid-cols-3">
           <li><span className="serif block text-[20px] text-foreground">Your bid was counted</span>On the lot&apos;s status page, enter your receipt. After close, your browser checks your bid sits inside the published fingerprint.</li>
-          <li><span className="serif block text-[20px] text-foreground">The winning payment is real</span>The verify page rebuilds the winning payment&apos;s commitment with the same code the Zcash chain uses and compares it to the chain.</li>
+          <li><span className="serif block text-[20px] text-foreground">The winning payment is real</span>The verify page rebuilds the winning payment&apos;s commitment with the same code the Zcash chain uses; the command-line verifier fetches the transaction from a public Zcash node and compares it there.</li>
           <li><span className="serif block text-[20px] text-foreground">The price is honest</span>The reserve is proven from the winning bid&apos;s decrypted note; in a Vickrey lot the second price is proven from the runner-up&apos;s fingerprint entry.</li>
         </ul>
       </section>

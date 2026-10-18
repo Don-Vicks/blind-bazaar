@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
@@ -14,6 +14,8 @@ export default function DashboardPage() {
   const [key, setKey, keyReady] = useSellerKey();
   const [draft, setDraft] = useState("");
   const me = useQuery({ queryKey: ["seller-me", key], queryFn: () => api.sellerMe(key), enabled: key.length > 0, retry: false });
+  const health = useQuery({ queryKey: ["health"], queryFn: api.health });
+  const demo = useMutation({ mutationFn: api.demoSeller, onSuccess: (r) => setKey(r.key) });
   const lots = useQuery({ queryKey: ["seller-lots", key], queryFn: () => api.sellerLots(key), enabled: me.isSuccess, refetchInterval: 15_000 });
 
   if (!keyReady) return <Skeleton className="h-64" />;
@@ -31,10 +33,19 @@ export default function DashboardPage() {
         </div>
         <aside className="rise rise-2 sm:col-span-5">
           <Panel className="flex flex-col gap-5">
-            <Field label="Seller key" htmlFor="seller-key" error={me.isError ? (me.error instanceof ApiError ? me.error.message : "Could not reach the service.") : undefined} hint="Starts with bbs_. Kept in this tab only. The operator issues keys; on your own instance, create one with the admin token (POST /admin/sellers).">
+            <Field label="Seller key" htmlFor="seller-key" error={me.isError ? (me.error instanceof ApiError ? me.error.message : "Could not reach the service.") : undefined} hint="Starts with bbs_. Kept in this tab only. The operator issues keys; the admin token also works here.">
               <input id="seller-key" name="seller-key" type="password" autoComplete="off" className={`${inputClass} num`} value={draft} onChange={(e) => setDraft(e.target.value)} />
             </Field>
             <Button onClick={() => setKey(draft.trim())}>Open dashboard</Button>
+            {health.data && health.data.network !== "main" && (
+              <div className="hairline-t pt-4">
+                <p className="text-[13px] text-muted-foreground">This is a test network. Try selling without asking anyone:</p>
+                <Button variant="secondary" className="mt-3" onClick={() => demo.mutate()} disabled={demo.isPending}>
+                  {demo.isPending ? "Creating…" : "Get a demo seller key"}
+                </Button>
+                {demo.isError && <p className="mt-2 text-[13px] text-danger">Could not create a demo key.</p>}
+              </div>
+            )}
           </Panel>
         </aside>
       </div>

@@ -39,8 +39,9 @@
 
   <section class="support">
     <h3>Support these letters</h3>
-    <p>Tip the writer privately. Pay from a Solana or Ethereum wallet; the writer receives shielded Zcash. This page
-      never sees your wallet, and nobody can tell from the blockchain that you paid a writer.</p>
+    <p>Tip the writer privately. Pay from a Solana or Ethereum wallet; the recipient receives shielded Zcash. On the
+      Zcash side nobody can tell from the blockchain that you paid a writer. Demo: this instance delivers to its own
+      operator wallet, not to a real writer.</p>
     <div id="pay"></div>
     <small>Private on the Zcash side and from this page. The swap service that converts your funds sees your source
       address and the destination. <a href="/embed">How this button works</a>.</small>
@@ -51,13 +52,12 @@
 
 <script src="/go-dark.iife.js"></script>
 <script>
-  // Exactly the snippet from /embed. `toEndpoint` asks the service for a fresh address per payment.
+  // The snippet from /embed in its fresh-address (demo) mode: the service hands out a new address per payment.
   GoDark.mount(document.getElementById("pay"), {
     toEndpoint: window.location.origin + "/api/godark/address",
     amountZats: "500000", // 0.005 ZEC
     apiBase: window.location.origin,
     label: "Tip 0.005 ZEC privately",
-    onStatus: function (e) { console.log("[tip-jar]", e.type, e); },
   });
 </script>
 </body>

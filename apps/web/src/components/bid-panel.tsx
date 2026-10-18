@@ -110,11 +110,12 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
           </div>
         </div>
         <div className="hairline-t pt-5">
-          <Eyebrow>Receipt · keep this</Eyebrow>
-          <Mono className="mt-2 block">{prepared.receipt}</Mono>
+          <Eyebrow>Bid key · keep this</Eyebrow>
+          <Mono className="mt-2 block">{prepared.secret}</Mono>
           <p className="mt-2 text-[13px] text-muted-foreground">
-            Appears on the status page once your {f.verb} lands. Reveals nothing about it. Saved in this browser.
+            Your private key to this {f.verb}: it shows you whether you won, the balance to pay and the seller&apos;s delivery note, on any device (paste it on the status page). Saved in this browser; nobody else can derive it.
           </p>
+          <p className="mt-3 text-[12px] text-muted-foreground">Public receipt, listed by the auction once your {f.verb} lands: <span className="num">{prepared.receipt.slice(0, 24)}…</span></p>
         </div>
         <div className="hairline-t pt-5">
           <Eyebrow>No ZEC?</Eyebrow>

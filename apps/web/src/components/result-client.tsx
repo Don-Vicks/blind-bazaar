@@ -179,7 +179,7 @@ export function ResultClient({ id }: { id: string }) {
                   ? verifiedCount === disclosures.length
                     ? disclosures.length > 1
                       ? `All ${disclosures.length} verified on chain.`
-                      : "Verified on chain."
+                      : "Opening verified by the service."
                     : `${verifiedCount} of ${disclosures.length} verified.`
                   : sold
                     ? "Pending."
@@ -187,8 +187,8 @@ export function ResultClient({ id }: { id: string }) {
               </p>
             </div>
             <p className="text-[14px] leading-relaxed text-foreground">
-              In plain words: the auction shows enough about the winning payment for anyone to confirm it exists on
-              the Zcash chain for this amount, and nothing about anyone else.
+              In plain words: the auction opens the winning deposit so anyone can confirm that payment exists on the
+              Zcash chain, and reveals nothing about any other bidder.{reserveProofs.length > 0 ? " Because the memo key is disclosed, the winner's bid and refund address are readable from that one note." : ""}
             </p>
             <p className="text-[14px] leading-relaxed text-muted-foreground">
               Technically, a note-opening disclosure of the winning output: the recipient, value and randomness that reproduce the

@@ -34,8 +34,8 @@ export default function Home() {
           <p className="rise rise-3 mt-8 max-w-[48ch] text-[17px] leading-[1.6] text-muted-foreground">
             Blind Bazaar is an auction house where bids are private. A bidder pays a deposit from a Zcash wallet with
             the bid hidden inside the payment. When the auction closes, the highest bid wins, everyone else gets their
-            deposit back, and nobody, not even the seller, ever learns the losing bids. The result is proven on the
-            Zcash chain, so you do not have to trust us.
+            deposit back, and nobody, not even the seller, ever learns the losing bids. The result is published with a
+            proof anyone can check against the Zcash chain.
           </p>
           <div className="rise rise-4 mt-8">
             <NetworkNotice />
