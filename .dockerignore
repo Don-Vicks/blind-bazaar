@@ -1,0 +1,10 @@
+target
+node_modules
+**/node_modules
+apps/web/.next
+data
+*.seed
+*.env
+.env*
+deploy/*.env
+.git

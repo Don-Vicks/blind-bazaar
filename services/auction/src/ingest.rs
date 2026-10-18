@@ -154,8 +154,10 @@ fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str
             // Late is decided by the chain, not by a clock: a bid mined in a block whose timestamp is
             // after close_at missed the lot, wherever and whenever this process scanned it. Only when the
             // block time is unknown does the lot's current status decide.
+            // A lot that has already closed cannot take a bid either, even if a non-monotonic block
+            // timestamp says the bid was in time: refunding it is the only safe outcome.
             let late = |a: &store::Auction| match mined_at {
-                Some(t) => t > a.close_at,
+                Some(t) => t > a.close_at || a.status != "open",
                 None => a.status != "open",
             };
             nb.status = match &auction {

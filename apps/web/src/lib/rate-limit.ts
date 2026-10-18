@@ -23,10 +23,15 @@ export function clientKey(req: Request): string {
   return (fwd ? fwd.split(",")[0] : req.headers.get("x-real-ip")) ?? "local";
 }
 
-/** Origins allowed to call the proxy. Empty list means any origin (development). */
+/** Origins allowed to call the proxy. Empty list means any origin (development). Same-origin requests
+ *  (browsers send no Origin header on same-origin GETs) are always allowed. */
 export function originAllowed(req: Request): boolean {
   const allowed = (process.env.GODARK_ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   if (allowed.length === 0) return true;
   const origin = req.headers.get("origin");
-  return origin !== null && allowed.includes(origin);
+  if (origin === null) {
+    const site = req.headers.get("sec-fetch-site");
+    return site === null || site === "same-origin" || site === "none";
+  }
+  return allowed.includes(origin) || origin === new URL(req.url).origin;
 }

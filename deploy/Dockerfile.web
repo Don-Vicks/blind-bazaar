@@ -1,5 +1,9 @@
 FROM node:22-bookworm-slim AS build
-RUN corepack enable
+# Next.js bakes NEXT_PUBLIC_* values into the browser bundle at build time, so they are build args.
+ARG NEXT_PUBLIC_BB_API
+ARG NEXT_PUBLIC_SITE_URL
+ENV NEXT_PUBLIC_BB_API=$NEXT_PUBLIC_BB_API NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL COREPACK_HOME=/tmp/corepack
+RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /src
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
@@ -9,10 +13,11 @@ RUN pnpm install --frozen-lockfile && pnpm -r --filter @blind-bazaar/sdk --filte
     && pnpm --filter web build
 
 FROM node:22-bookworm-slim
-RUN corepack enable && useradd -r -u 10001 web
+RUN useradd -r -u 10001 web
 WORKDIR /app
-COPY --from=build /src /app
+COPY --from=build --chown=web:web /src /app
 USER web
-ENV NODE_ENV=production PORT=3000
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
 EXPOSE 3000
-CMD ["pnpm", "--filter", "web", "start"]
+WORKDIR /app/apps/web
+CMD ["node_modules/.bin/next", "start"]

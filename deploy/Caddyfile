@@ -1,5 +1,9 @@
 {$SITE_HOST} {
     encode zstd gzip
+    # The admin API is never public: use an SSH tunnel to the auction container's host port.
+    handle /bb/admin* {
+        respond 404
+    }
     handle /bb/* {
         uri strip_prefix /bb
         reverse_proxy auction:8787

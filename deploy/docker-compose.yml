@@ -1,4 +1,5 @@
 # Single-VPS deployment: Caddy terminates TLS, web app proxies rails, service holds the wallet.
+# Usage: SITE_HOST=your.site docker compose up -d --build   (after filling auction.env and web.env)
 services:
   auction:
     build: { context: .., dockerfile: deploy/Dockerfile.auction }
@@ -6,9 +7,16 @@ services:
     env_file: auction.env
     volumes: ["auction-data:/data"]
     expose: ["8787"]
+    # Admin endpoints are not routed by Caddy; reach them on the host over an SSH tunnel.
+    ports: ["127.0.0.1:8787:8787"]
 
   web:
-    build: { context: .., dockerfile: deploy/Dockerfile.web }
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.web
+      args:
+        NEXT_PUBLIC_BB_API: https://${SITE_HOST}/bb
+        NEXT_PUBLIC_SITE_URL: https://${SITE_HOST}
     restart: unless-stopped
     env_file: web.env
     depends_on: [auction]
@@ -17,6 +25,8 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
+    environment:
+      SITE_HOST: ${SITE_HOST}
     ports: ["80:80", "443:443"]
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
