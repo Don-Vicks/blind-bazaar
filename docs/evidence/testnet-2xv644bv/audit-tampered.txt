@@ -1,0 +1,14 @@
+lot 2xv644bv: deposit 10000000 reserve 20000000 format first_price close_at 1792330443
+scanning from 4515321 with https://testnet.zec.rocks:443 …
+scanned to Some(4515711); 0 transactions enhanced for memos
+0 received outputs, 0 bids read, 0 rejected, 0 valid
+
+recomputed from the chain:
+  ledger root  e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  clearing     None
+  ledger root  MATCH  chain=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  published=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  clearing     MISMATCH  chain=None  published=Some(1234567)
+  winners      MISMATCH  chain=  published=abababababababababababababababababababababababababababababababab
+
+FAIL: the published result does not match the chain
+exit code: 2

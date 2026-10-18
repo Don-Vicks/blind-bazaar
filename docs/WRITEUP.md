@@ -1,74 +1,70 @@
-# Blind Bazaar + Go Dark — ZECATHON write-up (draft, under 800 words)
+# Blind Bazaar + Go Dark — ZECATHON write-up
 
-**One sentence.** Blind Bazaar is a sealed-bid auction house where every bid is a shielded Zcash transaction, and
-Go Dark is the one-click on-ramp that lets anyone on Solana or Ethereum enter it without ever holding a
-transparent coin.
+**One sentence.** Blind Bazaar is a sealed-bid auction house where every bid is a shielded Zcash payment with the
+bid inside its encrypted memo; Go Dark is the pay button that lets anyone on Solana or Ethereum enter it, or pay
+any site, without holding a transparent coin.
 
 ## Why Zcash, and only Zcash
 
-A sealed-bid auction needs three things: a way to submit a bid nobody else can read, a way for the auctioneer to
-read it without being able to spend it, and a way to prove the outcome without revealing the losers. Zcash has all
-three as chain primitives. The 512-byte encrypted memo carries the bid. A full viewing key lets the auction service
-decrypt incoming bids while holding no spend authority over them. The note opening of the winning output can be
-published and checked against the on-chain commitment, so the result is provable while every losing bid stays
-sealed forever. No smart contract is deployed: the auction is a fresh diversified unified address and a viewing
-key. Ethereum auctions leak every bid, bidder and losing amount to the world. This one reveals the winning price
-and the winning payment, and nothing about the losers; the one party that reads bids before close is the
-operator, and the table below says exactly what it can and cannot do with that.
+A sealed-bid auction needs a bid nobody else can read, an auctioneer who can read it but not spend it, and a
+provable outcome that reveals no loser. Zcash has all three as chain primitives: the encrypted memo carries the
+bid, a full viewing key reads bids with no spend authority, and the note opening of the winning output checks
+against its on-chain commitment. No contract is deployed: a lot is a fresh diversified unified address and a
+viewing key. An Ethereum auction publishes every bid and bidder forever. This one publishes the winning price,
+the winning payment and a proof, and nothing about the losers.
 
 ## What works today
 
-- Seller lists a lot; the service derives an Orchard-only unified address for it.
-- Bidders scan a ZIP-321 QR from Zodl, Zingo or YWallet. The memo is `BB1|auction|bid|refund address|nonce`.
-- The service syncs with lightwalletd, enhances transactions to recover memos, validates deposits and nonces,
-  and publishes `sha256(nonce)` receipts so a bidder can confirm "bid received" without revealing anything.
-- At close: highest valid bid at or above reserve wins; a hash of the bid ledger is published; losers are
-  refunded shielded with random delays; the winner pays the balance by memo; the seller is paid.
-- Four formats on the same rails: sealed first price, editions at a uniform price, Vickrey (the winner pays
-  the second bid, the winning bid stays sealed, and the price is proven from the ledger commitment with a Merkle
-  path), and a private request for quotes where suppliers seal quotes against a published budget and only the
-  winning price is revealed.
-- Custody: the spender holds no spending key. The escrow's Orchard spend authority is a 2-of-3 FROST group key;
-  every payout is a PCZT that independent signer hosts inspect and co-sign.
-- The result page publishes a ZIP 311-style note-opening disclosure of the winning output. Anyone can verify it
-  with `bb-auction --verify-disclosure` against a public lightwalletd. (Mainnet auction link: TODO.)
-- Go Dark: `<GoDark/>` React component and a `<script>` bundle. Ethereum routes through Maya Protocol
-  straight to a unified address; Solana routes through NEAR Intents. A "who sees what" panel precedes every
-  confirm. For auctions, Go Dark swaps the deposit to the auction address and relays the sealed bid as an
-  envelope, because no swap rail can attach a memo to the ZEC it delivers.
+- A seller lists a lot; the service derives an Orchard-only unified address for it. Deposits come from a short
+  menu so a refund amount never marks its lot.
+- A bidder pays a ZIP-321 payment link; the memo is `BB1|lot|bid|refund address|nonce`. The service recovers
+  memos through lightwalletd, counts a deposit after two confirmations, re-checks counted bids against the chain
+  on every pass, and lists `sha256(nonce)` receipts so a bidder sees "bid received" without revealing anything.
+  A bid key held only by the bidder shows their standing on any device.
+- The chain closes the lot: the first block after the close time decides what was late. Losers are refunded
+  shielded after a random delay, in batched transactions that mix lots; the winner pays the balance by memo; the
+  seller is paid.
+- Four formats on the same rails: sealed first price, editions at a uniform price, Vickrey (the winner pays the
+  second bid, proven from the ledger commitment with a Merkle path, so the winning bid stays sealed), and a
+  private request for quotes.
+- Sealed-reveal lots make bids commitments the operator cannot open until bidders reveal after close. Auditable
+  lots publish the lot's own viewing key at close; `bb-auction audit` recomputes the result from the chain and
+  says MISMATCH when the published one is wrong.
+- Custody: the spender holds no spending key. Spend authority is a 2-of-3 FROST group key (dealer or DKG); every
+  payout is a PCZT that independent signer hosts inspect, match against the viewer's ledger of expected payouts,
+  cap per transaction and per day, and co-sign.
+- The result page publishes a ZIP 311-style note-opening disclosure of the winning output, verifiable against
+  any public lightwalletd. Optional email tells a bidder or seller when something needs them.
+- Go Dark: a React component and a one-tag script. Ethereum routes through Maya Protocol to a unified address;
+  Solana through NEAR Intents. A "who sees what" panel precedes every confirm. For auctions, Go Dark swaps the
+  deposit to the lot's address and relays the sealed bid as an envelope, because no swap rail can attach a memo
+  to the ZEC it delivers.
 
 ## Privacy model and its limits, plainly
 
-Other bidders see that an auction exists, its result, and a list of receipt hashes. A chain observer sees
-indistinguishable shielded transactions. The seller sees the winning amount and the payout. The source chain sees
-a swap to a rail; the rail sees the payer and the Zcash destination, never the bid.
+Other bidders see that a lot exists, its result and a list of receipt hashes. A chain observer sees
+indistinguishable shielded transactions. The seller sees the winning amount. The rail sees the payer and the
+Zcash destination, never the bid.
 
-The known limit is operator trust: whoever runs the service can read bids while the auction is open and could
-shill. We do not hide this. We mitigate it with public receipts as bids arrive, a ledger hash committed at close,
-and the disclosure of the winner. The viewer/spender split is shipped: the viewing key and the spending authority sit in two processes so neither
-can both read and act. Cross-chain bids are trusted identically to memo bids because the operator is the only
-reader in either path. Delivery to a unified address through NEAR Intents is accepted at quote time but documented
-as transparent-only; where a rail delivers to a transparent receiver we rotate addresses per payment and shield
-immediately.
+The known limit is operator trust: on a classic lot the operator reads bids while it is open and could shill. We
+say so. Public receipts, the ledger hash committed at close, the winner's disclosure, the viewer/spender split
+and the signer ledger check bound what the operator can do; sealed-reveal lots remove the early read; auditable
+lots let anyone recompute the result. Refund timing is measured, not asserted (`docs/evidence/`). Where a rail
+delivers to a transparent receiver we rotate addresses per payment, shield at once, and the widget says so.
 
-## Go Dark as open infrastructure
+## What is proven, and what is not
 
-Any creator, merchant or DAO can drop one tag on a page and start receiving shielded ZEC from users who have
-never touched Zcash. The widget never sees a seed. (In-browser wallet generation for receivers without a Zcash wallet is not built; today a recipient pastes a unified address from Zodl, Zingo or YWallet.) Planned text, kept for honesty: receivers would get a 24-word phrase generated in
-the browser and an import path into Zodl or Zingo. Every site that adds the button onboards its own users into
-the shielded pool.
-
-## Primitives used
-
-Ironwood-pool shielded transactions to Orchard receivers; encrypted memos; unified full viewing keys; fresh
-diversified unified addresses per auction and per payment; ZIP-321 payment URIs; note-opening disclosure.
+The full money loop ran on a local regtest chain. The formats, sealed-reveal, auditable lots and notifications
+ran against the public testnet. The FROST spend path, distributed key generation and batched refunds are
+unit-tested but have not yet signed on a chain. Only the bundled command-line wallet has placed a bid; no Go Dark
+swap has yet moved real money. The README's honesty table keeps this list current, and the service parks itself
+at the mainnet NU7 height so a mid-judging upgrade cannot leave a lot half settled.
 
 ## Roadmap
 
-Distributed key generation for the escrow, signer-side payout verification against the viewer's ledger, Dutch
-format, and batch markets (private order matching) on the same bid-by-memo rails.
+Chain runs of the FROST escrow and batched refunds; a mainnet micro-lot and wet Go Dark swaps; in-browser
+receiver wallets; batch markets (private order matching) on the same bid-by-memo rails.
 
 ## Tracks
 
-Primary: Private markets. Also: Cross-chain (Go Dark), Core & tooling (bid-commit SDK, viewing-key poller,
-disclosure verifier).
+Primary: private markets. Also: cross-chain (Go Dark), core and tooling (bid SDK, audit and disclosure verifiers).

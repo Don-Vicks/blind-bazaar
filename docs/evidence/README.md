@@ -5,8 +5,10 @@ typed by hand: result and disclosure files are the API's own JSON, txids are rea
 
 | Folder | Network | What it shows | Status |
 |---|---|---|---|
-| `regtest/` | local zeckit regtest | full money loop: funding, two or three bids, close, refunds, settlement, seller payout, CLI verifier | first-price run passed Oct 13; `UNITS=2`, `FORMAT=vickrey`, `FORMAT=rfq`, `FROST=1` written, not yet run |
-| `testnet-<lot>/` | Zcash testnet (NU7) | public lot with real wallet bids | not yet run |
+| `regtest/` | local zeckit regtest | full money loop: funding, two or three bids, close, refunds, settlement, seller payout, CLI verifier | first-price run passed Oct 13 (its output lived in a temp dir and was not kept; the quoted lines are in `docs/STATUS.md`); `UNITS=2`, `FORMAT=vickrey`, `FORMAT=rfq`, `FROST=1` written, not yet run. The next run writes here. |
+| `testnet-2xv644bv/` | Zcash testnet (NU7) | an auditable lot: its API JSON, the published viewing key, and `bb-auction audit` run against the honest result (OK, exit 0) and a tampered copy (MISMATCH, exit 2). The lot had no bids. | Oct 18 |
+| `audit-tamper.md`, `refund-linkability.md`, `wallets.md` | | what the audit tool catches; refund timing linkability by lot density; which wallets have actually placed a bid | Oct 17-18 |
+| `testnet-<lot>/` | Zcash testnet (NU7) | public lot with real wallet bids | not yet run: needs testnet funds |
 | `mainnet-<lot>/` | Zcash mainnet | public micro-lot, published txids | not yet run |
 | `go-dark/` | Solana or Ethereum → Zcash mainnet | one completed swap per rail with the delivery txid and delivery mode | not yet run |
 

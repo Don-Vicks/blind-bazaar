@@ -178,7 +178,7 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 - A real swap through Go Dark on mainnet (the widget, proxy and envelope binding are built; no wet test yet).
 - Mainnet deployment: VPS, process supervision, HTTPS for the web app, `NEXT_PUBLIC_SITE_URL`, serving `go-dark.iife.js` from a CDN path.
 - Operator balance alerts; refund retry beyond 5 attempts needs a human.
-- Light theme check and mobile width pass on every page; brand palette deferred.
+- Brand palette deferred. (Mobile width and light theme were checked on every page on Oct 18: no horizontal overflow at 375 px, tokens render in both schemes.)
 - Video, screenshots, forum/Discord posts, registration, final write-up numbers.
 
 ## NU7 on testnet (found Oct 13)

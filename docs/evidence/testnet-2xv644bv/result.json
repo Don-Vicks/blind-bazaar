@@ -1,0 +1,35 @@
+{
+    "auction_id": "2xv644bv",
+    "status": "no_sale",
+    "format": "first_price",
+    "units": 1,
+    "units_sold": 0,
+    "units_settled": 0,
+    "clearing_zats": null,
+    "winning_amount_zats": null,
+    "winning_txid": null,
+    "winning_txids": [],
+    "ledger_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "valid_bid_count": 0,
+    "refund_latency_secs": null,
+    "refunds_sent": 0,
+    "refunds_pending": 0,
+    "settlement_txid": null,
+    "payout_txid": null,
+    "refunds": [
+        {
+            "kind": "sweep",
+            "status": "queued",
+            "txid": null
+        }
+    ],
+    "disclosure": null,
+    "price_source": null,
+    "audit": {
+        "ufvk": "uviewtest16svtkazenykt46vw4ymajq6j9mafd426nmsc3p0n05jl92lwlxgl6w93txwrl04hdezfnekc27xzrmvycr7204dv75g75ewrv5dr6ya6vpcxgx95y2gxklh96a6dgjk2dcy9ezzf26xsq3jhdjfvsrvcdj3rpa2r8lpyf3cpmd5y2rj9ec7q2turr7dnjxps4vjnan06qd5lc0hjxurpfhxlln082rzw5vzc2w2k9nyt52wvqxff9wv5tjcl6jgcup7ryus0vqd6w2ef4zndlhpe5345dehy85u2062gw2rg2wnprnnhehn352cz55fqkdq5ww898nsee8dtz8uzlc4p0gv79r6gaexj3km4a5njazkzdu9t6n45t0l7hn20wfj2zh6zc9dyrw6rslpar2g2z6k7cm8ewnhzlc9ucr7zp7xwamjslzulmuhlu0czqdh052twlav4h2nmkdk22hflv0h6cxsrqz3tzwz5sre7rgf2qyfwrsmj",
+        "birthday": 4515321,
+        "address": "utest1ghcgeshaswuuamd7hg982eugnqaz76qguwg30f2e9gshv5mqp7j5qsmpfq367g4zyz39xxa0k75xs4zx6p0add6tnyuaxmhjuceskj03",
+        "command": "bb-auction audit --ufvk uviewtest16svtkazenykt46vw4ymajq6j9mafd426nmsc3p0n05jl92lwlxgl6w93txwrl04hdezfnekc27xzrmvycr7204dv75g75ewrv5dr6ya6vpcxgx95y2gxklh96a6dgjk2dcy9ezzf26xsq3jhdjfvsrvcdj3rpa2r8lpyf3cpmd5y2rj9ec7q2turr7dnjxps4vjnan06qd5lc0hjxurpfhxlln082rzw5vzc2w2k9nyt52wvqxff9wv5tjcl6jgcup7ryus0vqd6w2ef4zndlhpe5345dehy85u2062gw2rg2wnprnnhehn352cz55fqkdq5ww898nsee8dtz8uzlc4p0gv79r6gaexj3km4a5njazkzdu9t6n45t0l7hn20wfj2zh6zc9dyrw6rslpar2g2z6k7cm8ewnhzlc9ucr7zp7xwamjslzulmuhlu0czqdh052twlav4h2nmkdk22hflv0h6cxsrqz3tzwz5sre7rgf2qyfwrsmj --birthday 4515321 --lot https://HOST/bb/auctions/2xv644bv --result https://HOST/bb/auctions/2xv644bv/result"
+    },
+    "price_proof": null
+}
