@@ -25,7 +25,7 @@ export default function DashboardPage() {
   if (!key || me.isError) {
     return (
       <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
-        <div className="rise sm:col-span-7">
+        <div className="rise sm:col-span-7 min-w-0">
           <Eyebrow>Seller</Eyebrow>
           <h1 className="serif mt-4 text-[44px] leading-[1.02] sm:text-[64px]">Your lots, your money.</h1>
           <p className="dropcap mt-8 max-w-[46ch] text-[17px] leading-[1.6] text-muted-foreground">
@@ -34,7 +34,7 @@ export default function DashboardPage() {
             winner can read.
           </p>
         </div>
-        <aside className="rise rise-2 sm:col-span-5">
+        <aside className="rise rise-2 sm:col-span-5 min-w-0">
           <Panel className="flex flex-col gap-5">
             <Field label="Seller key" htmlFor="seller-key" error={me.isError ? (me.error instanceof ApiError ? me.error.message : "Could not reach the service.") : undefined} hint="Starts with bbs_. Kept in this tab only. The operator issues keys; the admin token also works here.">
               <input id="seller-key" name="seller-key" type="password" autoComplete="off" className={`${inputClass} num`} value={draft} onChange={(e) => setDraft(e.target.value)} />

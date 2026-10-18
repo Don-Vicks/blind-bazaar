@@ -50,7 +50,7 @@ export function SellerLotClient({ id }: { id: string }) {
     <div className="flex flex-col gap-10 sm:gap-14">
       <div className="plate rise"><LotImage id={id} src={data.image_url} alt={data.title} ratio="16/5" /></div>
       <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
-        <div className="flex flex-col gap-10 sm:col-span-7">
+        <div className="flex flex-col gap-10 sm:col-span-7 min-w-0">
           <div className="rise">
             <div className="flex items-center gap-4"><Eyebrow>Lot {id}</Eyebrow><StatusDot status={data.status} /></div>
             <h1 className="serif mt-4 text-[40px] leading-[1.05] sm:text-[56px]">{data.title}</h1>
@@ -91,7 +91,7 @@ export function SellerLotClient({ id }: { id: string }) {
             </ol>
           </div>
         </div>
-        <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
+        <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start min-w-0">
           {data.settlement && (
             <Panel className="mb-6 flex flex-col gap-5">
               <div>

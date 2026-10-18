@@ -75,7 +75,7 @@ export function ResultClient({ id }: { id: string }) {
       </div>
 
       <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
-        <div className="flex flex-col gap-10 sm:col-span-7">
+        <div className="flex flex-col gap-10 sm:col-span-7 min-w-0">
           <div className="rise">
             <div className="flex items-center gap-4">
               <Eyebrow>Lot {id} · result</Eyebrow>
@@ -193,7 +193,7 @@ export function ResultClient({ id }: { id: string }) {
             )}
           </div>
         </div>
-        <aside className="rise rise-2 flex flex-col gap-6 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
+        <aside className="rise rise-2 flex flex-col gap-6 sm:col-span-5 sm:sticky sm:top-8 sm:self-start min-w-0">
           <StandingPanel auctionId={id} network={network} />
           <Panel className="flex flex-col gap-5">
             <div>

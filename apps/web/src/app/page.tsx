@@ -24,7 +24,7 @@ export default function Home() {
   return (
     <div className="flex flex-col gap-20 sm:gap-28">
       <section className="grid gap-10 sm:grid-cols-12 sm:gap-10">
-        <div className="sm:col-span-7">
+        <div className="sm:col-span-7 min-w-0">
           <Eyebrow className="rise">Private auctions on Zcash</Eyebrow>
           <h1 className="serif rise rise-2 mt-4 text-[48px] leading-[0.98] sm:text-[80px]">
             Sell to the highest bid.
@@ -41,7 +41,7 @@ export default function Home() {
             <NetworkNotice />
           </div>
         </div>
-        <div className="rise rise-3 sm:col-span-5">
+        <div className="rise rise-3 sm:col-span-5 min-w-0">
           {featured ? (
             <Link href={`/a/${featured.id}`} className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
               <div className="plate">

@@ -111,7 +111,7 @@ export default function SellPage() {
 
   return (
     <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
-      <div className="rise flex flex-col gap-8 sm:col-span-5">
+      <div className="rise flex flex-col gap-8 sm:col-span-5 min-w-0">
         <div>
           <Eyebrow>Sell</Eyebrow>
           <h1 className="serif mt-4 text-[44px] leading-[1.02] sm:text-[56px]">List a lot.</h1>
@@ -127,7 +127,7 @@ export default function SellPage() {
           <div><dt className="text-foreground">Request for quotes</dt><dd className="text-muted-foreground">You are buying. Set a budget; suppliers post a bond and seal a quote. Lowest quote wins, you pay it, the winner gets quote plus bond.</dd></div>
         </dl>
       </div>
-      <div className="rise rise-2 sm:col-span-7">
+      <div className="rise rise-2 sm:col-span-7 min-w-0">
       <Panel>
         <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
           <Field label="Title" htmlFor="title" error={errors.title}>

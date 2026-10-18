@@ -23,14 +23,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col">
         <Providers>
           <header className="hairline-b">
-            <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-6 px-6 py-5">
+            <div className="mx-auto flex max-w-[1120px] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-6 py-5">
               <Link
                 href="/"
                 className="serif rounded-[2px] text-[22px] leading-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               >
                 Blind Bazaar
               </Link>
-              <nav className="flex items-center gap-4 sm:gap-6">
+              <nav className="flex flex-wrap items-center gap-x-4 gap-y-1 sm:gap-x-6">
                 <Link href="/" className={nav}>
                   Lots
                 </Link>

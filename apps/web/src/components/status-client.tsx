@@ -70,7 +70,7 @@ export function StatusClient({ id }: { id: string }) {
       <LotImage id={id} src={lot.data?.image_url} alt={lot.data?.title ?? ""} ratio="16/5" />
     </div>
     <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
-      <div className="flex flex-col gap-8 sm:col-span-7">
+      <div className="flex flex-col gap-8 sm:col-span-7 min-w-0">
         <div className="rise">
           <Eyebrow>Lot {id}</Eyebrow>
           {lot.data && <p className="serif mt-4 text-[22px] text-muted-foreground">{lot.data.title}</p>}
@@ -104,7 +104,7 @@ export function StatusClient({ id }: { id: string }) {
           )}
         </div>
       </div>
-      <aside className="rise rise-2 flex flex-col gap-6 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
+      <aside className="rise rise-2 flex flex-col gap-6 sm:col-span-5 sm:sticky sm:top-8 sm:self-start min-w-0">
         <StandingPanel auctionId={id} network={health.data?.network ?? "test"} />
         <ImportBidKey auctionId={id} onImported={() => setMine(savedBids(id))} />
         <Panel className="flex flex-col gap-6">

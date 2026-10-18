@@ -23,12 +23,12 @@ export function AuctionClient({ id }: { id: string }) {
   if (isPending) {
     return (
       <div className="grid gap-10 sm:grid-cols-12">
-        <div className="sm:col-span-7">
+        <div className="sm:col-span-7 min-w-0">
           <Skeleton className="h-4 w-24" />
           <Skeleton className="mt-4 h-16 w-3/4" />
           <Skeleton className="mt-8 h-24" />
         </div>
-        <Skeleton className="h-80 sm:col-span-5" />
+        <Skeleton className="h-80 sm:col-span-5 min-w-0" />
       </div>
     );
   }
@@ -53,7 +53,7 @@ export function AuctionClient({ id }: { id: string }) {
         <LotImage id={data.id} src={data.image_url} alt={data.title} ratio="16/7" />
       </div>
     <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
-      <div className="flex flex-col gap-10 sm:col-span-7">
+      <div className="flex flex-col gap-10 sm:col-span-7 min-w-0">
         <div className="rise">
           <div className="flex items-center gap-4">
             <Eyebrow>
@@ -127,7 +127,7 @@ export function AuctionClient({ id }: { id: string }) {
         </p>
       </div>
 
-      <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
+      <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start min-w-0">
         {open ? (
           <BidPanel auction={data} />
         ) : data.status === "revealing" ? (

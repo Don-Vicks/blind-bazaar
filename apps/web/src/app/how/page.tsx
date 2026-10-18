@@ -31,7 +31,7 @@ export default function HowPage() {
   return (
     <div className="flex flex-col gap-16 sm:gap-24">
       <section className="grid gap-10 sm:grid-cols-12 sm:gap-10">
-        <div className="sm:col-span-7">
+        <div className="sm:col-span-7 min-w-0">
           <Eyebrow className="rise">How it works</Eyebrow>
           <h1 className="serif rise rise-2 mt-4 text-[48px] leading-[0.98] sm:text-[72px]">
             A bid is a private payment.
@@ -44,7 +44,7 @@ export default function HowPage() {
             notes but cannot spend anything. At close it publishes the result and a proof. That is the whole system.
           </p>
         </div>
-        <div className="rise rise-3 sm:col-span-5">
+        <div className="rise rise-3 sm:col-span-5 min-w-0">
           <Diagram />
         </div>
       </section>

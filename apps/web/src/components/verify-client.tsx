@@ -97,7 +97,7 @@ export function VerifyClient({ id }: { id: string }) {
 
   return (
     <div className="grid gap-12 sm:grid-cols-12 sm:gap-10">
-      <div className="flex flex-col gap-10 sm:col-span-7">
+      <div className="flex flex-col gap-10 sm:col-span-7 min-w-0">
         <div className="rise">
           <Eyebrow>Lot {id} · verify in your browser</Eyebrow>
           <h1 className="serif mt-4 text-[44px] leading-[1.02] sm:text-[64px]">
@@ -158,7 +158,7 @@ export function VerifyClient({ id }: { id: string }) {
           ))}
         </ol>
       </div>
-      <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
+      <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start min-w-0">
         <Panel className="flex flex-col gap-5">
           <div>
             <Eyebrow>What this proves</Eyebrow>

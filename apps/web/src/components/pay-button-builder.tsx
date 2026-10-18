@@ -59,7 +59,7 @@ ${mode === "fresh" ? `    toEndpoint: "${site}/api/godark/address", // a fresh a
 
   return (
     <div className="grid gap-8 sm:grid-cols-12 sm:gap-10">
-      <Panel className="flex flex-col gap-5 sm:col-span-5">
+      <Panel className="flex flex-col gap-5 sm:col-span-5 min-w-0">
         <div>
           <Eyebrow>Build your button</Eyebrow>
           <p className="serif mt-2 text-[26px] leading-tight">Three choices.</p>
@@ -94,7 +94,7 @@ ${mode === "fresh" ? `    toEndpoint: "${site}/api/godark/address", // a fresh a
         )}
       </Panel>
 
-      <div className="flex flex-col gap-8 sm:col-span-7">
+      <div className="flex flex-col gap-8 sm:col-span-7 min-w-0">
         <div className="rounded-md border border-hairline p-6">
           <Eyebrow>Live preview</Eyebrow>
           <p className="mt-1 text-[13px] text-muted-foreground">{mainnet ? "This is the real button. Click it to see what a payer sees." : "This instance runs on testnet. The swap rails are mainnet only, so the preview is off here; on a mainnet instance the real button renders in this spot."}</p>
