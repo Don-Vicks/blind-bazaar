@@ -1,6 +1,29 @@
-# Build status (Oct 13, 2026, evening)
+# Build status (Oct 18, 2026)
 
-What is verified, what is written but unverified, and what does not exist yet. Updated as milestones land.
+What is verified, what is written but unverified, and what does not exist yet. Updated as milestones land. The
+README's honesty table is the short form of this file. "Exercised on the testnet service" below means the service
+was running against public testnet and the bids were inserted into its database to drive close, pricing and the
+pages; no wallet transaction was involved in those checks.
+
+## Added Oct 18 (from the judge, parity and deployment reviews)
+
+- Close is decided by the chain: a bid is late if its block timestamp is after `close_at`; the closer waits for a
+  later block and records `close_height`; ties break by mined order. Viewer and spender cannot disagree.
+- Distributed key generation (`frost dkg round1|round2|finish|escrow`, file exchange between hosts, no dealer),
+  3-party test; one credential per signer host.
+- Per-IP rate limit on anonymous endpoints; public `/health` hides balance, mempool and raw errors.
+- Honest copy: the browser verifier says "matches what the service reports" and points to the CLI for a chain
+  check; custody claims are gated on the instance's signing mode; "who sees what" admits bid counts and the
+  Vickrey second price; the widget says the host page sees the connected wallet and that Ethereum calldata shows
+  the destination; memo disclosure off by default.
+- Seller pages accept the admin token; test networks mint demo seller keys from the dashboard; the bid key is
+  shown at bid time and can be pasted on another device.
+- Deployment: Dockerfiles copy the vendored crate and workspace packages, `/data` is writable, the web bundle gets
+  its public URLs at build time, Caddy gets the host and blocks `/bb/admin*`, same-origin proxy calls pass the
+  origin allow-list, `.dockerignore` added. Not yet deployed anywhere.
+- Demo script rewritten around what exists (Vickrey lot where the deposit covers the second price, staged Go Dark
+  swap, chain-timed close); `docs/evidence/` skeleton with the txid table format and verifier commands.
+- CI: GitHub Actions runs the Rust tests and the SDK tests and typechecks the web app on every push.
 
 ## Verified working
 
