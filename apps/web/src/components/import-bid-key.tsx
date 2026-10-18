@@ -1,8 +1,9 @@
 "use client";
 
 import { isSalt, isSecret, nonceFromSecret, parseZec, receipt } from "@blind-bazaar/sdk";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Eyebrow, Field, inputClass } from "@/components/ui";
+import { parseCardFile, parseCardFragment, saveBidRecord } from "@/lib/bid-card";
 
 /** Paste a bid key from another device so this browser can show that bid's standing. */
 export function ImportBidKey({ auctionId, onImported }: { auctionId: string; onImported: () => void }) {
@@ -10,6 +11,49 @@ export function ImportBidKey({ auctionId, onImported }: { auctionId: string; onI
   const [value, setValue] = useState("");
   const [salt, setSalt] = useState("");
   const [amount, setAmount] = useState("");
+  const [imported, setImported] = useState<string | null>(null);
+
+  // A bid-card link lands here with the key in the fragment: import it and clear the fragment.
+  useEffect(() => {
+    const frag = parseCardFragment(window.location.hash);
+    if (!frag) return;
+    (async () => {
+      const nonce = await nonceFromSecret(frag.secret);
+      const r = await receipt(nonce);
+      const bid = (() => {
+        if (!frag.bid) return undefined;
+        try {
+          return BigInt(frag.bid).toString();
+        } catch {
+          return undefined;
+        }
+      })();
+      if (saveBidRecord(auctionId, { receipt: r, nonce, secret: frag.secret, bid, salt: frag.salt && isSalt(frag.salt) ? frag.salt : undefined })) {
+        history.replaceState(null, "", window.location.pathname);
+        setImported("Bid imported from your link.");
+        onImported();
+      }
+    })();
+  }, [auctionId, onImported]);
+
+  async function fromFile(file: File) {
+    const card = parseCardFile(await file.text());
+    if (!card) {
+      setError("That is not a Blind Bazaar bid card.");
+      return;
+    }
+    if (card.auction_id !== auctionId) {
+      setError(`This card is for lot ${card.auction_id}; open that lot's status page.`);
+      return;
+    }
+    if (saveBidRecord(auctionId, { receipt: card.receipt, nonce: card.nonce, secret: card.secret, bid: card.bid, salt: card.salt })) {
+      setImported("Bid card imported.");
+      setOpen(false);
+      onImported();
+    } else {
+      setError("This browser blocks storage; the card cannot be kept here.");
+    }
+  }
   const [error, setError] = useState<string | null>(null);
   async function add() {
     const secret = value.trim().toLowerCase();
@@ -49,9 +93,12 @@ export function ImportBidKey({ auctionId, onImported }: { auctionId: string; onI
   }
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="self-start text-[13px] text-muted-foreground underline decoration-hairline-strong underline-offset-4 hover:text-foreground">
-        Bid from another device? Paste your bid key
-      </button>
+      <div className="flex flex-col gap-2">
+        {imported && <p className="text-[13px] text-success">{imported}</p>}
+        <button type="button" onClick={() => setOpen(true)} className="self-start text-[13px] text-muted-foreground underline decoration-hairline-strong underline-offset-4 hover:text-foreground">
+          Bid from another device? Paste your bid key or open a bid card
+        </button>
+      </div>
     );
   }
   return (
@@ -68,8 +115,12 @@ export function ImportBidKey({ auctionId, onImported }: { auctionId: string; onI
           <input id="bid-key-salt" className={`${inputClass} num text-[13px]`} spellCheck={false} value={salt} onChange={(e) => setSalt(e.target.value)} />
         </Field>
       </div>
-      <div className="flex gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Button onClick={add}>Add to this browser</Button>
+        <label className="inline-flex min-h-11 cursor-pointer items-center rounded-[2px] border border-hairline-strong px-5 text-[13px] font-medium hover:bg-foreground/5">
+          Open a bid card file
+          <input type="file" accept="application/json,.json" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) fromFile(f); }} />
+        </label>
         <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
       </div>
     </div>

@@ -9,6 +9,7 @@ import { API_BASE, api, type AuctionView } from "@/lib/api";
 import { zec } from "@/lib/format";
 import { fmt, isRfq } from "@/lib/formats";
 import { Button, Eyebrow, Field, Mono, Panel, inputClass } from "@/components/ui";
+import { cardLink, downloadCard, toCard } from "@/lib/bid-card";
 
 const RECEIPTS_KEY = "bb.receipts";
 
@@ -115,7 +116,16 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
           </div>
         </div>
         <div className="hairline-t pt-5">
-          <Eyebrow>Bid key · keep this</Eyebrow>
+          <div className="flex items-baseline justify-between gap-3">
+            <Eyebrow>Bid key · keep this</Eyebrow>
+            <Button
+              variant="secondary"
+              className="min-h-9 px-3 text-[12px]"
+              onClick={() => downloadCard(toCard(auction.id, { receipt: prepared.receipt, nonce: prepared.bid.nonce, secret: prepared.secret, bid: prepared.bid.bidZats.toString(), salt: prepared.salt }))}
+            >
+              Save bid card
+            </Button>
+          </div>
           <Mono className="mt-2 block">{prepared.secret}</Mono>
           <p className="mt-2 text-[13px] text-muted-foreground">
             Your private key to this {f.verb}: it shows you whether you won, the balance to pay and the seller&apos;s delivery note, on any device (paste it on the status page). Saved in this browser; nobody else can derive it.{prepared.salt ? " Keep the reveal code below with it." : ""}
@@ -124,6 +134,15 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
             <p className="mt-3 text-[12px] text-muted-foreground">Reveal code (needed with the bid key to reveal after close): <span className="num">{prepared.salt}</span></p>
           )}
           <p className="mt-3 text-[12px] text-muted-foreground">Public receipt, listed by the auction once your {f.verb} lands: <span className="num">{prepared.receipt.slice(0, 24)}…</span></p>
+          <details className="mt-3 text-[13px]">
+            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Open this bid on another device</summary>
+            <div className="mt-3 flex items-start gap-4">
+              <div className="rounded-[2px] bg-qr p-2">
+                <QRCodeSVG value={cardLink(toCard(auction.id, { receipt: prepared.receipt, nonce: prepared.bid.nonce, secret: prepared.secret, bid: prepared.bid.bidZats.toString(), salt: prepared.salt }))} size={120} level="M" bgColor="transparent" fgColor="#1a1816" aria-label="Bid card link" />
+              </div>
+              <p className="text-[12px] leading-relaxed text-muted-foreground">Scan to open your standing for this {f.verb} on a phone. The key is in the link&apos;s fragment, which browsers never send to any server. Treat the link like the key itself.</p>
+            </div>
+          </details>
         </div>
         <div className="hairline-t pt-5">
           <Eyebrow>No ZEC?</Eyebrow>
