@@ -80,9 +80,23 @@ impl Worker {
         // Address derivation records the exposure height, so the wallet must know the chain tip first.
         // Every network step is bounded: a lightwalletd call that never answers must not hang the worker.
         let db_cache = wallet::cache::MemBlockCache::default();
-        tokio::time::timeout(PASS_TIMEOUT, wallet::sync::sync_once(&mut client, &self.params, &db_cache, &mut db))
-            .await
-            .map_err(|_| anyhow::anyhow!("initial sync timed out after {}s", PASS_TIMEOUT.as_secs()))??;
+        // A parked service never asks the chain for blocks it cannot parse: check the freeze before the first sync.
+        let plan = crate::freeze::FreezePlan { height: self.cfg.freeze_height, paused: self.cfg.paused };
+        let tip0 = wallet::chain_tip(&mut client).await.ok();
+        let freeze0 = crate::freeze::status(plan, tip0, store::now());
+        if freeze0.active {
+            warn!("service parked: {}", freeze0.reason.as_deref().unwrap_or_default());
+            let mut st = self.status.write().await;
+            st.chain_tip = tip0;
+            st.freeze = freeze0.clone();
+        } else {
+            if let Some(h) = freeze0.height {
+                info!("freeze planned at block {h} ({} blocks away)", freeze0.blocks_left.map(|b| b.to_string()).unwrap_or_else(|| "?".into()));
+            }
+            tokio::time::timeout(PASS_TIMEOUT, wallet::sync::sync_once(&mut client, &self.params, &db_cache, &mut db))
+                .await
+                .map_err(|_| anyhow::anyhow!("initial sync timed out after {}s", PASS_TIMEOUT.as_secs()))??;
+        }
 
         // A dedicated receive address for the operator (tips, Go Dark demo, funding), persisted so
         // it is stable across restarts and never confused with an auction address.
@@ -90,6 +104,7 @@ impl Worker {
             let store = self.store.lock().await;
             match store::get_meta(&store, "operator_address")? {
                 Some(a) => a,
+                None if freeze0.active => String::new(),
                 None => {
                     let (addr, _) = wallet::next_auction_address(&mut db, &self.params, operator.account_id)?;
                     store::set_meta(&store, "operator_address", &addr)?;
@@ -177,6 +192,28 @@ impl Worker {
         seed: Option<&secrecy::SecretVec<u8>>,
     ) -> Result<()> {
         let memo_key = if self.cfg.disclose_winning_memo { operator.ufvk.clone() } else { None };
+        // Freeze check first, on a fresh tip: a parked service touches nothing on chain or in the ledger.
+        let plan = crate::freeze::FreezePlan { height: self.cfg.freeze_height, paused: self.cfg.paused };
+        let tip = wallet::chain_tip(client).await.ok();
+        let freeze = crate::freeze::status(plan, tip, store::now());
+        {
+            let mut s = self.status.write().await;
+            s.chain_tip = tip;
+            let was = s.freeze.active;
+            s.freeze = freeze.clone();
+            if freeze.active && !was {
+                warn!("service parked: {}", freeze.reason.as_deref().unwrap_or_default());
+            }
+        }
+        if freeze.active {
+            let mut s = self.status.write().await;
+            s.last_sync_at = Some(store::now());
+            s.last_error = None;
+            return Ok(());
+        }
+        if let Some(left) = freeze.blocks_left.filter(|l| *l <= 50) {
+            warn!("freeze in {left} blocks");
+        }
         if self.cfg.role == Role::Spender {
             self.mirror_auctions().await?;
             self.mirror_envelopes().await?;
@@ -196,7 +233,6 @@ impl Worker {
             }
         };
 
-        let tip = wallet::chain_tip(client).await.ok();
         let height = wallet::wallet_height(db)?;
         let balance = db
             .get_wallet_summary(wallet::send::confirmations_policy(self.cfg.min_confirmations))

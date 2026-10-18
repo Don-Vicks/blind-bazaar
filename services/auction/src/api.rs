@@ -108,6 +108,7 @@ struct Health {
     dead_payouts: i64,
     low_balance: bool,
     signing: Option<String>,
+    freeze: crate::freeze::FreezeStatus,
 }
 
 /// Public health hides balances, mempool activity and raw errors (deposit timing and amounts would leak);
@@ -135,6 +136,7 @@ async fn health(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiRe
         dead_payouts: s.dead_payouts,
         low_balance: s.low_balance,
         signing: s.signing,
+        freeze: s.freeze,
     }))
 }
 
@@ -188,6 +190,15 @@ async fn wallet_reply<T>(rx: oneshot::Receiver<T>) -> Result<T, ApiError> {
     }
 }
 
+/// Write endpoints refuse while the service is parked (`FREEZE_HEIGHT` reached or `PAUSED`).
+async fn check_live(state: &AppState) -> Result<(), ApiError> {
+    let f = state.status.read().await.freeze.clone();
+    if f.active {
+        return Err(ApiError(StatusCode::SERVICE_UNAVAILABLE, format!("service {}; reads still work", f.reason.unwrap_or_default())));
+    }
+    Ok(())
+}
+
 fn check_admin(state: &AppState, headers: &HeaderMap) -> Result<(), ApiError> {
     let ok = !state.admin_token.is_empty()
         && headers
@@ -229,6 +240,7 @@ async fn create_auction(
     Json(req): Json<CreateAuction>,
 ) -> ApiResult<store::Auction> {
     let seller_id = authorise_seller(&state, &headers).await?;
+    check_live(&state).await?;
     if req.title.trim().is_empty() {
         return Err(bad("title required"));
     }
@@ -245,6 +257,10 @@ async fn create_auction(
     };
     if close_at <= store::now() {
         return Err(bad("close_at must be in the future"));
+    }
+    {
+        let tip = state.status.read().await.chain_tip;
+        crate::freeze::lot_fits(state.freeze, tip, store::now(), close_at, state.settlement_window_secs).map_err(bad)?;
     }
     let units = req.units.unwrap_or(1).clamp(1, 10_000);
     let format = match req.format.as_deref() {
@@ -381,6 +397,7 @@ async fn post_envelope(
     Path(id): Path<String>,
     Json(req): Json<EnvelopeReq>,
 ) -> ApiResult<EnvelopeView> {
+    check_live(&state).await?;
     let parsed = memo::parse(&req.payload).map_err(|e| bad(format!("bad payload: {e}")))?;
     let (auction_id, nonce) = match &parsed {
         memo::Parsed::Bid(b) => (b.auction_id.clone(), b.nonce.clone()),
@@ -639,6 +656,7 @@ async fn bid_uri(
     Path(id): Path<String>,
     Query(q): Query<BidUriQuery>,
 ) -> ApiResult<BidUri> {
+    check_live(&state).await?;
     if !memo::looks_like_shielded_address(&q.refund_address) {
         return Err(bad("refund_address must be a unified address"));
     }
@@ -689,6 +707,7 @@ async fn admin_payout(
     Json(req): Json<AdminPayout>,
 ) -> ApiResult<serde_json::Value> {
     check_admin(&state, &headers)?;
+    check_live(&state).await?;
     if req.value_zats == 0 {
         return Err(bad("value_zats must be > 0"));
     }
@@ -936,6 +955,7 @@ async fn admin_payouts_sync(
 /// A fresh receive address for a Go Dark payment: unified address plus its transparent receiver so a
 /// rail that cannot deliver shielded can still pay (the service shields on arrival).
 async fn godark_receive_address(State(state): State<Arc<AppState>>) -> ApiResult<serde_json::Value> {
+    check_live(&state).await?;
     let (tx, rx) = oneshot::channel();
     state
         .wallet

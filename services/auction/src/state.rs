@@ -50,6 +50,7 @@ pub struct SyncStatus {
     pub low_balance: bool,
     /// "seed" or "frost 2-of-3 (...)"; None for a viewer.
     pub signing: Option<String>,
+    pub freeze: crate::freeze::FreezeStatus,
 }
 
 pub struct AppState {
@@ -60,6 +61,8 @@ pub struct AppState {
     pub cors_origin: Option<String>,
     /// Trust the first `x-forwarded-for` entry as the client address (set behind a reverse proxy).
     pub trust_proxy: bool,
+    pub freeze: crate::freeze::FreezePlan,
+    pub settlement_window_secs: i64,
     pub store: Arc<Mutex<Connection>>,
     pub wallet: mpsc::Sender<WalletCmd>,
     pub status: Arc<RwLock<SyncStatus>>,

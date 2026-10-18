@@ -320,6 +320,16 @@ pub struct Config {
     #[arg(long, env = "MIN_CONFIRMATIONS")]
     pub min_confirmations: Option<u32>,
 
+    /// Chain height at which the service parks itself: set to the mainnet NU7 activation height once announced
+    /// (this build cannot follow the chain past it). From that block nothing moves on chain and write endpoints
+    /// answer 503; reads keep working. Lots that could not settle before it are refused.
+    #[arg(long, env = "FREEZE_HEIGHT")]
+    pub freeze_height: Option<u32>,
+
+    /// Park the service now (same effect as reaching FREEZE_HEIGHT).
+    #[arg(long, env = "PAUSED", default_value_t = false)]
+    pub paused: bool,
+
     /// HTTP bind address.
     #[arg(long, env = "BIND", default_value = "127.0.0.1:8787")]
     pub bind: String,

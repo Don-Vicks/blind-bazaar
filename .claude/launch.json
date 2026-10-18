@@ -4,13 +4,49 @@
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "dev"
+      ],
       "port": 3000
     },
     {
       "name": "auction",
       "runtimeExecutable": "env",
-      "runtimeArgs": ["ADMIN_TOKEN=dev-admin-token", "DATA_DIR=./data", "BIND=127.0.0.1:8787", "SYNC_INTERVAL_SECS=10", "target/debug/bb-auction"],
+      "runtimeArgs": [
+        "ADMIN_TOKEN=dev-admin-token",
+        "DATA_DIR=./data",
+        "BIND=127.0.0.1:8787",
+        "SYNC_INTERVAL_SECS=10",
+        "target/debug/bb-auction"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "auction-paused",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ADMIN_TOKEN=dev-admin-token",
+        "DATA_DIR=./data",
+        "BIND=127.0.0.1:8787",
+        "SYNC_INTERVAL_SECS=10",
+        "PAUSED=true",
+        "target/debug/bb-auction"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "auction-freeze-planned",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ADMIN_TOKEN=dev-admin-token",
+        "DATA_DIR=./data",
+        "BIND=127.0.0.1:8787",
+        "SYNC_INTERVAL_SECS=10",
+        "FREEZE_HEIGHT=4600000",
+        "target/debug/bb-auction"
+      ],
       "port": 8787
     }
   ]

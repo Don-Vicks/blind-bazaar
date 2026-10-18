@@ -2,7 +2,9 @@
 
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
+
+const subscribeNever = () => () => {};
 import { api } from "@/lib/api";
 import { LinkButton } from "@/components/ui";
 
@@ -34,8 +36,7 @@ export function NetworkNotice({ compact = false }: { compact?: boolean }) {
   const { data } = useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 30_000 });
   // Cached health data can be present on the client's first render but not in the server HTML; render
   // only after mount so both agree.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
   if (!mounted || !data) return null;
   const test = data.network !== "main";
   const custody = data.signing?.startsWith("frost")
@@ -43,6 +44,17 @@ export function NetworkNotice({ compact = false }: { compact?: boolean }) {
     : data.signing === "seed"
       ? "Funds are held by a single operator key on this instance."
       : null;
+  const fz = data.freeze;
+  if (fz?.active) {
+    return (
+      <div className={`rounded-md border border-foreground/40 bg-surface ${compact ? "px-4 py-3 text-[13px]" : "px-5 py-4 text-[14px]"} text-muted-foreground`}>
+        <span className="text-foreground">Paused.</span> This instance is {fz.reason ?? "paused"}. Published results, proofs and bid standings stay readable; no new lots or bids until the operator restarts it on a build that follows the upgraded chain.
+      </div>
+    );
+  }
+  // "Now" is the service's last sync time, so the render stays pure and server and client agree.
+  const now = data.last_sync_at ?? 0;
+  const soon = fz?.eta_at != null && now > 0 && fz.eta_at - now < 7 * 86_400;
   return (
     <div className={`rounded-md border border-hairline bg-surface ${compact ? "px-4 py-3 text-[13px]" : "px-5 py-4 text-[14px]"} text-muted-foreground`}>
       <span className="text-foreground">{test ? "Test network." : "Mainnet."}</span>{" "}
@@ -50,6 +62,9 @@ export function NetworkNotice({ compact = false }: { compact?: boolean }) {
         ? "This instance runs on Zcash testnet. Bids use test ZEC, which has no value. Get some free at a testnet faucet and try a bid."
         : "Bids here use real ZEC."}
       {custody && !compact ? ` ${custody}` : null}
+      {soon && fz?.eta_at != null
+        ? ` This instance pauses at block ${fz.height} for the next network upgrade, about ${new Date(fz.eta_at * 1000).toUTCString()}; lots must settle before then.`
+        : null}
     </div>
   );
 }

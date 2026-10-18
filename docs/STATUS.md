@@ -188,7 +188,11 @@ as a placeholder, so they cannot parse any testnet transaction since then (`inva
 0x77190ad9`). The service now builds against the Oct 6 pre-release line (`zcash_client_backend 0.25.0-pre.1`,
 `zcash_protocol 0.11.0-pre.0`, `orchard 0.16`, `rand 0.10`), which carries the real NU7 branch id and testnet
 height. Mainnet NU7 is expected around Nov 5, after the deadline, so the mainnet demo runs on NU6.3 rules with the
-same binary. Open question: whether lightwalletd 0.5.4 (the public testnet endpoint) includes v6 transaction
+same binary. Because judging may run past activation, the service has a freeze: `FREEZE_HEIGHT` (the announced
+activation height) parks it at that block (no sync, no closes, no spends; write endpoints answer 503; results,
+proofs and standings stay readable; the site shows a "Paused" notice), and lots whose close plus settlement window
+would run past the estimated freeze time are refused at creation. `PAUSED=true` parks it by hand. Unit-tested
+(`src/freeze.rs`) and exercised on the local service with both settings. Open question: whether lightwalletd 0.5.4 (the public testnet endpoint) includes v6 transaction
 outputs in compact blocks; the first received testnet note answers it.
 
 ## Known risks in the code

@@ -125,6 +125,8 @@ export interface Health {
   dead_payouts?: number;
   /** "seed" or "frost 2-of-3 (...)"; null for a viewer process. */
   signing?: string | null;
+  /** Parked at a planned chain height (next network upgrade) or by the operator; writes answer 503. */
+  freeze?: { active: boolean; reason: string | null; height: number | null; blocks_left: number | null; eta_at: number | null };
 }
 
 export class ApiError extends Error {

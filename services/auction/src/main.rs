@@ -2,6 +2,7 @@ mod api;
 mod close;
 mod config;
 mod disclosure;
+mod freeze;
 mod frost;
 mod audit;
 mod linkability;
@@ -322,6 +323,8 @@ async fn main() -> anyhow::Result<()> {
         ledger_token: cfg.ledger_token.clone(),
         cors_origin: cfg.cors_origin.clone(),
         trust_proxy: cfg.trust_proxy,
+        freeze: freeze::FreezePlan { height: cfg.freeze_height, paused: cfg.paused },
+        settlement_window_secs: cfg.settlement_window_secs,
         store,
         wallet: tx,
         status,
