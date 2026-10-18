@@ -26,8 +26,11 @@ pages; no wallet transaction was involved in those checks.
 - CI: GitHub Actions runs the Rust tests and the SDK tests and typechecks the web app on every push.
 - Auditable lots: `auditable: true` creates a per-lot wallet account; the lot's UFVK is published on the result at
   close; deposits are swept to the operator pool at close and after settlement; `bb-auction audit` rescans with the
-  key and compares ledger root, price and winners. Built; the audit command has not yet been run against a lot with
-  wallet bids (it needs a chain run).
+  key and compares ledger root, price and winners. Exercised on the testnet service: a lot got ZIP 32 account 1,
+  the key stayed hidden until close, was published at close, and `bb-auction audit` imported it into a throwaway
+  wallet, scanned the public testnet from the birthday and reported MATCH on root, price and winners. That lot had
+  no bids, so a mismatch has not yet been demonstrated; a chain run with wallet bids is still owed. Auditable lots
+  need the seed-backed single-process configuration (the viewer must be able to derive the lot account).
 - Refund batching: refunds due in the same window (`REFUND_WINDOW_SECS`) from any lot go out as one transaction
   with up to `REFUND_BATCH_MAX` outputs; `bb-auction simulate-refunds` measures timing linkability for naive versus
   batched sending (`docs/evidence/refund-linkability.md`). Unit-tested; no chain run of a batched refund yet.
