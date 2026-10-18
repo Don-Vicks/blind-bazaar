@@ -13,7 +13,8 @@ Built for ZECATHON 2026. MIT licensed.
 
 | Claim | Status | How to check |
 |---|---|---|
-| Bids are private. Only the operator's viewing key can read a bid, and only after it is mined; other bidders and the seller never see losing bids. | Real, with one stated limit: the operator reads bids while a lot is open. | `docs/PRIVACY.md`; memo layout in `docs/MEMO_SPEC.md` |
+| Bids are private. Only the operator's viewing key can read a bid, and only after it is mined; other bidders and the seller never see losing bids. | Real, with one stated limit: on classic lots the operator reads bids while a lot is open (sealed-reveal lots remove it). | `docs/PRIVACY.md`; memo layout in `docs/MEMO_SPEC.md` |
+| A bid can be placed from a consumer wallet by scanning the QR. | Expected, not yet shown: only the bundled command-line wallet has placed a bid (on regtest). No Zodl, Zingo or YWallet bid has been read yet. | `docs/evidence/wallets.md` |
 | The result is provable. A note-opening disclosure of the winning payment is published and recomputed in the browser and by a CLI. | Real on a local regtest chain and against the testnet service. No mainnet lot yet. | `/a/{id}/verify`, `bb-auction --verify-disclosure` |
 | The bid ledger cannot be altered after close. A Merkle root over every valid bid is published before any refund; each bidder verifies their own leaf; leaves are blinded by the bidder's nonce. | Real. | `/a/{id}/status`, `GET /auctions/{id}/proof` |
 | Refunds are private. Losing deposits return as shielded payments after a random delay, batched across lots into one transaction per window. | Real on regtest (single refunds); batching is unit-tested, not yet run on a chain. Linkability by timing is measured, honestly: it depends on lot density and the delay range, see the table. | `docs/evidence/refund-linkability.md`, `bb-auction simulate-refunds` |

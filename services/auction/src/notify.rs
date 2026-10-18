@@ -165,3 +165,59 @@ pub async fn run_pass(store: &tokio::sync::Mutex<Connection>, mailer: Option<&Ma
     let _ = pending;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::{NewAuction, NewBid};
+
+    const UA: &str = "utest1phxskj2u3phwse5pql5dazp4katjgtx265pnxgputh9p6vgjpc4pt33gmwgmdmqd3gnucf7f073cxlk6c7f6gkzxu3yvgwuysyplaj24";
+
+    #[test]
+    fn events_become_the_right_mails_for_the_right_people() {
+        let s = store::open_in_memory().unwrap();
+        let sid = store::insert_seller(&s, "alice", "hash").unwrap();
+        store::insert_auction(
+            &s,
+            &NewAuction {
+                id: "aaaaaaaa", title: "Signed print", description: "", reserve_zats: 2_000_000, deposit_zats: 1_000_000, seller_address: UA, address: UA,
+                diversifier_index: None, close_at: 1, seller_id: Some(sid), image_url: None, units: 1, format: "first_price", reveal_secs: 0, audit: None,
+            },
+        )
+        .unwrap();
+        let mut ids = Vec::new();
+        for (i, (nonce, status)) in [("00000000000000a1", "won"), ("00000000000000a2", "valid"), ("00000000000000a3", "valid")].iter().enumerate() {
+            let receipt = crate::memo::receipt(nonce);
+            ids.push(store::insert_bid(&s, &NewBid {
+                auction_id: Some("aaaaaaaa"), txid: &format!("{i:064x}"), output_index: 0, pool: 4, mined_height: Some(1), value_zats: 1_000_000, memo: None,
+                bid_zats: Some(3_000_000), refund_address: Some(UA), nonce: Some(nonce), receipt: Some(&receipt), status, source: "memo", commitment: None,
+            }).unwrap());
+        }
+        // Winner and one loser opted in; the other loser did not. The seller opted in.
+        store::subscribe_bidder(&s, "aaaaaaaa", "00000000000000a1", "w@example.test").unwrap();
+        store::subscribe_bidder(&s, "aaaaaaaa", "00000000000000a2", "l@example.test").unwrap();
+        store::subscribe_seller(&s, sid, Some("alice@example.test")).unwrap();
+
+        let ev = |kind: &str, payload: serde_json::Value| store::Event { id: 1, auction_id: Some("aaaaaaaa".into()), kind: kind.into(), payload, created_at: 0 };
+        let closed = messages_for(&s, &ev("closed", serde_json::json!({ "clearing_zats": 3_000_000 })), "https://bb.example").unwrap();
+        let subjects: Vec<&str> = closed.iter().map(|m| m.1.as_str()).collect();
+        assert_eq!(closed.len(), 3, "winner, opted-in loser, seller: {subjects:?}");
+        assert!(subjects.iter().any(|t| t.starts_with("You won")));
+        assert!(subjects.iter().any(|t| t.contains("has closed")));
+        assert!(subjects.iter().any(|t| t.starts_with("Your lot")));
+        assert!(closed.iter().all(|m| m.2.contains("https://bb.example/")), "every mail links back to the site");
+
+        let received = messages_for(&s, &ev("bid_received", serde_json::json!({ "receipt": crate::memo::receipt("00000000000000a3") })), "x").unwrap();
+        assert!(received.is_empty(), "a bidder who did not opt in gets nothing");
+
+        store::queue_payout(&s, Some("aaaaaaaa"), Some(ids[1]), "refund", UA, 1_000_000, None, 0).unwrap();
+        let refund = messages_for(&s, &ev("refund_sent", serde_json::json!({ "payout_id": 1 })), "x").unwrap();
+        assert_eq!(refund.len(), 1);
+        assert!(refund[0].1.starts_with("Refund sent"));
+
+        // Nothing about an address is exposed through the standing or any public struct: the subscription
+        // table is the only place it lives, and a purge removes it once the lot is final and a week old.
+        s.execute("UPDATE auctions SET status = 'paid', closed_at = ?1 WHERE id = 'aaaaaaaa'", [store::now() - 8 * 86_400]).unwrap();
+        assert_eq!(store::purge_stale_subscriptions(&s).unwrap(), 2, "both bidder subscriptions purged; the seller's stays");
+    }
+}

@@ -92,8 +92,9 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
             </p>
           )}
           <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
-            Pay the <span className="num text-foreground">{zec(prepared.depositZats)}</span> {rfq ? "bond" : "deposit"} from Zodl, Zingo or
-            YWallet. The {f.verb} travels inside the encrypted memo; only the auction can read it.
+            Pay the <span className="num text-foreground">{zec(prepared.depositZats)}</span> {rfq ? "bond" : "deposit"} from a Zcash wallet
+            that sends memos from a payment link (Zodl, Zingo or YWallet; see which are verified below). The {f.verb} travels inside
+            the encrypted memo; only the auction can read it.
           </p>
         </div>
         <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-start">
@@ -173,6 +174,13 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
                   : "Ties an address to this one bid on the auction's server, which the rest of the design avoids; nobody else sees it, and it is deleted a week after the lot ends."}
             </p>
           </div>
+          <details className="mt-3 text-[13px]">
+            <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Which wallets are verified, and the command-line way</summary>
+            <p className="mt-2 leading-relaxed text-muted-foreground">
+              Verified so far: the bundled command-line wallet on a local chain. Zodl, Zingo and YWallet are expected to work (they pay ZIP-321 links with memos) but have not yet placed a bid here; the list is kept honest in <span className="num">docs/evidence/wallets.md</span>. From a terminal:
+            </p>
+            <pre className="num mt-2 overflow-x-auto rounded-md border border-hairline bg-surface p-3 text-[11px] leading-relaxed text-muted-foreground">{`bb-auction wallet --dir ./bidder --seed-file ./bidder.seed --wait-balance ${prepared.depositZats.toString()} --pay "${prepared.uri}"`}</pre>
+          </details>
           <details className="mt-3 text-[13px]">
             <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Open this bid on another device</summary>
             <div className="mt-3 flex items-start gap-4">
