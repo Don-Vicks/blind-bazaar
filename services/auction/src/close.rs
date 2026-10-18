@@ -5,7 +5,7 @@ use rand::RngExt;
 use rusqlite::Connection;
 use tracing::info;
 
-use crate::{disclosure, memo, store};
+use crate::{disclosure, store};
 use crate::wallet::net::Net as Network;
 
 pub struct CloseConfig {

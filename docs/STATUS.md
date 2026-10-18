@@ -43,7 +43,9 @@ pages; no wallet transaction was involved in those checks.
   key and compares ledger root, price and winners. Exercised on the testnet service: a lot got ZIP 32 account 1,
   the key stayed hidden until close, was published at close, and `bb-auction audit` imported it into a throwaway
   wallet, scanned the public testnet from the birthday and reported MATCH on root, price and winners. That lot had
-  no bids, so a mismatch has not yet been demonstrated; a chain run with wallet bids is still owed. Auditable lots
+  no bids. A tampered copy of its result (price and winner changed) made the tool print MISMATCH and exit 2, and unit
+  tests cover a suppressed winner, a lowered price, a swapped winner, a planted bid and bad reveals
+  (`docs/evidence/audit-tamper.md`); a chain run with wallet bids is still owed. Auditable lots
   need the seed-backed single-process configuration (the viewer must be able to derive the lot account).
 - Refund batching: refunds due in the same window (`REFUND_WINDOW_SECS`) from any lot go out as one transaction
   with up to `REFUND_BATCH_MAX` outputs; `bb-auction simulate-refunds` measures timing linkability for naive versus
