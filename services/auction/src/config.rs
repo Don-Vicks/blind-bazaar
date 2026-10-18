@@ -108,6 +108,13 @@ pub enum FrostCmd {
         /// Refuse transactions paying more than this (zatoshis) to addresses the escrow does not own.
         #[arg(long, env = "FROST_MAX_EXTERNAL_ZATS")]
         max_external_zats: Option<u64>,
+        /// Rolling cap: refuse once external value committed within the trailing window would exceed this
+        /// (zatoshis). Bounds what a compromised spender can drain with many small transactions.
+        #[arg(long, env = "FROST_MAX_EXTERNAL_PER_WINDOW_ZATS")]
+        max_external_per_window_zats: Option<u64>,
+        /// Window for the rolling cap, seconds. Default one day.
+        #[arg(long, env = "FROST_WINDOW_SECS", default_value_t = 86_400)]
+        window_secs: i64,
         /// Viewer base URL whose `/ledger/payouts` lists the payouts the auction rules produced. With it set,
         /// every external output must match one of them, once.
         #[arg(long, env = "FROST_LEDGER_URL")]

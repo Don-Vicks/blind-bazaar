@@ -463,11 +463,64 @@ pub struct SignerPolicy {
     /// receiver, same amount), and each expected payout can be used once. A compromised spender then
     /// cannot pay anyone the auction rules did not name.
     pub require_ledger: bool,
+    /// Rolling cap: external value this signer will commit to within any trailing `window_secs`. The
+    /// per-transaction cap bounds one theft; this bounds what a compromised spender can drain by sending many
+    /// transactions under it. A session counts from the moment this signer commits (round 1), whether or not
+    /// it is broadcast, so a spender cannot reserve budget with abandoned sessions and spend it later.
+    pub rolling: Option<RollingLimit>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+pub struct RollingLimit {
+    pub max_zats: u64,
+    pub window_secs: i64,
 }
 
 impl Default for SignerPolicy {
     fn default() -> Self {
-        Self { max_external_zats: None, max_fee_zats: 200_000, require_ledger: false }
+        Self { max_external_zats: None, max_fee_zats: 200_000, require_ledger: false, rolling: None }
+    }
+}
+
+/// External value committed to within the trailing window. In memory only: a signer restart clears it, which
+/// is why the signer hosts are separate machines the spender cannot restart.
+#[derive(Debug, Default)]
+pub struct RollingCap {
+    entries: std::collections::VecDeque<(i64, u64)>,
+}
+
+impl RollingCap {
+    fn prune(&mut self, limit: RollingLimit, now: i64) {
+        while let Some((at, _)) = self.entries.front() {
+            if *at <= now - limit.window_secs {
+                self.entries.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Zats committed inside the window ending now.
+    pub fn used(&mut self, limit: RollingLimit, now: i64) -> u64 {
+        self.prune(limit, now);
+        self.entries.iter().map(|e| e.1).sum()
+    }
+
+    /// Admit `zats` more if the window allows it, and record it.
+    pub fn admit(&mut self, limit: RollingLimit, now: i64, zats: u64) -> std::result::Result<(), String> {
+        let used = self.used(limit, now);
+        if used.saturating_add(zats) > limit.max_zats {
+            return Err(format!(
+                "policy: {zats} zats would bring the last {} s to {} of the {} allowed",
+                limit.window_secs,
+                used.saturating_add(zats),
+                limit.max_zats
+            ));
+        }
+        if zats > 0 {
+            self.entries.push_back((now, zats));
+        }
+        Ok(())
     }
 }
 
@@ -554,6 +607,7 @@ pub struct SignerHost {
     expected: Mutex<HashMap<i64, ExpectedPayout>>,
     consumed: Mutex<std::collections::HashSet<i64>>,
     pub ledger: Option<LedgerClient>,
+    rolling: Mutex<RollingCap>,
 }
 
 const AUDIT_KEEP: usize = 200;
@@ -576,6 +630,7 @@ impl SignerHost {
             expected: Mutex::new(HashMap::new()),
             consumed: Mutex::new(std::collections::HashSet::new()),
             ledger: None,
+            rolling: Mutex::new(RollingCap::default()),
         })
     }
 
@@ -639,6 +694,14 @@ impl SignerHost {
     }
 
     /// Most recent audit entries, newest first.
+    /// External value this signer has committed to inside the current rolling window (0 without a limit).
+    pub fn rolling_used(&self) -> u64 {
+        match self.policy.rolling {
+            Some(l) => self.rolling.lock().unwrap().used(l, time::OffsetDateTime::now_utc().unix_timestamp()),
+            None => 0,
+        }
+    }
+
     pub fn audit_log(&self) -> Vec<AuditEntry> {
         self.audit.lock().unwrap().iter().rev().cloned().collect()
     }
@@ -699,6 +762,15 @@ impl SignerHost {
         } else {
             Vec::new()
         };
+        // Last, so a refused session never consumes rolling budget.
+        if let Some(limit) = self.policy.rolling {
+            let now = time::OffsetDateTime::now_utc().unix_timestamp();
+            if let Err(reason) = self.rolling.lock().unwrap().admit(limit, now, plan.summary.external_zats) {
+                warn!("refusing session {session}: {reason}");
+                self.audit(session, &plan.sighash, &plan.summary, format!("refused: {reason}"));
+                return Err(anyhow!(reason));
+            }
+        }
         self.audit(session, &plan.sighash, &plan.summary, "committed");
         info!(
             "session {session}: {} spend(s), {} external output(s) totalling {} zats, change {} zats, fee {} zats",
@@ -800,6 +872,8 @@ pub async fn run_signer(host: Arc<SignerHost>, bind: &str, token: Option<String>
             "signed_sessions": st.host.signed.load(Ordering::Relaxed),
             "policy_max_external_zats": st.host.policy.max_external_zats,
             "ledger_check": st.host.policy.require_ledger,
+            "rolling": st.host.policy.rolling,
+            "rolling_used_zats": st.host.rolling_used(),
         }))
     }
     async fn log(State(st): State<St>, headers: HeaderMap) -> std::result::Result<Json<Vec<AuditEntry>>, (StatusCode, String)> {
@@ -1154,6 +1228,43 @@ mod tests {
         assert!(hosts[0].audit_log()[0].outcome.starts_with("refused"));
         let ok = plan_ok(&public);
         hosts[0].round1_plan("s2", ok).unwrap();
+    }
+
+    #[test]
+    fn rolling_cap_counts_a_trailing_window() {
+        let limit = RollingLimit { max_zats: 15_000, window_secs: 3_600 };
+        let mut cap = RollingCap::default();
+        cap.admit(limit, 1_000, 10_000).unwrap();
+        let err = cap.admit(limit, 1_500, 10_000).unwrap_err();
+        assert!(err.contains("20000 of the 15000"), "{err}");
+        assert_eq!(cap.used(limit, 1_500), 10_000, "a refused session consumes nothing");
+        cap.admit(limit, 1_500, 5_000).unwrap();
+        assert_eq!(cap.used(limit, 1_500), 15_000);
+        // The first entry leaves the window one hour after it was admitted; the second stays.
+        assert_eq!(cap.used(limit, 1_000 + 3_600), 5_000);
+        cap.admit(limit, 1_000 + 3_600, 10_000).unwrap();
+        assert!(cap.admit(limit, 1_000 + 3_600, 1).is_err());
+        assert_eq!(cap.used(limit, 1_500 + 3_600 + 1), 10_000);
+    }
+
+    #[tokio::test]
+    async fn signer_policy_refuses_a_second_session_over_the_rolling_cap() {
+        // Each transaction is under the per-transaction cap; together they exceed the window.
+        let (escrow, hosts) = setup(SignerPolicy {
+            max_external_zats: Some(10_000),
+            rolling: Some(RollingLimit { max_zats: 15_000, window_secs: 86_400 }),
+            ..SignerPolicy::default()
+        });
+        let public = escrow.public_key_package().unwrap();
+        hosts[0].round1_plan("a", plan(&public, 1, 10_000)).unwrap();
+        assert_eq!(hosts[0].rolling_used(), 10_000);
+        let err = hosts[0].round1_plan("b", plan(&public, 1, 10_000)).unwrap_err();
+        assert!(err.to_string().contains("of the 15000 allowed"), "{err}");
+        assert!(hosts[0].audit_log()[0].outcome.starts_with("refused: policy"));
+        hosts[0].round1_plan("c", plan(&public, 1, 5_000)).unwrap();
+        assert_eq!(hosts[0].rolling_used(), 15_000);
+        // The other signer keeps its own window: it has committed to nothing yet.
+        hosts[1].round1_plan("a", plan(&public, 1, 10_000)).unwrap();
     }
 
     fn plan_ok(public: &bb_frost::PublicKeyPackage) -> SigningPlan {

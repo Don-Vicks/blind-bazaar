@@ -57,6 +57,18 @@ the entries it matched. A compromised spender can therefore neither invent a rec
 one twice; a compromised viewer still cannot spend. The regtest script runs both signers with the check on.
 Without the flag a signer enforces only the value and fee caps, and says so at startup.
 
+## The rolling cap: a bound on what many small transactions can drain
+
+`--max-external-zats` bounds one transaction. A spender that is compromised but still under the ledger check
+cannot pay anyone the rules did not name; one that is compromised on a signer without the ledger check could
+send many transactions each under the cap. `--max-external-per-window-zats` (with `--window-secs`, default one
+day) refuses a session once the external value this signer has committed to inside the trailing window would
+exceed the limit. A session counts from round 1, broadcast or not, so abandoned sessions cannot be used to park
+budget. The window lives in the signer's memory (restarting the signer host clears it), which is one more reason
+the signer hosts are machines the spender cannot touch. The signer's `/health` reports the limit and the value
+used so far. A sensible setting is the operator float the lots of one day can need: deposits returned plus
+seller payouts.
+
 ## Trust model
 
 - A compromised spender host cannot move funds alone. It can propose transactions; the signers see
@@ -82,7 +94,7 @@ Without the flag a signer enforces only the value and fee caps, and says so at s
 bb-auction frost keygen --out ./frost          # dealer, or:
 bb-auction frost dkg round1 --id 1 --dir ./dkg  # on each host (id 1..3), then exchange files and run round2, finish, escrow
 # host A, B, C (each gets one share and the public escrow file)
-bb-auction frost signer --share signer-1.json --escrow escrow.json --bind 0.0.0.0:8801 --max-external-zats 100000000
+bb-auction frost signer --share signer-1.json --escrow escrow.json --bind 0.0.0.0:8801 --max-external-zats 100000000 --max-external-per-window-zats 500000000
 # spender
 FROST_ESCROW=./frost/escrow.json FROST_SIGNERS='https://a:8801|tokA,https://b:8801|tokB,https://c:8801|tokC' ROLE=spender bb-auction
 # viewer (unchanged): OPERATOR_UFVK=<from `frost show`> ROLE=viewer bb-auction

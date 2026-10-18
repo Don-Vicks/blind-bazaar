@@ -176,8 +176,6 @@ viewer/spender split (compiles; needs a two-process run), and anything on testne
 
 - In-browser receiver wallet generation for Go Dark (24-word seed + unified address, Zodl/Zingo import).
 - A real swap through Go Dark on mainnet (the widget, proxy and envelope binding are built; no wet test yet).
-- Deterministic close by mined height so viewer and spender cannot disagree on late bids or ties.
-- Distributed key generation for the FROST escrow (trusted dealer today).
 - Mainnet deployment: VPS, process supervision, HTTPS for the web app, `NEXT_PUBLIC_SITE_URL`, serving `go-dark.iife.js` from a CDN path.
 - Operator balance alerts; refund retry beyond 5 attempts needs a human.
 - Light theme check and mobile width pass on every page; brand palette deferred.

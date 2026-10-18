@@ -206,9 +206,16 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
             }
-            config::FrostCmd::Signer { share, escrow, bind, token, max_external_zats, ledger_url, ledger_token } => {
+            config::FrostCmd::Signer { share, escrow, bind, token, max_external_zats, max_external_per_window_zats, window_secs, ledger_url, ledger_token } => {
                 let e = frost::Escrow::load(&escrow)?;
-                let mut host = frost::SignerHost::load(&share, &e, cfg.net(), frost::SignerPolicy { max_external_zats, ..frost::SignerPolicy::default() })?;
+                if window_secs <= 0 {
+                    anyhow::bail!("FROST_WINDOW_SECS must be positive");
+                }
+                let rolling = max_external_per_window_zats.map(|max_zats| frost::RollingLimit { max_zats, window_secs });
+                if let Some(r) = rolling {
+                    info!("rolling cap: at most {} zats of external value per {} s", r.max_zats, r.window_secs);
+                }
+                let mut host = frost::SignerHost::load(&share, &e, cfg.net(), frost::SignerPolicy { max_external_zats, rolling, ..frost::SignerPolicy::default() })?;
                 match (ledger_url, ledger_token) {
                     (Some(url), Some(tok)) => {
                         host = host.with_ledger(frost::LedgerClient::new(&url, &tok)?);
