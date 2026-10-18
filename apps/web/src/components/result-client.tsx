@@ -147,6 +147,17 @@ export function ResultClient({ id }: { id: string }) {
                 <p className="mt-1 text-[13px] text-muted-foreground">Indistinguishable on the explorer from any other shielded transaction. Only the proof ties them to this lot.</p>
               </div>
             )}
+            {data.audit && (
+              <div>
+                <Eyebrow>Audit this lot yourself</Eyebrow>
+                <p className="serif mt-2 text-[22px] leading-tight">The lot&apos;s viewing key is public.</p>
+                <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
+                  This lot had a wallet account of its own. With the key below and any Zcash light server you trust, you can rescan the chain from block {data.audit.birthday.toLocaleString()}, read every deposit and bid memo this lot received, rerun the rules, and check that the ledger root, price and winner above are what the chain says. Nothing from this site is needed.
+                </p>
+                <Mono className="mt-2 block text-muted-foreground">{data.audit.ufvk}</Mono>
+                <pre className="num mt-3 overflow-x-auto rounded-md border border-hairline bg-surface p-3 text-[11px] leading-relaxed text-muted-foreground">{data.audit.command}</pre>
+              </div>
+            )}
             {data.sealed?.commit_hash && (
               <div>
                 <Eyebrow>Commitment root at close</Eyebrow>

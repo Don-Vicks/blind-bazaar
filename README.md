@@ -20,6 +20,7 @@ Built for ZECATHON 2026. MIT licensed.
 | No single server holds the money. The spend authority is a 2-of-3 FROST group key; signer hosts verify every output and co-sign. | Built and unit-tested. Not yet exercised on a chain. Trusted-dealer keygen; DKG not built. | `docs/FROST.md`, `cargo test -p bb-auction frost` |
 | Four formats: first price, uniform-price editions, Vickrey (winning bid stays sealed, second price proven from the ledger), request for quotes. | Real; Vickrey and RFQ exercised on the testnet service with seeded bids. | `docs/STATUS.md` |
 | Go Dark: pay or bid from Solana or Ethereum, land in shielded ZEC. | Built on live mainnet rails (Maya, NEAR Intents); quotes are real; no completed swap yet. The rail sees the payer's source address. | `docs/GO-DARK-THREAT-MODEL.md`, `/embed` |
+| Anyone can recompute a lot's whole result from the chain (auditable lots). The lot's own viewing key is published at close; `bb-auction audit` rescans and compares. | Built (Oct 18); not yet run against a lot with real wallet bids. Reveals every bid on that lot after close, by the seller's choice. | `bb-auction audit`, README "Auditable lots" |
 | Bids are hidden from the operator too (sealed-reveal). A lot created with `reveal_secs` takes a commitment `sha256(auction|bid|salt)` in the memo instead of the amount; the commitment root is fixed at close; bidders reveal in the window; unrevealed bids are refunded in full. | Built and unit-tested (Oct 18). The reveal is one click on the status page with the bid key; it has not yet run on a chain. | `docs/PRIVACY.md`, `POST /auctions/{id}/reveals` |
 | In-browser Zcash wallet for recipients without one. | Not built. | |
 
@@ -106,6 +107,23 @@ hosting site, not from the swap service.
   not pay in time the bond is returned and the request lapses. Only the winning price is ever revealed.
 
 `FORMAT=vickrey` or `FORMAT=rfq` runs the regtest end-to-end script in that format.
+
+## Auditable lots
+
+Create a lot with `auditable: true` and it gets a wallet account of its own (derived from the operator seed at the
+next ZIP 32 index). Once the lot closes, its full viewing key is published on the result. Anyone can then run
+
+```bash
+bb-auction audit --ufvk <published key> --birthday <height> --lot https://HOST/bb/auctions/ID --result https://HOST/bb/auctions/ID/result --lightwalletd-url https://zec.rocks:443
+```
+
+which imports the key into a throwaway view-only wallet, rescans the chain with a light server of the auditor's
+choosing, reads every deposit and memo the lot received, applies the same acceptance rules as the service (deposit
+amount, late by block timestamp, sealed-lot reveals against their commitments), ranks the bids, and reports whether
+the published ledger root, price and winners are what the chain says. An omitted bid shows up as a mismatch. The
+trade-off is explicit on the sell form: every bid on an auditable lot becomes readable after close (bidders stay
+pseudonymous; a bid names only a refund address). Deposits are swept from the lot account into the operator pool
+at close, which is the only spend the published key reveals. Auditable lots need the seed-backed operator.
 
 ## Sealed-reveal lots
 

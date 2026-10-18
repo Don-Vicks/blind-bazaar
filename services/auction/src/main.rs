@@ -3,6 +3,7 @@ mod close;
 mod config;
 mod disclosure;
 mod frost;
+mod audit;
 mod linkability;
 mod ratelimit;
 mod ingest;
@@ -209,6 +210,13 @@ async fn main() -> anyhow::Result<()> {
                 info!("frost signer {} for group ak {}", host.identifier(), e.ak);
                 frost::run_signer(std::sync::Arc::new(host), &bind, token).await?;
             }
+        }
+        return Ok(());
+    }
+    if let Some(config::Cmd::Audit { ufvk, birthday, lot, result, dir }) = cfg.cmd.clone() {
+        let ok = audit::run(cfg.net(), &cfg.lightwalletd_url, &audit::AuditArgs { ufvk, birthday, lot, result, dir }).await?;
+        if !ok {
+            std::process::exit(2);
         }
         return Ok(());
     }

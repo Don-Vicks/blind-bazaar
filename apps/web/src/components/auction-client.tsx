@@ -60,6 +60,7 @@ export function AuctionClient({ id }: { id: string }) {
               Lot {data.id}
               {data.units > 1 ? ` · edition of ${data.units} · uniform price` : f.tag ? ` · ${f.name.toLowerCase()}` : ""}
               {(data.reveal_secs ?? 0) > 0 ? " · sealed from the auction" : ""}
+              {data.audit_birthday ? " · auditable" : ""}
             </Eyebrow>
             <StatusDot status={open ? "open" : data.status === "open" ? "closing" : data.status} />
           </div>

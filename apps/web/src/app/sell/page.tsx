@@ -23,6 +23,7 @@ export default function SellPage() {
   const [imageUrl, setImageUrl] = useState("");
   const [units, setUnits] = useState("1");
   const [sealed, setSealed] = useState(true);
+  const [auditable, setAuditable] = useState(false);
   const [revealHours, setRevealHours] = useState("2");
   const [format, setFormat] = useState<Format>("first_price");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -85,6 +86,7 @@ export default function SellPage() {
       units: format === "uniform" ? Number(units) : 1,
       format,
       reveal_secs: sealed && format !== "rfq" ? Math.round(Number(revealHours) * 3600) : 0,
+      auditable,
     });
   }
 
@@ -176,6 +178,16 @@ export default function SellPage() {
               <input id="units" name="units" type="number" min="2" max="10000" step="1" className={`${inputClass} num`} value={units} onChange={(e) => setUnits(e.target.value)} aria-invalid={!!errors.units} />
             </Field>
           )}
+          <fieldset className="flex flex-col gap-2">
+            <legend className="eyebrow mb-2">After close</legend>
+            <label className={`flex cursor-pointer items-start gap-3 rounded-[2px] border px-3 py-3 text-[14px] ${auditable ? "border-accent" : "border-hairline-strong"}`}>
+              <input type="checkbox" checked={auditable} onChange={(e) => setAuditable(e.target.checked)} className="mt-1 accent-[var(--accent)]" />
+              <span>
+                Publish this lot&apos;s viewing key so anyone can audit the result
+                <span className="block text-[13px] text-muted-foreground">The lot gets its own wallet account. Once closed, its viewing key is published and anyone can rescan the chain and recompute the winner and price themselves. Trade-off: every bid on this lot becomes readable after close. Losing bidders stay anonymous (a bid names only a refund address).</span>
+              </span>
+            </label>
+          </fieldset>
           <Field label="Cover image" htmlFor="image" error={errors.image} hint="Optional https URL. Without one the lot gets a generated plate.">
             <input id="image" name="image" type="url" autoComplete="off" spellCheck={false} placeholder="https://…" className={`${inputClass} num text-[13px]`} value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} aria-invalid={!!errors.image} />
           </Field>

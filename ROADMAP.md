@@ -49,6 +49,7 @@ Remove the single operator who can both read bids and move funds.
 - done: bidder-side inclusion proofs: Merkle commitment of the bid ledger at close, per-receipt proof verified in the browser
 - planned: encrypted-to-auction-key bid envelopes for cross-chain entries (rail and relay see ciphertext only)
 - done: refund batching across lots per window, with a measured timing-linkability table (`docs/evidence/refund-linkability.md`)
+- done: auditable lots (per-lot wallet account, viewing key published at close, `bb-auction audit` recomputes and compares)
 - planned: denomination splitting of refunds across lots
 
 ## Phase 3 — Product (Q1 2027)

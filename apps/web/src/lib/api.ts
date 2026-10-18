@@ -24,6 +24,8 @@ export interface Auction {
   reveal_secs?: number;
   reveal_until?: number | null;
   commit_hash?: string | null;
+  /** Present on auditable lots: the lot has its own wallet account whose viewing key is published at close. */
+  audit_birthday?: number | null;
 }
 
 export interface AuctionView extends Auction {
@@ -60,6 +62,7 @@ export interface AuctionResult {
   /** Vickrey: the runner-up's ledger leaf and Merkle path proving the price is a committed bid. */
   price_proof: { receipt: string; bid_zats: number; nonce: string; proof: import("@blind-bazaar/sdk").InclusionProof } | null;
   sealed?: { sealed: number; revealed: number; unrevealed: number; reveal_until: number | null; commit_hash: string | null };
+  audit?: { ufvk: string; birthday: number; address: string; reveals?: { receipt: string; bid_zats: number; salt: string }[]; command: string };
 }
 
 export interface ProofResponse {

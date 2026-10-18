@@ -48,6 +48,18 @@ the deposit back in full and cannot win, so there is no penalty beyond losing th
 second step for bidders and a delay equal to the reveal window; the classic mode remains for sellers who prefer a
 result the moment the lot closes.
 
+## Auditable lots: a third party recomputes the result
+
+By default only the winning payment is opened, so no third party can tell whether a bid was dropped or
+mis-ranked; each bidder can check only their own leaf. A seller who wants more can list an auditable lot: it gets
+a wallet account of its own, and once the lot closes that account's full viewing key is published. The key reveals
+exactly that lot's receipts (every deposit with its memo) and the sweep of its balance into the operator pool, and
+nothing about any other lot, because nothing else was ever received by that account. `bb-auction audit` imports
+the key, rescans from the lot's birthday with any light server, reapplies the acceptance rules, ranks, and compares
+with the published ledger root, price and winners. The price is paid in privacy: after close, every bid on that lot
+is readable by anyone with the key. Bidders remain pseudonymous (a memo carries a refund address and a nonce, not
+an identity), and the choice is the seller's, shown on the lot page before anyone bids.
+
 ## Refund timing and batching
 
 Every losing deposit goes back as a shielded payment. When it leaves is a random delay after close

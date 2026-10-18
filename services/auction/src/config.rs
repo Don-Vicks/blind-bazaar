@@ -123,6 +123,23 @@ pub enum Cmd {
         #[command(subcommand)]
         cmd: FrostCmd,
     },
+    /// Recompute an auditable lot's result from the chain with its published viewing key, and compare it with
+    /// the published result. Needs no wallet of your own; pick any lightwalletd you trust.
+    Audit {
+        #[arg(long)]
+        ufvk: String,
+        #[arg(long)]
+        birthday: u32,
+        /// Lot definition: a file or the `GET /auctions/{id}` URL.
+        #[arg(long)]
+        lot: String,
+        /// Published result: a file or the `GET /auctions/{id}/result` URL. Optional; without it the tool only prints.
+        #[arg(long)]
+        result: Option<String>,
+        /// Scratch directory for the throwaway view-only wallet.
+        #[arg(long, default_value = "./audit-wallet")]
+        dir: PathBuf,
+    },
     /// Simulate how linkable refunds are to lots by timing, naive versus batched (prints a Markdown table).
     SimulateRefunds {
         #[arg(long, default_value_t = 4)]
