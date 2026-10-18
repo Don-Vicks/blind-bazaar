@@ -333,6 +333,11 @@ pub struct Config {
     #[arg(long, env = "FREEZE_HEIGHT")]
     pub freeze_height: Option<u32>,
 
+    /// Accept lot deposits that are not on the standard menu (0.001 to 5 ZEC in a 1-2-5 series). Off by
+    /// default: a refund equals the deposit, and an unusual amount marks every refund of that lot.
+    #[arg(long, env = "ALLOW_ANY_DEPOSIT", default_value_t = false)]
+    pub allow_any_deposit: bool,
+
     /// Park the service now (same effect as reaching FREEZE_HEIGHT).
     #[arg(long, env = "PAUSED", default_value_t = false)]
     pub paused: bool,

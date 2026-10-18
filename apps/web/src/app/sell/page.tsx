@@ -1,23 +1,41 @@
 "use client";
 
 import { looksLikeShieldedAddress, parseZec } from "@blind-bazaar/sdk";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { api, ApiError } from "@/lib/api";
 import { FORMATS, type Format } from "@/lib/formats";
 import { Button, Eyebrow, Field, Panel, inputClass } from "@/components/ui";
+import { zec } from "@/lib/format";
 
 const TOKEN_KEY = "bb.adminToken";
 const SELLER_KEY = "bb.sellerKey";
 
+const subscribeNever = () => () => {};
+function storedCredential(): string {
+  try {
+    return sessionStorage.getItem(SELLER_KEY) ?? sessionStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export default function SellPage() {
   const router = useRouter();
-  const [token, setToken] = useState("");
+  // The key saved in this tab is the starting value; typing replaces it. Reading storage through an external
+  // store keeps server and client renders in agreement without an effect.
+  const stored = useSyncExternalStore(subscribeNever, storedCredential, () => "");
+  const [typed, setTyped] = useState<string | null>(null);
+  const token = typed ?? stored;
+  const setToken = setTyped;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [reserve, setReserve] = useState("");
-  const [deposit, setDeposit] = useState("");
+  const [deposit, setDeposit] = useState("0.05");
+  const rules = useQuery({ queryKey: ["rules"], queryFn: api.rules, staleTime: Infinity });
+  const menu = rules.data?.deposit_menu_zats ?? [];
+  const anyDeposit = rules.data?.allow_any_deposit ?? false;
   const [seller, setSeller] = useState("");
   const [hours, setHours] = useState("24");
   const [imageUrl, setImageUrl] = useState("");
@@ -27,14 +45,6 @@ export default function SellPage() {
   const [revealHours, setRevealHours] = useState("2");
   const [format, setFormat] = useState<Format>("first_price");
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    try {
-      setToken(sessionStorage.getItem(SELLER_KEY) ?? sessionStorage.getItem(TOKEN_KEY) ?? "");
-    } catch {
-      /* no storage */
-    }
-  }, []);
 
   const create = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.createAuction(token, body),
@@ -151,7 +161,7 @@ export default function SellPage() {
               <label className={`flex cursor-pointer items-start gap-3 rounded-[2px] border px-3 py-3 text-[14px] ${!sealed ? "border-accent" : "border-hairline-strong"}`}>
                 <input type="radio" name="sealed" checked={!sealed} onChange={() => setSealed(false)} className="mt-1 accent-[var(--accent)]" />
                 <span>
-                  The auction's viewing key (classic)
+                  The auction&apos;s viewing key (classic)
                   <span className="block text-[13px] text-muted-foreground">Bids carry the amount; the result is final the moment the lot closes, with no reveal step for bidders.</span>
                 </span>
               </label>
@@ -166,8 +176,26 @@ export default function SellPage() {
             <Field label={`${FORMATS[format].floorLabel} (ZEC)`} htmlFor="reserve" error={errors.reserve} hint={format === "rfq" ? "The most you will pay." : "Lowest bid you will accept."}>
               <input id="reserve" name="reserve" type="text" inputMode="decimal" autoComplete="off" placeholder="0.5" className={`${inputClass} num`} value={reserve} onChange={(e) => setReserve(e.target.value)} aria-invalid={!!errors.reserve} />
             </Field>
-            <Field label={`${format === "rfq" ? "Bond" : "Deposit"} (ZEC)`} htmlFor="deposit" error={errors.deposit} hint={format === "rfq" ? "Every quoter posts this to quote. Returned with the payout, or when they lose." : "Every bidder pays this to bid. Losers get it back."}>
-              <input id="deposit" name="deposit" type="text" inputMode="decimal" autoComplete="off" placeholder="0.05" className={`${inputClass} num`} value={deposit} onChange={(e) => setDeposit(e.target.value)} aria-invalid={!!errors.deposit} />
+            <Field
+              label={`${format === "rfq" ? "Bond" : "Deposit"} (ZEC)`}
+              htmlFor="deposit"
+              error={errors.deposit}
+              hint={`${format === "rfq" ? "Every quoter posts this to quote. Returned with the payout, or when they lose." : "Every bidder pays this to bid. Losers get it back."}${anyDeposit || menu.length === 0 ? "" : " Standard amounts only, so a refund looks like any other lot's."}`}
+            >
+              {anyDeposit || menu.length === 0 ? (
+                <input id="deposit" name="deposit" type="text" inputMode="decimal" autoComplete="off" placeholder="0.05" className={`${inputClass} num`} value={deposit} onChange={(e) => setDeposit(e.target.value)} aria-invalid={!!errors.deposit} />
+              ) : (
+                <select id="deposit" name="deposit" className={`${inputClass} num`} value={deposit} onChange={(e) => setDeposit(e.target.value)} aria-invalid={!!errors.deposit}>
+                  {menu.map((z) => {
+                    const v = zec(z, "").trim();
+                    return (
+                      <option key={z} value={v}>
+                        {v}
+                      </option>
+                    );
+                  })}
+                </select>
+              )}
             </Field>
           </div>
           <Field label={format === "rfq" ? "Your address" : "Payout address"} htmlFor="seller" error={errors.seller} hint={format === "rfq" ? "Your unified address. Any overpayment on settlement returns here shielded." : "Your unified address. The winning amount is sent here shielded."}>

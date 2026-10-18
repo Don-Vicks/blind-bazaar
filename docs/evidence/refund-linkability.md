@@ -38,8 +38,10 @@ falls inside exactly one lot's refund window.
   10 min to 4 h range with a 10 min window.
 - Not modelled, and still a leak at low density: the action count of a batched transaction (visible on chain)
   bounds how many refunds it carries; and refund amounts equal the lot's fixed deposit, so a lot with an unusual
-  deposit is identifiable by amount if an output is ever unshielded. Denomination splitting would address the
-  second; it is not built.
+  deposit would be identifiable by amount if an output is ever unshielded. Deposits are therefore drawn from one
+  short menu (0.001 to 5 ZEC in a 1-2-5 series, `services/auction/src/denom.rs`; `ALLOW_ANY_DEPOSIT=true`
+  overrides), so a 0.05 ZEC refund looks like every other 0.05 ZEC refund. Splitting refunds into denominations
+  was rejected: each extra output costs a ZIP-317 action fee and the piece count leaks what the amount would.
 
 Reproduce: `bb-auction simulate-refunds --delay-min 30 --delay-max 300 --window-secs 60` and
 `bb-auction simulate-refunds`.

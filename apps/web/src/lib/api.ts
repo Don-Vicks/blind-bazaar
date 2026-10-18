@@ -153,8 +153,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T;
 }
 
+export interface Rules {
+  deposit_menu_zats: number[];
+  allow_any_deposit: boolean;
+  formats: string[];
+  settlement_window_secs: number;
+}
+
 export const api = {
   health: () => request<Health>("/health"),
+  rules: () => request<Rules>("/rules"),
   auctions: () => request<Auction[]>("/auctions"),
   auction: (id: string) => request<AuctionView>(`/auctions/${id}`),
   receipts: (id: string) => request<Receipts>(`/auctions/${id}/receipts`),

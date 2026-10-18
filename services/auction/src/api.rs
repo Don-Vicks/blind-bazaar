@@ -42,6 +42,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .merge(limited)
         .route("/health", get(health))
+        .route("/rules", get(rules))
         .route("/auctions", get(list_auctions).post(create_auction))
         .route("/auctions/{id}", get(get_auction))
         .route("/auctions/{id}/receipts", get(receipts))
@@ -138,6 +139,16 @@ async fn health(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiRe
         signing: s.signing,
         freeze: s.freeze,
     }))
+}
+
+/// Static rules a client needs before creating a lot.
+async fn rules(State(state): State<Arc<AppState>>) -> ApiResult<serde_json::Value> {
+    Ok(Json(serde_json::json!({
+        "deposit_menu_zats": crate::denom::DEPOSIT_MENU_ZATS,
+        "allow_any_deposit": state.allow_any_deposit,
+        "formats": crate::close::FORMATS,
+        "settlement_window_secs": state.settlement_window_secs,
+    })))
 }
 
 async fn list_auctions(State(state): State<Arc<AppState>>) -> ApiResult<Vec<store::Auction>> {
@@ -246,6 +257,12 @@ async fn create_auction(
     }
     if req.deposit_zats == 0 || req.reserve_zats == 0 {
         return Err(bad("reserve_zats and deposit_zats must be > 0"));
+    }
+    if !state.allow_any_deposit && !crate::denom::is_standard(req.deposit_zats) {
+        return Err(bad(format!(
+            "deposit_zats must be a standard amount so its refunds look like every other lot's: {} ZEC",
+            crate::denom::menu_zec()
+        )));
     }
     if !memo::looks_like_shielded_address(&req.seller_address) {
         return Err(bad("seller_address must be a unified address"));

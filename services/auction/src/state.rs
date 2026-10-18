@@ -62,6 +62,8 @@ pub struct AppState {
     /// Trust the first `x-forwarded-for` entry as the client address (set behind a reverse proxy).
     pub trust_proxy: bool,
     pub freeze: crate::freeze::FreezePlan,
+    /// Accept deposits off the standard menu (`denom.rs`). Off by default: an unusual deposit marks its refunds.
+    pub allow_any_deposit: bool,
     pub settlement_window_secs: i64,
     pub store: Arc<Mutex<Connection>>,
     pub wallet: mpsc::Sender<WalletCmd>,

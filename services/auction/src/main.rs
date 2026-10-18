@@ -1,5 +1,6 @@
 mod api;
 mod close;
+mod denom;
 mod config;
 mod disclosure;
 mod freeze;
@@ -331,6 +332,7 @@ async fn main() -> anyhow::Result<()> {
         cors_origin: cfg.cors_origin.clone(),
         trust_proxy: cfg.trust_proxy,
         freeze: freeze::FreezePlan { height: cfg.freeze_height, paused: cfg.paused },
+        allow_any_deposit: cfg.allow_any_deposit,
         settlement_window_secs: cfg.settlement_window_secs,
         store,
         wallet: tx,
