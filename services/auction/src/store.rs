@@ -124,6 +124,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
         "ALTER TABLE auctions ADD COLUMN clearing_zats INTEGER",
         "ALTER TABLE bids ADD COLUMN price_zats INTEGER",
         "ALTER TABLE bids ADD COLUMN settle_by INTEGER",
+        "ALTER TABLE auctions ADD COLUMN close_height INTEGER",
         "ALTER TABLE envelopes ADD COLUMN address TEXT",
         "ALTER TABLE envelopes ADD COLUMN transparent TEXT",
         "CREATE UNIQUE INDEX IF NOT EXISTS envelopes_address ON envelopes (address)",
@@ -190,6 +191,10 @@ pub struct Auction {
     pub format: String,
     #[serde(default)]
     pub clearing_zats: Option<u64>,
+    /// Last block whose timestamp is at or before `close_at`; bids mined after it are late. Fixed by the
+    /// chain, so every process that reads the chain agrees on the ledger.
+    #[serde(default)]
+    pub close_height: Option<u32>,
 }
 
 fn one() -> u32 {
@@ -201,7 +206,7 @@ fn first_price() -> String {
 
 const AUCTION_COLS: &str = "id, title, description, reserve_zats, deposit_zats, seller_address, address,
     created_at, close_at, status, closed_at, winner_bid_id, ledger_hash, settlement_txid, payout_txid,
-    settle_by, seller_id, image_url, units, format, clearing_zats";
+    settle_by, seller_id, image_url, units, format, clearing_zats, close_height";
 
 fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
     Ok(Auction {
@@ -226,6 +231,7 @@ fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
         units: r.get::<_, i64>(18)? as u32,
         format: r.get(19)?,
         clearing_zats: r.get::<_, Option<i64>>(20)?.map(|v| v as u64),
+        close_height: r.get::<_, Option<i64>>(21)?.map(|v| v as u32),
     })
 }
 
@@ -703,6 +709,11 @@ pub fn count_bids_with_status(conn: &Connection, auction_id: &str, status: &str)
         params![auction_id, status],
         |r| r.get(0),
     )?)
+}
+
+pub fn set_auction_close_height(conn: &Connection, id: &str, height: u32) -> Result<()> {
+    conn.execute("UPDATE auctions SET close_height = ?2 WHERE id = ?1", params![id, height as i64])?;
+    Ok(())
 }
 
 /// Update the published clearing price (after a second-chance offer reprices the lot).

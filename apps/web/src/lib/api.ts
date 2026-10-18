@@ -18,6 +18,8 @@ export interface Auction {
   units: number;
   format: import("./formats").Format;
   clearing_zats: number | null;
+  /** Last block counted; bids mined after it were late. Set once the chain passed the close time. */
+  close_height?: number | null;
 }
 
 export interface AuctionView extends Auction {

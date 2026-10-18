@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use anyhow::Result;
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use tracing::{info, warn};
 use zcash_protocol::memo::{Memo, MemoBytes};
 
@@ -72,6 +72,25 @@ fn memo_text(bytes: &[u8]) -> Option<String> {
     }
 }
 
+/// Timestamp of a scanned block, from the wallet's block table.
+pub fn block_time(wallet: &Connection, height: u32) -> Result<Option<i64>> {
+    Ok(wallet
+        .query_row("SELECT time FROM blocks WHERE height = ?1", [height as i64], |r| r.get::<_, i64>(0))
+        .optional()?)
+}
+
+/// Height of the last scanned block whose timestamp is at or before `close_at`, and whether a later
+/// block has been scanned (so the close is final). `None` if no block at or before `close_at` is known.
+pub fn close_height_for(wallet: &Connection, close_at: i64) -> Result<Option<(u32, bool)>> {
+    let last: Option<i64> = wallet
+        .query_row("SELECT MAX(height) FROM blocks WHERE time <= ?1", [close_at], |r| r.get(0))
+        .optional()?
+        .flatten();
+    let Some(last) = last else { return Ok(None) };
+    let later: i64 = wallet.query_row("SELECT COUNT(*) FROM blocks WHERE height > ?1", [last], |r| r.get(0))?;
+    Ok(Some((last as u32, later > 0)))
+}
+
 /// Process all received outputs not yet recorded as bids. Returns number of new rows.
 pub fn ingest(store: &Connection, wallet: &Connection) -> Result<usize> {
     let mut inserted = 0;
@@ -94,7 +113,11 @@ pub fn ingest(store: &Connection, wallet: &Connection) -> Result<usize> {
             (None, Some(env)) => (env.payload.clone(), "envelope"),
             (None, None) => continue,
         };
-        let bid_id = record(store, &out, &memo_str, source)?;
+        let mined_at = match out.mined_height {
+            Some(h) => block_time(wallet, h)?,
+            None => None,
+        };
+        let bid_id = record(store, &out, &memo_str, source, mined_at)?;
         if let Some(env) = envelope {
             store::mark_envelope_matched(store, &env.deposit_address, bid_id)?;
         }
@@ -103,7 +126,7 @@ pub fn ingest(store: &Connection, wallet: &Connection) -> Result<usize> {
     Ok(inserted)
 }
 
-fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str) -> Result<i64> {
+fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str, mined_at: Option<i64>) -> Result<i64> {
     let mut nb = NewBid {
         auction_id: None,
         txid: &out.txid,
@@ -128,9 +151,16 @@ fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str
             nb.nonce = Some(&bid.nonce);
             nb.receipt = Some(&receipt);
             let auction = store::get_auction(store, &bid.auction_id)?;
+            // Late is decided by the chain, not by a clock: a bid mined in a block whose timestamp is
+            // after close_at missed the lot, wherever and whenever this process scanned it. Only when the
+            // block time is unknown does the lot's current status decide.
+            let late = |a: &store::Auction| match mined_at {
+                Some(t) => t > a.close_at,
+                None => a.status != "open",
+            };
             nb.status = match &auction {
                 None => "unknown_auction",
-                Some(a) if a.status != "open" => "late",
+                Some(a) if late(a) => "late",
                 // A wallet pays the deposit exactly. A swap rail delivers at least the deposit (it
                 // quotes with a buffer), so envelope bids may overshoot; the excess is refunded with
                 // the deposit or counted towards the price.

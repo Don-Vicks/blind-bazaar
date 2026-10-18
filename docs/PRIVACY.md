@@ -62,6 +62,14 @@ Testnet is on NU7 (since height 4,465,026). Mainnet is on NU6.3 (Ironwood) with 
 The service depends on the pre-release librustzcash line that understands both, and the mainnet demo must be
 recorded before NU7 activates there or re-tested after.
 
+## Close is decided by the chain
+
+A bid is late if the block that mined it has a timestamp after the lot's `close_at`; the closer waits until a
+later block has been scanned before fixing the ledger, and records that `close_height`. Ties between equal bids
+go to the bid mined first (height, then txid, then output index). None of this depends on when a process saw a
+transaction, so the viewer and the spender, reading the same chain, always close on the same ledger and the same
+winner.
+
 ## Ledger commitment and inclusion proofs
 
 At close the ledger hash is the root of a Merkle tree over every valid bid: leaves are

@@ -27,7 +27,7 @@ pub fn is_rfq(format: &str) -> bool {
 }
 
 /// Eligible bids, best first. Selling formats: at or above reserve, highest amount first. RFQ: at or
-/// below budget, lowest quote first. Ties go to the earliest received.
+/// below budget, lowest quote first. Ties go to the bid mined first (height, txid, output index).
 pub fn rank<'a>(valid: &[&'a store::Bid], format: &str, reserve_zats: u64, exclude: &[i64]) -> Vec<&'a store::Bid> {
     let rfq = is_rfq(format);
     let mut v: Vec<&store::Bid> = valid
@@ -41,9 +41,12 @@ pub fn rank<'a>(valid: &[&'a store::Bid], format: &str, reserve_zats: u64, exclu
         .collect();
     v.sort_by(|a, b| {
         let by_amount = if rfq { a.bid_zats.cmp(&b.bid_zats) } else { b.bid_zats.cmp(&a.bid_zats) };
+        // Ties go to the bid the chain saw first: block height, then txid, then output index. Every
+        // process that reads the chain orders the same way; wall-clock receipt order would not.
         by_amount
-            .then_with(|| a.received_at.cmp(&b.received_at))
-            .then_with(|| a.id.cmp(&b.id))
+            .then_with(|| a.mined_height.cmp(&b.mined_height))
+            .then_with(|| a.txid.cmp(&b.txid))
+            .then_with(|| a.output_index.cmp(&b.output_index))
     });
     v
 }
@@ -83,6 +86,18 @@ pub fn close_due(
     let now = store::now();
     let mut closed = 0;
     for auction in store::due_open_auctions(store, now)? {
+        // Close only once the chain has moved past close_at: every bid that can be in the ledger is
+        // then mined and scanned, and any process reading the same chain closes on the same set.
+        let close_height = match wallet_ro {
+            Some(w) => match crate::ingest::close_height_for(w, auction.close_at)? {
+                Some((h, true)) => Some(h),
+                _ => {
+                    tracing::debug!("auction {}: waiting for a block after close_at before closing", auction.id);
+                    continue;
+                }
+            },
+            None => None,
+        };
         let bids = store::bids_for_auction(store, &auction.id)?;
         let valid: Vec<&store::Bid> = bids.iter().filter(|b| b.status == "valid").collect();
 
@@ -118,6 +133,9 @@ pub fn close_due(
             settle_by,
             clearing,
         )?;
+        if let Some(h) = close_height {
+            store::set_auction_close_height(store, &auction.id, h)?;
+        }
         for (i, w) in winners.iter().enumerate() {
             store::set_bid_won(store, w.id, price_of(i), settle_by.unwrap_or(now))?;
         }
@@ -127,6 +145,7 @@ pub fn close_due(
             if winners.is_empty() { "no_sale" } else { "closed" },
             &serde_json::json!({
                 "valid_bids": valid.len(),
+                "close_height": close_height,
                 "ledger_hash": ledger_hash,
                 "units": units,
                 "units_sold": winners.len(),
@@ -426,6 +445,10 @@ mod tests {
     }
 
     fn bid(store: &Connection, auction_id: &str, txid: &str, bid_zats: u64, nonce: &str, status: &str) -> i64 {
+        bid_at(store, auction_id, txid, bid_zats, nonce, status, 1)
+    }
+
+    fn bid_at(store: &Connection, auction_id: &str, txid: &str, bid_zats: u64, nonce: &str, status: &str, height: u32) -> i64 {
         let receipt = crate::memo::receipt(nonce);
         store::insert_bid(
             store,
@@ -434,7 +457,7 @@ mod tests {
                 txid,
                 output_index: 0,
                 pool: 4,
-                mined_height: Some(1),
+                mined_height: Some(height),
                 value_zats: 1_000_000,
                 memo: None,
                 bid_zats: Some(bid_zats),
@@ -472,13 +495,14 @@ mod tests {
     }
 
     #[test]
-    fn tie_goes_to_earliest_bid() {
+    fn tie_goes_to_the_bid_mined_first() {
         let store = store::open_in_memory().unwrap();
         auction(&store, "bbbbbbbb", store::now() - 1);
-        let first = bid(&store, "bbbbbbbb", "11", 4_000_000, "0000000000000011", "valid");
-        let _second = bid(&store, "bbbbbbbb", "12", 4_000_000, "0000000000000012", "valid");
+        // Inserted second, mined earlier: the chain order wins, not the order this process saw them.
+        let _later = bid_at(&store, "bbbbbbbb", "11", 4_000_000, "0000000000000011", "valid", 120);
+        let earlier = bid_at(&store, "bbbbbbbb", "12", 4_000_000, "0000000000000012", "valid", 119);
         close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap();
-        assert_eq!(store::get_auction(&store, "bbbbbbbb").unwrap().unwrap().winner_bid_id, Some(first));
+        assert_eq!(store::get_auction(&store, "bbbbbbbb").unwrap().unwrap().winner_bid_id, Some(earlier));
     }
 
     #[test]

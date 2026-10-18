@@ -144,7 +144,10 @@ export function ResultClient({ id }: { id: string }) {
             <div>
               <Eyebrow>Ledger commitment at close</Eyebrow>
               <Mono className="mt-2 block text-muted-foreground">{data.ledger_hash ?? "—"}</Mono>
-              <p className="mt-1 text-[13px] text-muted-foreground">A hash of every valid {f.verb} at the moment of close, published before any refund leaves.</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                A hash of every valid {f.verb} at the moment of close, published before any refund leaves.
+                {lot.data?.close_height ? ` Close is fixed by the chain: bids mined after block ${lot.data.close_height.toLocaleString()} were late.` : ""}
+              </p>
             </div>
             {vickrey && sold && (
               <div>
