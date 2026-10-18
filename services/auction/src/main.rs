@@ -3,6 +3,7 @@ mod close;
 mod config;
 mod disclosure;
 mod frost;
+mod ratelimit;
 mod ingest;
 mod memo;
 mod merkle;
@@ -279,6 +280,7 @@ async fn main() -> anyhow::Result<()> {
         network_name,
         admin_token: cfg.admin_token.clone(),
         cors_origin: cfg.cors_origin.clone(),
+        trust_proxy: cfg.trust_proxy,
         store,
         wallet: tx,
         status,
@@ -286,6 +288,10 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(&cfg.bind).await?;
     info!("bb-auction listening on {} ({network_name})", cfg.bind);
-    axum::serve(listener, api::router(app_state)).await?;
+    axum::serve(
+        listener,
+        api::router(app_state).into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
     Ok(())
 }

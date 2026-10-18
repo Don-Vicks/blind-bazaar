@@ -25,15 +25,24 @@ pub fn router(state: Arc<AppState>) -> Router {
             .allow_headers([axum::http::header::CONTENT_TYPE, axum::http::HeaderName::from_static("x-admin-token"), axum::http::HeaderName::from_static("x-seller-key")]),
         None => CorsLayer::permissive(),
     };
+    // Anonymous endpoints that derive addresses or run per-caller queries get a per-IP token bucket:
+    // 30 requests burst, one per second sustained. Reads of public auction state are not limited.
+    let limiter = Arc::new(crate::ratelimit::Limiter::new(30, 1.0, state.trust_proxy));
+    let limited = Router::new()
+        .route("/auctions/{id}/envelopes", post(post_envelope))
+        .route("/auctions/{id}/bid-uri", get(bid_uri))
+        .route("/godark/receive-address", post(godark_receive_address))
+        .route("/auctions/{id}/proof", get(inclusion_proof))
+        .route("/auctions/{id}/fulfilment", get(winner_fulfilment))
+        .route("/auctions/{id}/standing", get(standing))
+        .route_layer(axum::middleware::from_fn_with_state(limiter, crate::ratelimit::limit));
     Router::new()
+        .merge(limited)
         .route("/health", get(health))
         .route("/auctions", get(list_auctions).post(create_auction))
         .route("/auctions/{id}", get(get_auction))
         .route("/auctions/{id}/receipts", get(receipts))
-        .route("/auctions/{id}/envelopes", post(post_envelope))
         .route("/auctions/{id}/result", get(result))
-        .route("/auctions/{id}/bid-uri", get(bid_uri))
-        .route("/godark/receive-address", post(godark_receive_address))
         .route("/admin/payouts", post(admin_payout).get(admin_list_payouts))
         .route("/admin/scan-tx", post(admin_scan_tx))
         .route("/admin/block/{height}", get(admin_block))
@@ -44,9 +53,6 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/admin/envelopes", get(admin_envelopes))
         .route("/admin/payouts/sync", post(admin_payouts_sync))
         .route("/auctions/{id}/events", get(auction_events))
-        .route("/auctions/{id}/proof", get(inclusion_proof))
-        .route("/auctions/{id}/fulfilment", get(winner_fulfilment))
-        .route("/auctions/{id}/standing", get(standing))
         .route("/seller/me", get(seller_me))
         .route("/seller/lots", get(seller_lots))
         .route("/seller/lots/{id}", get(seller_lot))
@@ -98,20 +104,28 @@ struct Health {
     signing: Option<String>,
 }
 
-async fn health(State(state): State<Arc<AppState>>) -> ApiResult<Health> {
+/// Public health hides balances, mempool activity and raw errors (deposit timing and amounts would leak);
+/// an admin token reveals them.
+async fn health(State(state): State<Arc<AppState>>, headers: HeaderMap) -> ApiResult<Health> {
     let s = state.status.read().await.clone();
+    let admin = check_admin(&state, &headers).is_ok();
+    let (last_error, balance_zats, mempool_seen, pending_payouts_zats) = if admin {
+        (s.last_error, s.balance_zats, s.mempool_seen, s.pending_payouts_zats)
+    } else {
+        (s.last_error.map(|_| "see admin health".to_string()), None, 0, 0)
+    };
     Ok(Json(Health {
         network: state.network_name,
         chain_tip: s.chain_tip,
         wallet_height: s.wallet_height,
         sync_lag: s.chain_tip.zip(s.wallet_height).map(|(t, w)| t.saturating_sub(w)),
         last_sync_at: s.last_sync_at,
-        last_error: s.last_error,
+        last_error,
         operator_address: s.operator_address,
-        balance_zats: s.balance_zats,
+        balance_zats,
         lightwalletd_version: s.lightwalletd_version,
-        mempool_seen: s.mempool_seen,
-        pending_payouts_zats: s.pending_payouts_zats,
+        mempool_seen,
+        pending_payouts_zats,
         dead_payouts: s.dead_payouts,
         low_balance: s.low_balance,
         signing: s.signing,

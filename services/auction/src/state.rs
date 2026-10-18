@@ -43,6 +43,8 @@ pub struct AppState {
     pub network_name: &'static str,
     pub admin_token: String,
     pub cors_origin: Option<String>,
+    /// Trust the first `x-forwarded-for` entry as the client address (set behind a reverse proxy).
+    pub trust_proxy: bool,
     pub store: Arc<Mutex<Connection>>,
     pub wallet: mpsc::Sender<WalletCmd>,
     pub status: Arc<RwLock<SyncStatus>>,

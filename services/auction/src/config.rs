@@ -199,6 +199,10 @@ pub struct Config {
     #[arg(long, env = "CORS_ORIGIN")]
     pub cors_origin: Option<String>,
 
+    /// Behind a reverse proxy that sets `x-forwarded-for`: rate-limit by that address instead of the socket peer.
+    #[arg(long, env = "TRUST_PROXY", default_value_t = false)]
+    pub trust_proxy: bool,
+
     /// Zatoshis the operator keeps in reserve for fees; `/health` warns below pending payouts + this.
     #[arg(long, env = "FEE_RESERVE_ZATS", default_value_t = 1_000_000)]
     pub fee_reserve_zats: u64,
