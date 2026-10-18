@@ -22,6 +22,8 @@ export default function SellPage() {
   const [hours, setHours] = useState("24");
   const [imageUrl, setImageUrl] = useState("");
   const [units, setUnits] = useState("1");
+  const [sealed, setSealed] = useState(true);
+  const [revealHours, setRevealHours] = useState("2");
   const [format, setFormat] = useState<Format>("first_price");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -82,6 +84,7 @@ export default function SellPage() {
       image_url: imageUrl.trim() || undefined,
       units: format === "uniform" ? Number(units) : 1,
       format,
+      reveal_secs: sealed && format !== "rfq" ? Math.round(Number(revealHours) * 3600) : 0,
     });
   }
 
@@ -133,6 +136,30 @@ export default function SellPage() {
             </div>
             <p className="text-[13px] text-muted-foreground">{FORMATS[format].rule}</p>
           </fieldset>
+          {format !== "rfq" && (
+            <fieldset className="flex flex-col gap-2">
+              <legend className="eyebrow mb-2">Who can read bids before close</legend>
+              <label className={`flex cursor-pointer items-start gap-3 rounded-[2px] border px-3 py-3 text-[14px] ${sealed ? "border-accent" : "border-hairline-strong"}`}>
+                <input type="radio" name="sealed" checked={sealed} onChange={() => setSealed(true)} className="mt-1 accent-[var(--accent)]" />
+                <span>
+                  Nobody, not even the auction (sealed-reveal)
+                  <span className="block text-[13px] text-muted-foreground">Bids carry a commitment to the amount. After close, bidders reveal within a window; anyone who does not is refunded in full and cannot win.</span>
+                </span>
+              </label>
+              <label className={`flex cursor-pointer items-start gap-3 rounded-[2px] border px-3 py-3 text-[14px] ${!sealed ? "border-accent" : "border-hairline-strong"}`}>
+                <input type="radio" name="sealed" checked={!sealed} onChange={() => setSealed(false)} className="mt-1 accent-[var(--accent)]" />
+                <span>
+                  The auction's viewing key (classic)
+                  <span className="block text-[13px] text-muted-foreground">Bids carry the amount; the result is final the moment the lot closes, with no reveal step for bidders.</span>
+                </span>
+              </label>
+              {sealed && (
+                <Field label="Reveal window (hours)" htmlFor="reveal-hours" hint="How long bidders have to reveal after close. Bids not revealed in time are refunded.">
+                  <input id="reveal-hours" type="number" min="0.1" max="168" step="0.1" className={`${inputClass} num`} value={revealHours} onChange={(e) => setRevealHours(e.target.value)} />
+                </Field>
+              )}
+            </fieldset>
+          )}
           <div className="grid gap-5 sm:grid-cols-2">
             <Field label={`${FORMATS[format].floorLabel} (ZEC)`} htmlFor="reserve" error={errors.reserve} hint={format === "rfq" ? "The most you will pay." : "Lowest bid you will accept."}>
               <input id="reserve" name="reserve" type="text" inputMode="decimal" autoComplete="off" placeholder="0.5" className={`${inputClass} num`} value={reserve} onChange={(e) => setReserve(e.target.value)} aria-invalid={!!errors.reserve} />

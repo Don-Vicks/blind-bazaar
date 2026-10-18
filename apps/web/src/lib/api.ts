@@ -9,7 +9,7 @@ export interface Auction {
   address: string;
   created_at: number;
   close_at: number;
-  status: "open" | "closed" | "no_sale" | "settled" | "paid" | "unsettled";
+  status: "open" | "revealing" | "closed" | "no_sale" | "settled" | "paid" | "unsettled";
   closed_at: number | null;
   ledger_hash: string | null;
   settlement_txid: string | null;
@@ -20,6 +20,10 @@ export interface Auction {
   clearing_zats: number | null;
   /** Last block counted; bids mined after it were late. Set once the chain passed the close time. */
   close_height?: number | null;
+  /** Sealed-reveal: seconds after close in which bidders reveal. 0 = bids carry the amount. */
+  reveal_secs?: number;
+  reveal_until?: number | null;
+  commit_hash?: string | null;
 }
 
 export interface AuctionView extends Auction {
@@ -55,6 +59,7 @@ export interface AuctionResult {
   price_source: "own_bid" | "lowest_winning" | "second_bid" | "reserve" | "lowest_quote" | null;
   /** Vickrey: the runner-up's ledger leaf and Merkle path proving the price is a committed bid. */
   price_proof: { receipt: string; bid_zats: number; nonce: string; proof: import("@blind-bazaar/sdk").InclusionProof } | null;
+  sealed?: { sealed: number; revealed: number; unrevealed: number; reveal_until: number | null; commit_hash: string | null };
 }
 
 export interface ProofResponse {
@@ -92,7 +97,7 @@ export interface SellerLotDetail extends SellerLot {
 export interface Standing {
   receipt: string;
   status: string;
-  outcome: "pending" | "won" | "settled" | "lost" | "forfeited" | "expired" | "rejected";
+  outcome: "pending" | "sealed" | "reveal_now" | "revealed" | "unrevealed" | "won" | "settled" | "lost" | "forfeited" | "expired" | "rejected";
   format: import("./formats").Format;
   deposit_zats: number;
   price_zats: number | null;
@@ -101,6 +106,7 @@ export interface Standing {
   settlement?: { uri: string; memo: string; amount_zats: number; address: string; settle_by: number | null };
   payouts: { id: number; kind: string; status: string; value_zats: number; txid: string | null }[];
   fulfilment?: string;
+  reveal_until?: number | null;
 }
 
 export interface Health {
@@ -163,6 +169,8 @@ export const api = {
     request<{ ok: boolean }>(`/seller/lots/${id}/fulfilment`, { method: "POST", headers: { "x-seller-key": key }, body: JSON.stringify({ note }) }),
   fulfilment: (id: string, secret: string) =>
     request<{ note: string | null; updated_at: number | null }>(`/auctions/${id}/fulfilment?secret=${encodeURIComponent(secret)}`),
+  reveal: (id: string, secret: string, bidZats: bigint, salt: string) =>
+    request<{ ok: boolean; receipt: string }>(`/auctions/${id}/reveals`, { method: "POST", body: JSON.stringify({ secret, bid_zats: Number(bidZats), salt }) }),
   standing: (id: string, secret: string) => request<Standing>(`/auctions/${id}/standing?secret=${encodeURIComponent(secret)}`),
   postEnvelope: (id: string, body: Record<string, unknown>) =>
     request<{ ok: boolean; receipt: string }>(`/auctions/${id}/envelopes`, {

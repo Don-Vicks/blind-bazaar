@@ -1,6 +1,6 @@
 "use client";
 
-import { useQueries } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
 import { GoDark } from "@blind-bazaar/go-dark";
@@ -14,6 +14,8 @@ export interface SavedBid {
   /** Authenticates the bidder to the service. Absent for bids made before secrets existed. */
   secret?: string;
   bid?: string;
+  /** Sealed-reveal lots: the salt behind the commitment. */
+  salt?: string;
 }
 
 /** Bids this browser prepared for `auctionId`, from localStorage. */
@@ -28,6 +30,10 @@ export function savedBids(auctionId: string): SavedBid[] {
 
 const OUTCOME: Record<string, { title: string; body: string }> = {
   pending: { title: "Your bid is in.", body: "It was read and counted. Nothing more to do until the lot closes." },
+  sealed: { title: "Your sealed bid is in.", body: "Only its commitment is on record; nobody, including the auction, knows the amount. When the lot closes you reveal it here." },
+  reveal_now: { title: "Reveal your bid now.", body: "The lot has closed. Reveal before the window ends or your deposit is returned and the bid cannot win." },
+  revealed: { title: "Revealed.", body: "Your bid is counted. The result appears when the reveal window ends." },
+  unrevealed: { title: "Not revealed in time.", body: "Your deposit is being returned in full. The bid could not take part." },
   won: { title: "You won.", body: "Pay the balance below from your Zcash wallet before the deadline. Then the seller is paid and the delivery note appears here." },
   settled: { title: "You won and paid.", body: "The seller has been paid or is being paid. The delivery note is below." },
   lost: { title: "Not this time.", body: "Your deposit is coming back to the refund address you sealed into your bid, as a private payment, after a short random delay. Nobody learns you bid." },
@@ -63,11 +69,16 @@ export function StandingPanel({ auctionId, network }: { auctionId: string; netwo
 
 function StandingCard({ saved, standing, error, network, auctionId }: { saved: SavedBid; standing?: Standing; error: string | null; network: "test" | "main"; auctionId: string }) {
   const [copied, setCopied] = useState(false);
+  const qc = useQueryClient();
   if (error) return <Panel className="text-[14px] text-muted-foreground">Could not load your bid: {error}</Panel>;
   if (!standing) return <Panel className="text-[14px] text-muted-foreground">Checking your bid…</Panel>;
   const o = OUTCOME[standing.outcome] ?? OUTCOME.rejected;
   const rfq = standing.format === "rfq";
   const refund = standing.payouts.find((p) => p.kind === "refund");
+  const reveal = useMutation({
+    mutationFn: () => api.reveal(auctionId, saved.secret!, BigInt(saved.bid ?? "0"), saved.salt ?? ""),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["standing", auctionId, saved.secret] }),
+  });
   async function copy(text: string) {
     try {
       await navigator.clipboard.writeText(text);
@@ -94,6 +105,19 @@ function StandingCard({ saved, standing, error, network, auctionId }: { saved: S
           <div><dt className="eyebrow">{rfq ? "Bond" : "Deposit paid"}</dt><dd className="num mt-1">{zec(standing.deposit_zats)}</dd></div>
           <div><dt className="eyebrow">{rfq ? "You receive" : "Still owed"}</dt><dd className="num mt-1">{rfq ? zec(standing.price_zats + standing.deposit_zats) : zec(standing.owed_zats)}</dd></div>
         </dl>
+      )}
+      {standing.outcome === "reveal_now" && (
+        <div className="hairline-t flex flex-col gap-3 pt-5">
+          {saved.bid && saved.salt ? (
+            <>
+              <p className="text-[14px]">Reveal {zec(Number(saved.bid))}{standing.reveal_until ? `, before ${dateTime(standing.reveal_until)}` : ""}.</p>
+              <Button onClick={() => reveal.mutate()} disabled={reveal.isPending}>{reveal.isPending ? "Revealing…" : "Reveal my bid"}</Button>
+              {reveal.isError && <p className="text-[13px] text-danger">{(reveal.error as Error).message}</p>}
+            </>
+          ) : (
+            <p className="text-[13px] text-muted-foreground">This browser does not hold the amount and reveal code for this bid. Use the device you bid from, or import the bid key and reveal code on the status page.</p>
+          )}
+        </div>
       )}
       {standing.settlement && (
         <div className="hairline-t flex flex-col gap-4 pt-5">

@@ -88,7 +88,7 @@ export function Field({
 export const inputClass = `min-h-11 w-full rounded-[2px] border border-hairline-strong bg-transparent px-3 text-[15px] placeholder:text-muted-foreground/60 transition-colors duration-150 hover:border-foreground/40 focus:border-foreground ${focus}`;
 
 export function StatusDot({ status }: { status: string }) {
-  const live = status === "open";
+  const live = status === "open" || status === "revealing";
   const done = status === "paid" || status === "settled";
   return (
     <span className="inline-flex items-center gap-2 text-[13px] text-muted-foreground">

@@ -12,10 +12,10 @@ import { Button, Eyebrow, Field, Mono, Panel, inputClass } from "@/components/ui
 
 const RECEIPTS_KEY = "bb.receipts";
 
-export function rememberReceipt(auctionId: string, receipt: string, nonce: string, secret: string, bidZats?: bigint) {
+export function rememberReceipt(auctionId: string, receipt: string, nonce: string, secret: string, bidZats?: bigint, salt?: string) {
   try {
-    const all = JSON.parse(localStorage.getItem(RECEIPTS_KEY) ?? "{}") as Record<string, { receipt: string; nonce: string; secret: string; bid?: string }[]>;
-    (all[auctionId] ??= []).push({ receipt, nonce, secret, bid: bidZats?.toString() });
+    const all = JSON.parse(localStorage.getItem(RECEIPTS_KEY) ?? "{}") as Record<string, { receipt: string; nonce: string; secret: string; bid?: string; salt?: string }[]>;
+    (all[auctionId] ??= []).push({ receipt, nonce, secret, bid: bidZats?.toString(), salt });
     localStorage.setItem(RECEIPTS_KEY, JSON.stringify(all));
   } catch {
     /* private mode or storage blocked */
@@ -63,7 +63,7 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
     setErrors(next);
     if (Object.keys(next).length) return;
     const p = await prepareBid(auction, bidZats, refund.trim());
-    rememberReceipt(auction.id, p.receipt, p.bid.nonce, p.secret, p.bid.bidZats);
+    rememberReceipt(auction.id, p.receipt, p.bid.nonce, p.secret, p.bid.bidZats, p.salt);
     setPrepared(p);
   }
 
@@ -83,6 +83,11 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
         <div>
           <Eyebrow>Your sealed {f.verb}</Eyebrow>
           <p className="serif mt-2 text-[34px] leading-none">{zec(prepared.bid.bidZats)}</p>
+          {prepared.salt && (
+            <p className="mt-2 text-[13px] leading-relaxed text-foreground">
+              This lot hides bids from the auction itself: the memo carries only a commitment. After close, come back here (or paste your bid key on the status page) and reveal within the window, or your deposit is simply returned.
+            </p>
+          )}
           <p className="mt-3 text-[14px] leading-relaxed text-muted-foreground">
             Pay the <span className="num text-foreground">{zec(prepared.depositZats)}</span> {rfq ? "bond" : "deposit"} from Zodl, Zingo or
             YWallet. The {f.verb} travels inside the encrypted memo; only the auction can read it.
@@ -113,8 +118,11 @@ export function BidPanel({ auction }: { auction: AuctionView }) {
           <Eyebrow>Bid key · keep this</Eyebrow>
           <Mono className="mt-2 block">{prepared.secret}</Mono>
           <p className="mt-2 text-[13px] text-muted-foreground">
-            Your private key to this {f.verb}: it shows you whether you won, the balance to pay and the seller&apos;s delivery note, on any device (paste it on the status page). Saved in this browser; nobody else can derive it.
+            Your private key to this {f.verb}: it shows you whether you won, the balance to pay and the seller&apos;s delivery note, on any device (paste it on the status page). Saved in this browser; nobody else can derive it.{prepared.salt ? " Keep the reveal code below with it." : ""}
           </p>
+          {prepared.salt && (
+            <p className="mt-3 text-[12px] text-muted-foreground">Reveal code (needed with the bid key to reveal after close): <span className="num">{prepared.salt}</span></p>
+          )}
           <p className="mt-3 text-[12px] text-muted-foreground">Public receipt, listed by the auction once your {f.verb} lands: <span className="num">{prepared.receipt.slice(0, 24)}…</span></p>
         </div>
         <div className="hairline-t pt-5">

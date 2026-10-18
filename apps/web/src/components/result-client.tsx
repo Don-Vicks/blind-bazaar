@@ -51,6 +51,7 @@ export function ResultClient({ id }: { id: string }) {
   const sent = data.refunds.filter((r) => r.kind === "refund" && r.status === "sent").length;
   const pending = data.refunds.filter((r) => r.kind === "refund" && r.status !== "sent").length;
   const disclosure = (Array.isArray(data.disclosure) ? data.disclosure[0] : data.disclosure) as { verified_against_chain?: boolean; cmx?: string; action_index?: number } | null;
+  const revealing = data.status === "revealing";
   const sold = data.winning_amount_zats !== null;
   const uniform = data.format === "uniform";
   const vickrey = data.format === "vickrey";
@@ -68,7 +69,7 @@ export function ResultClient({ id }: { id: string }) {
         <LotImage id={id} src={lot.data?.image_url} alt={lot.data?.title ?? ""} ratio="16/7" className={sold ? "" : "opacity-60"} />
         <div className="absolute bottom-0 left-0 flex items-end gap-5 p-5 sm:p-8">
           <span className="rounded-[2px] bg-background/90 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-foreground backdrop-blur">
-            {sold ? (rfq ? "Awarded" : "Sold") : rfq ? "No award" : "Unsold"}
+            {revealing ? "Revealing" : sold ? (rfq ? "Awarded" : "Sold") : rfq ? "No award" : "Unsold"}
           </span>
         </div>
       </div>
@@ -81,7 +82,12 @@ export function ResultClient({ id }: { id: string }) {
               <StatusDot status={data.status} />
             </div>
             {lot.data && <p className="serif mt-4 text-[26px] leading-tight text-muted-foreground">{lot.data.title}</p>}
-            <h1 className="serif mt-2 text-[56px] leading-[0.95] sm:text-[96px]">{sold ? zec(data.winning_amount_zats!) : "No sale."}</h1>
+            <h1 className="serif mt-2 text-[56px] leading-[0.95] sm:text-[96px]">{revealing ? "Not yet." : sold ? zec(data.winning_amount_zats!) : "No sale."}</h1>
+            {revealing && data.sealed && (
+              <p className="mt-6 max-w-[52ch] text-[17px] leading-[1.6] text-muted-foreground">
+                The lot closed with {data.sealed.sealed + data.sealed.revealed} sealed bids and nobody, including the auction, knew any amount. {data.sealed.revealed} revealed so far{data.sealed.reveal_until ? `; the window ends ${duration(Math.max(0, data.sealed.reveal_until - Math.floor(Date.now() / 1000)))} from now` : ""}. Unrevealed bids are refunded in full and cannot win. The commitment root below was fixed before any reveal.
+              </p>
+            )}
             <p className="dropcap mt-8 max-w-[52ch] text-[17px] leading-[1.6] text-muted-foreground">
               {sold
                 ? uniform
@@ -139,6 +145,13 @@ export function ResultClient({ id }: { id: string }) {
                   ))}
                 </ul>
                 <p className="mt-1 text-[13px] text-muted-foreground">Indistinguishable on the explorer from any other shielded transaction. Only the proof ties them to this lot.</p>
+              </div>
+            )}
+            {data.sealed?.commit_hash && (
+              <div>
+                <Eyebrow>Commitment root at close</Eyebrow>
+                <Mono className="mt-2 block text-muted-foreground">{data.sealed.commit_hash}</Mono>
+                <p className="mt-1 text-[13px] text-muted-foreground">A hash of every sealed commitment the moment the lot closed, before any amount was known. Reveals that do not match a committed amount are rejected.</p>
               </div>
             )}
             <div>

@@ -11,6 +11,7 @@ import {
   parseZec,
   prepareBid,
   nonceFromSecret,
+  commitment,
   receipt,
   leafHash,
   verifyInclusion,
@@ -56,6 +57,19 @@ describe("zip321", () => {
   });
   it("refuses memo on transparent address", () => {
     expect(() => buildPaymentUri({ address: "t1abc", amountZats: 1n, memo: "x" })).toThrow();
+  });
+});
+
+describe("sealed-reveal", () => {
+  it("commitment matches the Rust vector and the memo carries no amount", async () => {
+    expect(await commitment("ab", 1n, "00")).toBe("44b0ebb0eba21fe71bc5f2b2df7753b86271bf1edc7ee876d4406f1f4efff064");
+    const p = await prepareBid({ id: "7k2m9q4e", address: UA, deposit_zats: 1_000_000, reveal_secs: 600 }, 5_000_000n, UA);
+    expect(p.memo.startsWith("BB1C|")).toBe(true);
+    expect(p.memo).not.toContain("5000000");
+    expect(p.salt).toMatch(/^[0-9a-f]{32}$/);
+    const parsed = parseMemo(p.memo);
+    expect(parsed.kind).toBe("commit");
+    if (parsed.kind === "commit") expect(parsed.commit.commitment).toBe(await commitment("7k2m9q4e", 5_000_000n, p.salt!));
   });
 });
 

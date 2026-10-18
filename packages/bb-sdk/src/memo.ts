@@ -15,7 +15,15 @@ export interface Settlement {
   nonce: string;
 }
 
-export type Parsed = { kind: "bid"; bid: Bid } | { kind: "settlement"; settlement: Settlement };
+/** A sealed-reveal bid: the memo carries sha256("<auction>|<bid_zats>|<salt>") instead of the amount. */
+export interface Commit {
+  auctionId: string;
+  commitment: string;
+  refundAddress: string;
+  nonce: string;
+}
+
+export type Parsed = { kind: "bid"; bid: Bid } | { kind: "settlement"; settlement: Settlement } | { kind: "commit"; commit: Commit };
 
 export class MemoError extends Error {
   constructor(public readonly code: string, message: string) {
@@ -54,6 +62,15 @@ export function parseMemo(memo: string): Parsed {
     if (!isNonce(nonce)) throw new MemoError("nonce", "invalid nonce");
     return { kind: "bid", bid: { auctionId, bidZats: BigInt(amount), refundAddress, nonce } };
   }
+  if (tag === "BB1C") {
+    if (fields.length !== 4) throw new MemoError("field_count", "wrong field count");
+    const [auctionId, commitment, refundAddress, nonce] = fields;
+    if (!isAuctionId(auctionId)) throw new MemoError("auction_id", "invalid auction id");
+    if (!isCommitment(commitment)) throw new MemoError("commitment", "invalid commitment");
+    if (!looksLikeShieldedAddress(refundAddress)) throw new MemoError("refund_address", "invalid refund address");
+    if (!isNonce(nonce)) throw new MemoError("nonce", "invalid nonce");
+    return { kind: "commit", commit: { auctionId, commitment, refundAddress, nonce } };
+  }
   if (tag === "BB1S") {
     if (fields.length !== 2) throw new MemoError("field_count", "wrong field count");
     const [auctionId, nonce] = fields;
@@ -62,6 +79,22 @@ export function parseMemo(memo: string): Parsed {
     return { kind: "settlement", settlement: { auctionId, nonce } };
   }
   throw new MemoError("not_bb1", "memo does not start with BB1");
+}
+
+export function isCommitment(s: string): boolean {
+  return /^[0-9a-f]{64}$/.test(s);
+}
+
+export function isSalt(s: string): boolean {
+  return /^[0-9a-f]{32}$/.test(s);
+}
+
+export async function commitment(auctionId: string, bidZats: bigint, salt: string): Promise<string> {
+  return sha256Hex(`${auctionId}|${bidZats.toString()}|${salt}`);
+}
+
+export function encodeCommit(c: Commit): string {
+  return `BB1C|${c.auctionId}|${c.commitment}|${c.refundAddress}|${c.nonce}`;
 }
 
 export function encodeBid(bid: Bid): string {

@@ -59,6 +59,7 @@ export function AuctionClient({ id }: { id: string }) {
             <Eyebrow>
               Lot {data.id}
               {data.units > 1 ? ` · edition of ${data.units} · uniform price` : f.tag ? ` · ${f.name.toLowerCase()}` : ""}
+              {(data.reveal_secs ?? 0) > 0 ? " · sealed from the auction" : ""}
             </Eyebrow>
             <StatusDot status={open ? "open" : data.status === "open" ? "closing" : data.status} />
           </div>
@@ -93,11 +94,13 @@ export function AuctionClient({ id }: { id: string }) {
           </div>
           <div className="grid gap-6 text-[14px] leading-relaxed text-muted-foreground sm:grid-cols-3">
             <p>
-              <span className="text-foreground">1. Seal.</span> Your {f.verb} is written into the encrypted memo of one shielded
-              payment of the {data.format === "rfq" ? "bond" : "deposit"}.
+              <span className="text-foreground">1. Seal.</span> {(data.reveal_secs ?? 0) > 0
+                ? `A commitment to your ${f.verb}, not the amount, is written into the encrypted memo of one shielded payment of the deposit. Not even the auction can read the amount before close.`
+                : `Your ${f.verb} is written into the encrypted memo of one shielded payment of the ${data.format === "rfq" ? "bond" : "deposit"}.`}
             </p>
             <p>
               <span className="text-foreground">2. Close.</span>{" "}
+              {(data.reveal_secs ?? 0) > 0 ? "After close, bidders reveal their amounts within the window; a bid not revealed is refunded in full. Then: " : ""}
               {data.units > 1
                 ? `The top ${data.units} bids at or above reserve win and every winner pays the lowest winning bid. A hash of the bid ledger is published.`
                 : f.rule}
@@ -126,6 +129,14 @@ export function AuctionClient({ id }: { id: string }) {
       <aside className="rise rise-2 sm:col-span-5 sm:sticky sm:top-8 sm:self-start">
         {open ? (
           <BidPanel auction={data} />
+        ) : data.status === "revealing" ? (
+          <Panel className="flex flex-col items-start gap-5">
+            <p className="serif text-[28px]">Closed. Bidders are revealing.</p>
+            <p className="text-muted-foreground">
+              Bids on this lot carried only a commitment, so nobody knew any amount before close. Bidders now reveal their amounts{data.reveal_until ? ` until ${dateTime(data.reveal_until)}` : ""}; the result follows. If you bid, open the status page to reveal.
+            </p>
+            <LinkButton href={`/a/${data.id}/status`}>Reveal my bid</LinkButton>
+          </Panel>
         ) : (
           <Panel className="flex flex-col items-start gap-5">
             <p className="serif text-[28px]">Bidding has closed.</p>
