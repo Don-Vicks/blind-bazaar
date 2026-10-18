@@ -269,10 +269,17 @@ impl Worker {
         use crate::frost::{Escrow, FrostSpender, HttpSigner, LocalSigner, SignerHost, SignerPolicy, SignerTransport};
         let escrow = Escrow::load(escrow_path)?;
         let mut signers: Vec<Box<dyn SignerTransport>> = Vec::new();
-        for url in &self.cfg.frost_signers {
-            if !url.trim().is_empty() {
-                signers.push(Box::new(HttpSigner::new(url.trim(), self.cfg.frost_token.clone())?));
+        for entry in &self.cfg.frost_signers {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
             }
+            // `url|token` gives each signer its own credential; a bare url falls back to FROST_TOKEN.
+            let (url, token) = match entry.split_once('|') {
+                Some((u, t)) => (u.trim(), Some(t.trim().to_string())),
+                None => (entry, self.cfg.frost_token.clone()),
+            };
+            signers.push(Box::new(HttpSigner::new(url, token)?));
         }
         for path in &self.cfg.frost_signer_shares {
             warn!("running signer share {} in-process: no separation from the spender (development only)", path.display());

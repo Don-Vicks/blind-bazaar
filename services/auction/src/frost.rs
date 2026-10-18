@@ -111,6 +111,112 @@ pub fn keygen(max: u16, min: u16, out: &Path) -> Result<Escrow> {
     Ok(escrow)
 }
 
+/// File-based distributed key generation. Each host keeps its own secrets; only the `.round1.json`
+/// (broadcast) and `.to-M.round2.json` (private, to host M) files cross machines.
+pub mod dkg_ceremony {
+    use super::*;
+    use bb_frost::dkg;
+    use std::collections::BTreeMap;
+
+    fn write_secret(path: &Path, body: &str) -> Result<()> {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(path)
+            .with_context(|| format!("create {} (refusing to overwrite)", path.display()))?;
+        f.write_all(body.as_bytes())?;
+        Ok(())
+    }
+
+    fn read(path: &Path) -> Result<String> {
+        std::fs::read_to_string(path).with_context(|| format!("read {}", path.display()))
+    }
+
+    /// Every `dkg-N.round1.json` in `dir` except this host's own, keyed by identifier.
+    fn others_round1(dir: &Path, me: u16) -> Result<BTreeMap<bb_frost::Identifier, dkg::Round1Package>> {
+        let mut out = BTreeMap::new();
+        for entry in std::fs::read_dir(dir)? {
+            let path = entry?.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if let Some(rest) = name.strip_prefix("dkg-").and_then(|r| r.strip_suffix(".round1.json")) {
+                let n: u16 = rest.parse().with_context(|| format!("bad participant number in {name}"))?;
+                if n == me {
+                    continue;
+                }
+                let pkg = dkg::round1_package_from_hex(read(&path)?.trim()).map_err(|e| anyhow!("{name}: {e}"))?;
+                out.insert(dkg::identifier(n).map_err(|e| anyhow!("{e}"))?, pkg);
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn round1(id: u16, max: u16, min: u16, dir: &Path) -> Result<()> {
+        if id == 0 || id > max || min < 2 || min > max {
+            return Err(anyhow!("need 1 <= id <= max and 2 <= min <= max"));
+        }
+        std::fs::create_dir_all(dir)?;
+        let ident = dkg::identifier(id).map_err(|e| anyhow!("{e}"))?;
+        let (secret, package) = dkg::part1(ident, max, min).map_err(|e| anyhow!("{e}"))?;
+        write_secret(&dir.join(format!("dkg-{id}.secret1")), &dkg::round1_secret_to_hex(&secret).map_err(|e| anyhow!("{e}"))?)?;
+        std::fs::write(dir.join(format!("dkg-{id}.round1.json")), dkg::round1_package_to_hex(&package).map_err(|e| anyhow!("{e}"))?)?;
+        std::fs::write(dir.join(format!("dkg-{id}.params")), format!("{max} {min}"))?;
+        println!("round 1 done for participant {id}: share dkg-{id}.round1.json with every other host; keep dkg-{id}.secret1 here");
+        Ok(())
+    }
+
+    pub fn round2(id: u16, dir: &Path) -> Result<()> {
+        let secret = dkg::round1_secret_from_hex(read(&dir.join(format!("dkg-{id}.secret1")))?.trim()).map_err(|e| anyhow!("{e}"))?;
+        let others = others_round1(dir, id)?;
+        let params = read(&dir.join(format!("dkg-{id}.params")))?;
+        let max: usize = params.split_whitespace().next().and_then(|v| v.parse().ok()).unwrap_or(0);
+        if others.len() + 1 != max {
+            return Err(anyhow!("have {} other round-1 packages, need {}", others.len(), max.saturating_sub(1)));
+        }
+        let (secret2, packages) = dkg::part2(secret, &others).map_err(|e| anyhow!("{e}"))?;
+        write_secret(&dir.join(format!("dkg-{id}.secret2")), &dkg::round2_secret_to_hex(&secret2).map_err(|e| anyhow!("{e}"))?)?;
+        for (to, pkg) in packages {
+            let to_n = u16::from_le_bytes([to.serialize()[0], to.serialize()[1]]);
+            write_secret(&dir.join(format!("dkg-{id}.to-{to_n}.round2.json")), &dkg::round2_package_to_hex(&pkg).map_err(|e| anyhow!("{e}"))?)?;
+        }
+        println!("round 2 done for participant {id}: send each dkg-{id}.to-M.round2.json to host M over a private channel; keep dkg-{id}.secret2 here");
+        Ok(())
+    }
+
+    pub fn finish(id: u16, dir: &Path) -> Result<()> {
+        let secret2 = dkg::round2_secret_from_hex(read(&dir.join(format!("dkg-{id}.secret2")))?.trim()).map_err(|e| anyhow!("{e}"))?;
+        let others = others_round1(dir, id)?;
+        let mut round2 = BTreeMap::new();
+        for (from, _) in &others {
+            let from_n = u16::from_le_bytes([from.serialize()[0], from.serialize()[1]]);
+            let path = dir.join(format!("dkg-{from_n}.to-{id}.round2.json"));
+            let pkg = dkg::round2_package_from_hex(read(&path)?.trim()).map_err(|e| anyhow!("{}: {e}", path.display()))?;
+            round2.insert(*from, pkg);
+        }
+        let share = dkg::part3(&secret2, &others, &round2).map_err(|e| anyhow!("{e}"))?;
+        write_secret(&dir.join(format!("signer-{id}.json")), &share.to_json().map_err(|e| anyhow!("{e}"))?)?;
+        for name in [format!("dkg-{id}.secret1"), format!("dkg-{id}.secret2")] {
+            let _ = std::fs::remove_file(dir.join(name));
+        }
+        println!("participant {id} holds signer-{id}.json; group ak {}", hex::encode(share.group_ak()));
+        Ok(())
+    }
+
+    /// Mint nk/rivk once and write escrow.json next to this host's share. Other hosts check the `ak`.
+    pub fn escrow(id: u16, dir: &Path) -> Result<Escrow> {
+        let share = bb_frost::SignerShare::from_json(&read(&dir.join(format!("signer-{id}.json")))?).map_err(|e| anyhow!("{e}"))?;
+        let params = read(&dir.join(format!("dkg-{id}.params")))?;
+        let mut it = params.split_whitespace().filter_map(|v| v.parse::<u16>().ok());
+        let (max, min) = (it.next().unwrap_or(3), it.next().unwrap_or(2));
+        let escrow = escrow_from_shares(std::slice::from_ref(&share), min, max)?;
+        let mut escrow = escrow;
+        escrow.identifiers = (1..=max)
+            .map(|n| dkg::identifier(n).map(|i| bb_frost::wire::identifier_to_hex(&i)))
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|e| anyhow!("{e}"))?;
+        std::fs::write(dir.join("escrow.json"), serde_json::to_string_pretty(&escrow)?)?;
+        Ok(escrow)
+    }
+}
+
 pub fn show(escrow: &Escrow, params: &Network) -> Result<(String, String)> {
     use zcash_keys::keys::UnifiedAddressRequest;
     let ufvk = escrow.ufvk()?;

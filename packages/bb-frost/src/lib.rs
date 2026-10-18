@@ -83,6 +83,50 @@ pub fn generate(max: u16, min: u16) -> Result<Vec<SignerShare>> {
     Ok(out)
 }
 
+/// Distributed key generation: three rounds, no dealer. Each participant keeps its secret packages on its
+/// own host and exchanges only the public packages. The result is the same `SignerShare` the dealer path
+/// produces, so signing sessions do not care which way the group key was made.
+pub mod dkg {
+    use super::*;
+    use frost::keys::dkg as fd;
+
+    pub type Round1Secret = fd::round1::SecretPackage;
+    pub type Round1Package = fd::round1::Package;
+    pub type Round2Secret = fd::round2::SecretPackage;
+    pub type Round2Package = fd::round2::Package;
+
+    pub fn identifier(n: u16) -> Result<Identifier> {
+        Identifier::try_from(n).map_err(Error::Frost)
+    }
+
+    /// Round 1: commit to a random polynomial. Broadcast the package; keep the secret.
+    pub fn part1(id: Identifier, max: u16, min: u16) -> Result<(Round1Secret, Round1Package)> {
+        fd::part1(id, max, min, rand_core_old::OsRng).map_err(Error::Frost)
+    }
+
+    /// Round 2: with every other participant's round-1 package, produce one secret share per peer.
+    /// Each returned package goes to exactly the peer it is keyed by, over a private channel.
+    pub fn part2(secret: Round1Secret, round1: &BTreeMap<Identifier, Round1Package>) -> Result<(Round2Secret, BTreeMap<Identifier, Round2Package>)> {
+        fd::part2(secret, round1).map_err(Error::Frost)
+    }
+
+    /// Round 3: with every peer's round-1 package and the round-2 packages addressed to this
+    /// participant, derive the long-lived share and the public key package.
+    pub fn part3(secret: &Round2Secret, round1: &BTreeMap<Identifier, Round1Package>, round2: &BTreeMap<Identifier, Round2Package>) -> Result<SignerShare> {
+        let (key_package, public) = fd::part3(secret, round1, round2).map_err(Error::Frost)?;
+        Ok(SignerShare { identifier: *key_package.identifier(), key_package, public })
+    }
+
+    pub fn round1_secret_to_hex(s: &Round1Secret) -> Result<String> { Ok(hex::encode(s.serialize()?)) }
+    pub fn round1_secret_from_hex(s: &str) -> Result<Round1Secret> { Ok(Round1Secret::deserialize(&unhex(s)?)?) }
+    pub fn round1_package_to_hex(p: &Round1Package) -> Result<String> { Ok(hex::encode(p.serialize()?)) }
+    pub fn round1_package_from_hex(s: &str) -> Result<Round1Package> { Ok(Round1Package::deserialize(&unhex(s)?)?) }
+    pub fn round2_secret_to_hex(s: &Round2Secret) -> Result<String> { Ok(hex::encode(s.serialize()?)) }
+    pub fn round2_secret_from_hex(s: &str) -> Result<Round2Secret> { Ok(Round2Secret::deserialize(&unhex(s)?)?) }
+    pub fn round2_package_to_hex(p: &Round2Package) -> Result<String> { Ok(hex::encode(p.serialize()?)) }
+    pub fn round2_package_from_hex(s: &str) -> Result<Round2Package> { Ok(Round2Package::deserialize(&unhex(s)?)?) }
+}
+
 pub fn group_ak(public: &frost::keys::PublicKeyPackage) -> [u8; 32] {
     let bytes = public.verifying_key().serialize().expect("verifying key serializes");
     bytes.try_into().expect("32-byte RedPallas point")
@@ -190,6 +234,57 @@ pub mod wire {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Run a full 3-party DKG in process (each party's packages serialized through the wire helpers,
+    /// as they would be between hosts) and check the resulting 2-of-3 shares sign under the group key.
+    #[test]
+    fn dkg_produces_shares_that_sign_like_dealer_shares() {
+        let ids: Vec<Identifier> = (1..=3).map(|n| dkg::identifier(n).unwrap()).collect();
+        let mut secrets1 = BTreeMap::new();
+        let mut r1 = BTreeMap::new();
+        for id in &ids {
+            let (s, p) = dkg::part1(*id, 3, 2).unwrap();
+            let p = dkg::round1_package_from_hex(&dkg::round1_package_to_hex(&p).unwrap()).unwrap();
+            secrets1.insert(*id, dkg::round1_secret_from_hex(&dkg::round1_secret_to_hex(&s).unwrap()).unwrap());
+            r1.insert(*id, p);
+        }
+        let mut secrets2 = BTreeMap::new();
+        let mut inbox: BTreeMap<Identifier, BTreeMap<Identifier, dkg::Round2Package>> = BTreeMap::new();
+        for id in &ids {
+            let others: BTreeMap<_, _> = r1.iter().filter(|(k, _)| *k != id).map(|(k, v)| (*k, v.clone())).collect();
+            let (s2, out) = dkg::part2(secrets1.remove(id).unwrap(), &others).unwrap();
+            secrets2.insert(*id, s2);
+            for (to, pkg) in out {
+                let pkg = dkg::round2_package_from_hex(&dkg::round2_package_to_hex(&pkg).unwrap()).unwrap();
+                inbox.entry(to).or_default().insert(*id, pkg);
+            }
+        }
+        let mut shares = Vec::new();
+        for id in &ids {
+            let others: BTreeMap<_, _> = r1.iter().filter(|(k, _)| *k != id).map(|(k, v)| (*k, v.clone())).collect();
+            shares.push(dkg::part3(&secrets2[id], &others, &inbox[id]).unwrap());
+        }
+        let ak = shares[0].group_ak();
+        assert!(shares.iter().all(|s| s.group_ak() == ak), "every participant derives the same group key");
+
+        // 2-of-3 signing with participants 2 and 3, re-randomized by a random alpha.
+        let msg = [7u8; 32];
+        let (_, alpha) = mint_nk_rivk();
+        let r = randomizer_from_alpha(&alpha).unwrap();
+        let (n2, c2) = round1(&shares[1]);
+        let (n3, c3) = round1(&shares[2]);
+        let mut commitments = BTreeMap::new();
+        commitments.insert(shares[1].identifier, c2);
+        commitments.insert(shares[2].identifier, c3);
+        let pkg = signing_package(&msg, commitments);
+        let mut sig_shares = BTreeMap::new();
+        sig_shares.insert(shares[1].identifier, round2(&shares[1], &n2, &pkg, &r).unwrap());
+        sig_shares.insert(shares[2].identifier, round2(&shares[2], &n3, &pkg, &r).unwrap());
+        let sig = aggregate(&shares[1].public, &pkg, &sig_shares, &r).unwrap();
+        let rk = randomized_rk(&shares[1].public, &r);
+        let vk = reddsa::VerificationKey::<reddsa::orchard::SpendAuth>::try_from(rk).unwrap();
+        assert!(vk.verify(&msg, &reddsa::Signature::from(sig)).is_ok());
+    }
 
     #[test]
     fn two_of_three_signs_and_verifies_under_randomized_key() {

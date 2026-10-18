@@ -185,6 +185,23 @@ async fn main() -> anyhow::Result<()> {
                 println!("ufvk  {ufvk}");
                 println!("first address {ua}");
             }
+            config::FrostCmd::Dkg { step } => {
+                use config::DkgStep::*;
+                use frost::dkg_ceremony as c;
+                match step {
+                    Round1 { id, max, min, dir } => c::round1(id, max, min, &dir)?,
+                    Round2 { id, dir } => c::round2(id, &dir)?,
+                    Finish { id, dir } => c::finish(id, &dir)?,
+                    Escrow { id, dir } => {
+                        let e = c::escrow(id, &dir)?;
+                        let (ufvk, ua) = frost::show(&e, &cfg.net())?;
+                        println!("escrow {}-of-{} written to {}", e.threshold, e.signers, dir.join("escrow.json").display());
+                        println!("ak    {}", e.ak);
+                        println!("ufvk  {ufvk}");
+                        println!("first address {ua}");
+                    }
+                }
+            }
             config::FrostCmd::Signer { share, escrow, bind, token, max_external_zats } => {
                 let e = frost::Escrow::load(&escrow)?;
                 let host = frost::SignerHost::load(&share, &e, cfg.net(), frost::SignerPolicy { max_external_zats, ..frost::SignerPolicy::default() })?;

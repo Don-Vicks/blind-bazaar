@@ -55,17 +55,25 @@ event log records which signers co-signed each payout (`cosigners` on `refund_se
   below threshold, and the spender verifies every signature under the on-chain `rk`.
 - The viewing key is still shared by the viewer, spender and signers. Privacy of bidders against the
   operator set is unchanged (see `docs/PRIVACY.md`); what changed is that theft needs collusion.
-- Trusted-dealer keygen means one machine briefly saw all shares. Run it air-gapped and discard the
-  dealer state; distributed key generation is the follow-up (reddsa ships `frost::keys::dkg`).
+- Two ways to make the key. `frost keygen` is a trusted dealer: one machine briefly sees all shares, so
+  run it air-gapped and discard the dealer state. `frost dkg` is distributed key generation: each host
+  runs `round1`, `round2` and `finish` on its own machine and only public packages cross between hosts
+  (round-2 packages go to one named peer over a private channel), so no machine ever holds more than
+  its own share. One host then runs `frost dkg escrow` to mint `nk`/`rivk` and write `escrow.json`; the
+  others check the `ak` it prints against their own share before using it.
+- The escrow account is Orchard-only. A rail that can only deliver to a transparent address (NEAR
+  Intents from Solana today) therefore cannot pay into the escrow; the widget refuses the quote in that
+  configuration and says so. Solana entries need the seed-backed operator wallet, or a rail that delivers shielded.
 
 ## Running it
 
 ```
-bb-auction frost keygen --out ./frost
+bb-auction frost keygen --out ./frost          # dealer, or:
+bb-auction frost dkg round1 --id 1 --dir ./dkg  # on each host (id 1..3), then exchange files and run round2, finish, escrow
 # host A, B, C (each gets one share and the public escrow file)
 bb-auction frost signer --share signer-1.json --escrow escrow.json --bind 0.0.0.0:8801 --max-external-zats 100000000
 # spender
-FROST_ESCROW=./frost/escrow.json FROST_SIGNERS=https://a:8801,https://b:8801,https://c:8801 FROST_TOKEN=… ROLE=spender bb-auction
+FROST_ESCROW=./frost/escrow.json FROST_SIGNERS='https://a:8801|tokA,https://b:8801|tokB,https://c:8801|tokC' ROLE=spender bb-auction
 # viewer (unchanged): OPERATOR_UFVK=<from `frost show`> ROLE=viewer bb-auction
 ```
 

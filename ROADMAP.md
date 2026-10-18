@@ -44,7 +44,8 @@ Remove the single operator who can both read bids and move funds.
   derives
 - done (unit-tested; chain run pending): FROST 2-of-3 threshold signing for the spender: the escrow account has no
   spending key, every payout is a PCZT co-signed by independent signer hosts that inspect it first (`docs/FROST.md`)
-- planned: distributed key generation instead of the trusted dealer; signer policy beyond a per-tx cap
+- done: distributed key generation (`frost dkg`, file exchange between hosts); per-signer credentials; signer verifies every output commitment, value balance and fee
+- planned: signer-side check of payouts against the viewer's ledger; rolling spend caps
 - done: bidder-side inclusion proofs: Merkle commitment of the bid ledger at close, per-receipt proof verified in the browser
 - planned: encrypted-to-auction-key bid envelopes for cross-chain entries (rail and relay see ciphertext only)
 - planned: refund batching and timing analysis with documented k-anonymity targets

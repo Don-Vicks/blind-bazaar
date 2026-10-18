@@ -41,6 +41,41 @@ impl std::str::FromStr for Role {
 }
 
 #[derive(Debug, Subcommand, Clone)]
+pub enum DkgStep {
+    Round1 {
+        /// This participant's number, 1..=max.
+        #[arg(long)]
+        id: u16,
+        #[arg(long, default_value_t = 3)]
+        max: u16,
+        #[arg(long, default_value_t = 2)]
+        min: u16,
+        /// Working directory; secrets are written here with mode 0600.
+        #[arg(long)]
+        dir: PathBuf,
+    },
+    Round2 {
+        #[arg(long)]
+        id: u16,
+        #[arg(long)]
+        dir: PathBuf,
+    },
+    Finish {
+        #[arg(long)]
+        id: u16,
+        #[arg(long)]
+        dir: PathBuf,
+    },
+    /// Build `escrow.json` (group key, minted nk/rivk, public package) from this host's finished share.
+    Escrow {
+        #[arg(long)]
+        id: u16,
+        #[arg(long)]
+        dir: PathBuf,
+    },
+}
+
+#[derive(Debug, Subcommand, Clone)]
 pub enum FrostCmd {
     /// Trusted-dealer key generation: writes `<out>/signer-{1,2,3}.json` (each holds one share) and
     /// `<out>/escrow.json` (the group `ak`, minted `nk`/`rivk`, and the encoded full viewing key).
@@ -51,6 +86,13 @@ pub enum FrostCmd {
         min: u16,
         #[arg(long)]
         out: PathBuf,
+    },
+    /// Distributed key generation, one participant per host, exchanged as files (no dealer ever holds the key).
+    /// Order: every host runs `round1`; share the `dkg-N.round1.json` files; every host runs `round2`; send
+    /// each `dkg-N.to-M.round2.json` to host M privately; every host runs `finish`; one host runs `escrow`.
+    Dkg {
+        #[command(subcommand)]
+        step: DkgStep,
     },
     /// Run a signer host: holds one share, inspects and co-signs every PCZT the spender submits.
     Signer {
@@ -176,7 +218,9 @@ pub struct Config {
     #[arg(long, env = "FROST_ESCROW")]
     pub frost_escrow: Option<PathBuf>,
 
-    /// Signer host URLs, comma separated (at least `threshold` must be reachable to spend).
+    /// Signer host URLs, comma separated (at least `threshold` must be reachable to spend). Each entry may
+    /// carry its own credential as `url|token`, so a compromised signer cannot impersonate the spender
+    /// toward another; a bare url uses FROST_TOKEN.
     #[arg(long, env = "FROST_SIGNERS", value_delimiter = ',')]
     pub frost_signers: Vec<String>,
 
