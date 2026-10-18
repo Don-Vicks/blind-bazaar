@@ -40,6 +40,7 @@ impl Worker {
         let wallet_ro = ingest::open_wallet_readonly(&data_db_path)?;
 
         let mut client = wallet::connect(&self.cfg.lightwalletd_url).await?;
+        let mut seed: Option<secrecy::SecretVec<u8>> = None;
         let operator = match self.cfg.role {
             Role::Viewer => {
                 let ufvk = self
@@ -55,9 +56,10 @@ impl Worker {
                     wallet::ensure_escrow_account(&mut db, &mut client, &self.params, &escrow, self.cfg.birthday_height).await?
                 }
                 None => {
-                    let (seed, _created) = wallet::load_or_create_seed(&self.cfg.operator_seed_file)?;
-                    wallet::ensure_operator_account(&mut db, &mut client, &self.params, &seed, self.cfg.birthday_height)
-                        .await?
+                    let (s, _created) = wallet::load_or_create_seed(&self.cfg.operator_seed_file)?;
+                    let op = wallet::ensure_operator_account(&mut db, &mut client, &self.params, &s, self.cfg.birthday_height).await?;
+                    seed = Some(s);
+                    op
                 }
             },
         };
@@ -134,11 +136,18 @@ impl Worker {
                         let r = wallet::sync::inspect_block(&mut client, &self.params, height).await;
                         let _ = reply.send(r);
                     }
+                    WalletCmd::NewAuditAccount { name, reply } => {
+                        let r = match &seed {
+                            Some(s) => wallet::create_lot_account(&mut db, &mut client, &self.params, s, &name).await,
+                            None => Err(anyhow::anyhow!("auditable lots need the seed-backed operator; this instance runs a viewer or escrow account")),
+                        };
+                        let _ = reply.send(r);
+                    }
                 },
                 _ = interval.tick() => {
                     let outcome = tokio::time::timeout(
                         PASS_TIMEOUT,
-                        self.pass(&mut client, &db_cache, &mut db, &wallet_ro, prover.as_ref(), &operator, frost.as_ref()),
+                        self.pass(&mut client, &db_cache, &mut db, &wallet_ro, prover.as_ref(), &operator, frost.as_ref(), seed.as_ref()),
                     )
                     .await
                     .unwrap_or_else(|_| Err(anyhow::anyhow!("pass timed out after {}s; reconnecting", PASS_TIMEOUT.as_secs())));
@@ -165,6 +174,7 @@ impl Worker {
         prover: Option<&LocalTxProver>,
         operator: &wallet::Operator,
         frost: Option<&crate::frost::FrostSpender>,
+        seed: Option<&secrecy::SecretVec<u8>>,
     ) -> Result<()> {
         let memo_key = if self.cfg.disclose_winning_memo { operator.ufvk.clone() } else { None };
         if self.cfg.role == Role::Spender {
@@ -248,6 +258,9 @@ impl Worker {
                 }
             }
             self.process_payouts(client, db, prover, operator.account_id, &auth).await?;
+            if let Some(seed) = seed {
+                self.process_sweeps(client, db, prover, seed).await?;
+            }
         }
         if self.cfg.role == Role::Spender {
             self.report_payouts().await?;
@@ -263,6 +276,83 @@ impl Worker {
                 Some(b) => b < t.payouts_pending_zats + self.cfg.fee_reserve_zats,
                 None => false,
             };
+        }
+        Ok(())
+    }
+
+    /// Auditable lots keep deposits in their own account; once a lot closes (and again after settlement) the
+    /// whole balance is swept into the operator pool, from which refunds and payouts are paid as usual. The
+    /// sweep is the only spend an auditor sees from the lot's published viewing key.
+    async fn process_sweeps(
+        &self,
+        client: &mut wallet::Client,
+        db: &mut wallet::Db,
+        prover: &LocalTxProver,
+        seed: &secrecy::SecretVec<u8>,
+    ) -> Result<()> {
+        use secrecy::ExposeSecret;
+        use zcash_client_backend::data_api::{Account, WalletRead};
+        let due: Vec<store::Payout> = {
+            let store = self.store.lock().await;
+            store::due_payouts(&store, store::now(), MAX_PAYOUT_ATTEMPTS)?.into_iter().filter(|p| p.from_account.is_some()).collect()
+        };
+        for p in due {
+            let uuid = p.from_account.clone().unwrap_or_default();
+            let account_id = match uuid.parse::<uuid::Uuid>() {
+                Ok(u) => zcash_client_sqlite::AccountUuid::from_uuid(u),
+                Err(_) => {
+                    let store = self.store.lock().await;
+                    store::mark_payout_dead(&store, p.id, "bad from_account")?;
+                    continue;
+                }
+            };
+            let policy = wallet::send::confirmations_policy(self.cfg.min_confirmations);
+            let spendable = db
+                .get_wallet_summary(policy)?
+                .and_then(|s| s.account_balances().get(&account_id).map(|b| u64::from(b.spendable_value())))
+                .unwrap_or(0);
+            if spendable < 20_000 {
+                // Nothing (or only dust) to move yet; look again next pass without burning an attempt.
+                continue;
+            }
+            let derivation = match db.get_account(account_id)?.and_then(|a| a.source().key_derivation().cloned()) {
+                Some(d) => d,
+                None => {
+                    let store = self.store.lock().await;
+                    store::mark_payout_dead(&store, p.id, "lot account has no derivation")?;
+                    continue;
+                }
+            };
+            let usk = zcash_keys::keys::UnifiedSpendingKey::from_seed(&self.params, seed.expose_secret(), derivation.account_index())
+                .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+            // Send everything minus the fee. ZIP 317 charges per logical action; try the cheapest estimate first
+            // and step down if the proposal says the balance does not cover it.
+            let mut result = Err(anyhow::anyhow!("no attempt"));
+            let mut amount = spendable.saturating_sub(10_000);
+            for _ in 0..12 {
+                if amount < 10_000 {
+                    break;
+                }
+                let out = Outgoing { address: &p.to_address, zats: amount, memo: None };
+                result = wallet::send::send(db, &self.params, client, prover, account_id, &Authority::Seed(&usk), &out, self.cfg.min_confirmations).await;
+                match &result {
+                    Err(e) if format!("{e:#}").contains("InsufficientFunds") || format!("{e:#}").contains("Insufficient") => amount = amount.saturating_sub(5_000),
+                    _ => break,
+                }
+            }
+            let store = self.store.lock().await;
+            match result {
+                Ok(sent) => {
+                    info!("swept {amount} zats from lot account {uuid} in {}", sent.txid);
+                    store::mark_payout_sent(&store, p.id, &sent.txid)?;
+                    store::insert_event(&store, p.auction_id.as_deref(), "swept", &serde_json::json!({ "txid": sent.txid, "value_zats": amount }))?;
+                }
+                Err(e) => {
+                    warn!("sweep {} failed: {e:#}", p.id);
+                    let backoff = 60 * (1 << p.attempts.min(5));
+                    store::mark_payout_failed(&store, p.id, &format!("{e:#}"), store::now() + backoff)?;
+                }
+            }
         }
         Ok(())
     }
@@ -458,6 +548,9 @@ impl Worker {
         let mut batches: Vec<Vec<store::Payout>> = Vec::new();
         let mut refunds: Vec<store::Payout> = Vec::new();
         for p in due {
+            if p.from_account.is_some() {
+                continue; // sweeps from lot accounts are handled by process_sweeps
+            }
             if matches!(p.kind.as_str(), "refund" | "invalid_refund") {
                 refunds.push(p);
             } else {

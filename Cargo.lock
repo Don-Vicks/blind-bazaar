@@ -276,6 +276,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "zcash_address",
  "zcash_client_backend",
  "zcash_client_sqlite",

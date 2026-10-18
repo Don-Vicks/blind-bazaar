@@ -164,6 +164,9 @@ struct CreateAuction {
     /// commitment instead of the amount, so not even the operator reads a bid before close. 0 or absent
     /// means bids carry the amount (readable by the operator's viewing key while the lot is open).
     reveal_secs: Option<i64>,
+    /// Auditable: the lot gets a wallet account of its own, and its full viewing key is published once the
+    /// lot closes, so anyone can rescan the chain and recompute the result. Reveals every bid after close.
+    auditable: Option<bool>,
 }
 
 /// Constant-time string equality for tokens.
@@ -262,15 +265,31 @@ async fn create_auction(
         None => None,
     };
 
-    let (tx, rx) = oneshot::channel();
-    state
-        .wallet
-        .send(WalletCmd::NewAddress { reply: tx })
-        .await
-        .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
-    let (address, di) = wallet_reply(rx).await??;
-
     let id = memo::random_auction_id(&mut rand::rng());
+    let auditable = req.auditable.unwrap_or(false);
+    let (address, di, audit) = if auditable {
+        let (tx, rx) = oneshot::channel();
+        state
+            .wallet
+            .send(WalletCmd::NewAuditAccount { name: format!("lot-{id}"), reply: tx })
+            .await
+            .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
+        let a = match wallet_reply(rx).await? {
+            Ok(a) => a,
+            Err(e) => return Err(bad(format!("{e:#}"))),
+        };
+        (a.address, String::new(), Some((a.account, a.ufvk, a.birthday)))
+    } else {
+        let (tx, rx) = oneshot::channel();
+        state
+            .wallet
+            .send(WalletCmd::NewAddress { reply: tx })
+            .await
+            .map_err(|_| anyhow::anyhow!("wallet worker gone"))?;
+        let (address, di) = wallet_reply(rx).await??;
+        (address, di, None)
+    };
+
     let conn = state.store.lock().await;
     store::insert_auction(
         &conn,
@@ -289,6 +308,7 @@ async fn create_auction(
             units,
             format,
             reveal_secs,
+            audit: audit.as_ref().map(|(a, k, b)| (a.as_str(), k.as_str(), *b)),
         },
     )?;
     store::insert_event(&conn, Some(&id), "created", &serde_json::json!({ "title": req.title.trim(), "close_at": close_at }))?;
@@ -437,9 +457,32 @@ struct ResultView {
     /// Sealed-reveal lots: reveal progress and the commitment root fixed at close.
     #[serde(skip_serializing_if = "Option::is_none")]
     sealed: Option<SealedCounts>,
+    /// Auditable lots, once closed: the lot's own full viewing key and what to do with it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    audit: Option<AuditView>,
     /// Vickrey: the runner-up's ledger leaf (receipt and amount) with its Merkle path, so anyone can check
     /// the price the winner pays is a bid committed at close. The runner-up's identity stays sealed.
     price_proof: Option<PriceProof>,
+}
+
+#[derive(Serialize)]
+struct AuditView {
+    /// Encoded unified full viewing key of this lot's wallet account. Scanning the chain with it from
+    /// `birthday` shows every deposit and memo this lot received, and the one sweep out, and nothing else.
+    ufvk: String,
+    birthday: u32,
+    address: String,
+    /// Sealed lots: the revealed (receipt, bid, salt) triples, so an auditor can check each commitment.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    reveals: Vec<RevealView>,
+    command: String,
+}
+
+#[derive(Serialize)]
+struct RevealView {
+    receipt: String,
+    bid_zats: u64,
+    salt: String,
 }
 
 #[derive(Serialize)]
@@ -475,6 +518,28 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
         return Err(bad("auction is still open"));
     }
     let bids = store::bids_for_auction(&conn, &id)?;
+    let audit = match (&auction.audit_key, auction.status.as_str()) {
+        (Some(k), "closed" | "no_sale" | "settled" | "paid" | "unsettled") => Some(AuditView {
+            ufvk: k.clone(),
+            birthday: auction.audit_birthday.unwrap_or(0),
+            address: auction.address.clone(),
+            reveals: if auction.sealed() {
+                bids.iter()
+                    .filter(|b| b.revealed_at.is_some())
+                    .filter_map(|b| Some(RevealView { receipt: b.receipt.clone()?, bid_zats: b.bid_zats?, salt: b.salt.clone()? }))
+                    .collect()
+            } else {
+                vec![]
+            },
+            command: format!(
+                "bb-auction audit --ufvk {k} --birthday {} --lot https://HOST/bb/auctions/{} --result https://HOST/bb/auctions/{}/result",
+                auction.audit_birthday.unwrap_or(0),
+                auction.id,
+                auction.id
+            ),
+        }),
+        _ => None,
+    };
     let sealed_counts = auction.sealed().then(|| SealedCounts {
         sealed: bids.iter().filter(|b| b.status == "sealed").count(),
         revealed: bids.iter().filter(|b| b.revealed_at.is_some() && b.status != "unrevealed").count(),
@@ -543,6 +608,7 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
         disclosure,
         price_source,
         sealed: sealed_counts,
+        audit,
         price_proof,
     }))
 }

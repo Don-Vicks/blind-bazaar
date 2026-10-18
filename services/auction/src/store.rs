@@ -128,6 +128,10 @@ fn init_schema(conn: &Connection) -> Result<()> {
         "ALTER TABLE auctions ADD COLUMN reveal_secs INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE auctions ADD COLUMN reveal_until INTEGER",
         "ALTER TABLE auctions ADD COLUMN commit_hash TEXT",
+        "ALTER TABLE auctions ADD COLUMN audit_account TEXT",
+        "ALTER TABLE auctions ADD COLUMN audit_key TEXT",
+        "ALTER TABLE auctions ADD COLUMN audit_birthday INTEGER",
+        "ALTER TABLE payouts ADD COLUMN from_account TEXT",
         "ALTER TABLE bids ADD COLUMN commitment TEXT",
         "ALTER TABLE bids ADD COLUMN salt TEXT",
         "ALTER TABLE bids ADD COLUMN revealed_at INTEGER",
@@ -209,11 +213,22 @@ pub struct Auction {
     /// Sealed-reveal: Merkle root over (receipt, commitment) fixed at close, before any reveal.
     #[serde(default)]
     pub commit_hash: Option<String>,
+    /// Auditable lots have their own wallet account, so a viewing key for this lot alone can be published.
+    #[serde(default, skip_serializing)]
+    pub audit_account: Option<String>,
+    /// The lot account's encoded full viewing key, published on the result once the lot has closed.
+    #[serde(default, skip_serializing)]
+    pub audit_key: Option<String>,
+    #[serde(default)]
+    pub audit_birthday: Option<u32>,
 }
 
 impl Auction {
     pub fn sealed(&self) -> bool {
         self.reveal_secs > 0
+    }
+    pub fn auditable(&self) -> bool {
+        self.audit_key.is_some()
     }
 }
 
@@ -226,7 +241,8 @@ fn first_price() -> String {
 
 const AUCTION_COLS: &str = "id, title, description, reserve_zats, deposit_zats, seller_address, address,
     created_at, close_at, status, closed_at, winner_bid_id, ledger_hash, settlement_txid, payout_txid,
-    settle_by, seller_id, image_url, units, format, clearing_zats, close_height, reveal_secs, reveal_until, commit_hash";
+    settle_by, seller_id, image_url, units, format, clearing_zats, close_height, reveal_secs, reveal_until, commit_hash,
+    audit_account, audit_key, audit_birthday";
 
 fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
     Ok(Auction {
@@ -255,6 +271,9 @@ fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
         reveal_secs: r.get::<_, Option<i64>>(22)?.unwrap_or(0),
         reveal_until: r.get(23)?,
         commit_hash: r.get(24)?,
+        audit_account: r.get(25)?,
+        audit_key: r.get(26)?,
+        audit_birthday: r.get::<_, Option<i64>>(27)?.map(|v| v as u32),
     })
 }
 
@@ -273,13 +292,16 @@ pub struct NewAuction<'a> {
     pub units: u32,
     pub format: &'a str,
     pub reveal_secs: i64,
+    /// Auditable lot: (wallet account uuid, encoded full viewing key, birthday height).
+    pub audit: Option<(&'a str, &'a str, u32)>,
 }
 
 pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
     conn.execute(
         "INSERT INTO auctions (id, title, description, reserve_zats, deposit_zats, seller_address,
-            address, diversifier_index, created_at, close_at, status, seller_id, image_url, units, format, reveal_secs)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, ?12, ?13, ?14, ?15)",
+            address, diversifier_index, created_at, close_at, status, seller_id, image_url, units, format, reveal_secs,
+            audit_account, audit_key, audit_birthday)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
         params![
             a.id,
             a.title,
@@ -295,7 +317,10 @@ pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
             a.image_url,
             a.units as i64,
             a.format,
-            a.reveal_secs
+            a.reveal_secs,
+            a.audit.map(|x| x.0),
+            a.audit.map(|x| x.1),
+            a.audit.map(|x| x.2 as i64),
         ],
     )?;
     Ok(())
@@ -608,6 +633,26 @@ pub struct Payout {
     pub status: String,
     pub attempts: i64,
     pub error: Option<String>,
+    /// Wallet account to spend from; None = the operator account.
+    pub from_account: Option<String>,
+}
+
+/// Queue a payment that spends from a specific wallet account (an auditable lot's sweep).
+pub fn queue_payout_from(
+    conn: &Connection,
+    auction_id: Option<&str>,
+    kind: &str,
+    from_account: &str,
+    to_address: &str,
+    value_zats: u64,
+    not_before: i64,
+) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO payouts (auction_id, bid_id, kind, to_address, value_zats, memo, not_before, created_at, from_account)
+         VALUES (?1, NULL, ?2, ?3, ?4, NULL, ?5, ?6, ?7)",
+        params![auction_id, kind, to_address, value_zats as i64, not_before, now(), from_account],
+    )?;
+    Ok(conn.last_insert_rowid())
 }
 
 pub fn queue_payout(
@@ -630,7 +675,7 @@ pub fn queue_payout(
 
 pub fn due_payouts(conn: &Connection, now: i64, max_attempts: i64) -> Result<Vec<Payout>> {
     let mut stmt = conn.prepare(
-        "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error
+        "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error, from_account
          FROM payouts WHERE status IN ('queued', 'failed') AND not_before <= ?1 AND attempts < ?2
          ORDER BY not_before ASC",
     )?;
@@ -648,6 +693,7 @@ pub fn due_payouts(conn: &Connection, now: i64, max_attempts: i64) -> Result<Vec
             status: r.get(9)?,
             attempts: r.get(10)?,
             error: r.get(11)?,
+            from_account: r.get(12)?,
         })
     })?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -655,7 +701,7 @@ pub fn due_payouts(conn: &Connection, now: i64, max_attempts: i64) -> Result<Vec
 
 pub fn all_payouts(conn: &Connection) -> Result<Vec<Payout>> {
     let mut stmt = conn.prepare(
-        "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error
+        "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error, from_account
          FROM payouts ORDER BY id DESC LIMIT 100",
     )?;
     let rows = stmt.query_map([], |r| {
@@ -672,6 +718,7 @@ pub fn all_payouts(conn: &Connection) -> Result<Vec<Payout>> {
             status: r.get(9)?,
             attempts: r.get(10)?,
             error: r.get(11)?,
+            from_account: r.get(12)?,
         })
     })?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -696,7 +743,7 @@ pub fn refund_latency(conn: &Connection, auction_id: &str) -> Result<(Option<i64
 
 pub fn payouts_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<Payout>> {
     let mut stmt = conn.prepare(
-        "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error
+        "SELECT id, auction_id, bid_id, kind, to_address, value_zats, memo, not_before, txid, status, attempts, error, from_account
          FROM payouts WHERE auction_id = ?1 ORDER BY id ASC",
     )?;
     let rows = stmt.query_map([auction_id], |r| {
@@ -713,6 +760,7 @@ pub fn payouts_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<Pa
             status: r.get(9)?,
             attempts: r.get(10)?,
             error: r.get(11)?,
+            from_account: r.get(12)?,
         })
     })?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -1122,6 +1170,7 @@ pub fn sent_payouts_after(conn: &Connection, after_id: i64) -> Result<Vec<(Payou
                 status: r.get(9)?,
                 attempts: r.get(10)?,
                 error: r.get(11)?,
+                from_account: None,
             },
             r.get::<_, Option<String>>(12)?,
         ))
@@ -1156,7 +1205,7 @@ mod money_tests {
     #[test]
     fn lot_money_sums_bids_and_payouts() {
         let c = open_in_memory().unwrap();
-        insert_auction(&c, &NewAuction { id: "mmmmmmmm", title: "t", description: "", reserve_zats: 2, deposit_zats: 1, seller_address: "u1x", address: "u1y", diversifier_index: None, close_at: 0, seller_id: Some(7), image_url: None, units: 2, format: "uniform", reveal_secs: 0 }).unwrap();
+        insert_auction(&c, &NewAuction { id: "mmmmmmmm", title: "t", description: "", reserve_zats: 2, deposit_zats: 1, seller_address: "u1x", address: "u1y", diversifier_index: None, close_at: 0, seller_id: Some(7), image_url: None, units: 2, format: "uniform", reveal_secs: 0, audit: None }).unwrap();
         fn mk<'a>(txid: &'a str, status: &'a str, val: u64) -> NewBid<'a> {
             NewBid { auction_id: Some("mmmmmmmm"), txid, output_index: 0, pool: 3, mined_height: Some(1), value_zats: val, memo: None, bid_zats: Some(5), refund_address: Some("u1r"), nonce: Some("n"), receipt: Some("r"), status, source: "memo", commitment: None }
         }

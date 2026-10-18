@@ -258,6 +258,28 @@ pub async fn ensure_operator_account(
     Ok(Operator { account_id, usk: Some(usk), ufvk })
 }
 
+/// A wallet account of its own for one auditable lot, derived from the operator seed at the next ZIP 32
+/// index. Its full viewing key can be published after the lot closes and reveals that lot's receipts
+/// and nothing about any other lot.
+pub async fn create_lot_account(
+    db: &mut Db,
+    client: &mut Client,
+    params: &Network,
+    seed: &SecretVec<u8>,
+    name: &str,
+) -> anyhow::Result<crate::state::AuditAccount> {
+    let tip = chain_tip(client).await?;
+    let birthday_height = tip.saturating_sub(1);
+    let birthday = get_wallet_birthday(client, params, birthday_height.into(), None).await?;
+    let (id, usk) = db
+        .create_account(name, seed, &birthday, Some("auditable-lot"))
+        .map_err(|e| anyhow!("{e:?}"))?;
+    let (address, _) = next_auction_address(db, params, id)?;
+    let ufvk = usk.to_unified_full_viewing_key().encode(params).map_err(|e| anyhow!("{e:?}"))?;
+    info!("created lot account {id:?} ({name}) with birthday {birthday_height}");
+    Ok(crate::state::AuditAccount { account: id.expose_uuid().to_string(), address, ufvk, birthday: birthday_height })
+}
+
 /// Orchard-only unified address request so bids never land in Sapling or transparent receivers.
 pub fn orchard_only_request() -> UnifiedAddressRequest {
     UnifiedAddressRequest::ORCHARD

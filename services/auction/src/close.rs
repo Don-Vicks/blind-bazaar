@@ -112,6 +112,7 @@ pub fn close_due(
             },
             None => None,
         };
+        queue_sweep(store, &auction, 30)?;
         if auction.sealed() {
             // Sealed-reveal: fix the set of commitments now, then give bidders the reveal window.
             // Nothing about any amount is known yet, not even to the operator.
@@ -138,6 +139,18 @@ pub fn close_due(
         closed += 1;
     }
     Ok(closed)
+}
+
+/// Auditable lots: move the lot account's balance into the operator pool. Queued at close and after each
+/// settlement payment; the worker sends the whole spendable balance when the row comes due.
+pub fn queue_sweep(store: &Connection, auction: &store::Auction, delay_secs: i64) -> Result<()> {
+    let Some(account) = auction.audit_account.as_deref() else { return Ok(()) };
+    let Some(to) = store::get_meta(store, "operator_address")? else {
+        tracing::warn!("auction {}: no operator address recorded; sweep not queued", auction.id);
+        return Ok(());
+    };
+    store::queue_payout_from(store, Some(&auction.id), "sweep", account, &to, 0, store::now() + delay_secs)?;
+    Ok(())
 }
 
 /// Sealed-reveal lots whose reveal window has ended: unrevealed commitments are refunded in full, then
@@ -339,6 +352,7 @@ pub fn settle_winner(
     source: &str,
 ) -> Result<()> {
     store::set_bid_status(store, bid_id, "settled")?;
+    queue_sweep(store, auction, 30)?;
     let bid = store::get_bid(store, bid_id)?;
     let memo_text = format!("BB1P|{}", auction.id);
     let (payee, payee_amount, overpay_to) = if is_rfq(&auction.format) {
@@ -510,6 +524,7 @@ mod tests {
                 units: 1,
                 format: "first_price",
                 reveal_secs: 0,
+                audit: None,
             },
         )
         .unwrap();
@@ -537,6 +552,7 @@ mod tests {
                 units,
                 format,
                 reveal_secs: 0,
+                audit: None,
             },
         )
         .unwrap();
@@ -693,7 +709,7 @@ mod tests {
             &NewAuction {
                 id: "gggggggg", title: "lot", description: "", reserve_zats: 500_000, deposit_zats: 1_000_000,
                 seller_address: UA, address: UA, diversifier_index: None, close_at: store::now() - 1,
-                seller_id: None, image_url: None, units: 1, format: "first_price", reveal_secs: 0,
+                seller_id: None, image_url: None, units: 1, format: "first_price", reveal_secs: 0, audit: None,
             },
         )
         .unwrap();
@@ -799,7 +815,7 @@ mod tests {
             &NewAuction {
                 id, title: "sealed", description: "", reserve_zats: 2_000_000, deposit_zats: 1_000_000,
                 seller_address: UA, address: UA, diversifier_index: None, close_at: store::now() - 1,
-                seller_id: None, image_url: None, units: 1, format: "first_price", reveal_secs,
+                seller_id: None, image_url: None, units: 1, format: "first_price", reveal_secs, audit: None,
             },
         )
         .unwrap();

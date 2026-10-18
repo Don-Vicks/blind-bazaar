@@ -20,6 +20,19 @@ pub enum WalletCmd {
         height: u32,
         reply: oneshot::Sender<anyhow::Result<serde_json::Value>>,
     },
+    /// Auditable lot: a wallet account of its own. Replies (account uuid, first address, encoded UFVK, birthday).
+    NewAuditAccount {
+        name: String,
+        reply: oneshot::Sender<anyhow::Result<AuditAccount>>,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub struct AuditAccount {
+    pub account: String,
+    pub address: String,
+    pub ufvk: String,
+    pub birthday: u32,
 }
 
 #[derive(Debug, Clone, Default)]
