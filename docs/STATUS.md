@@ -24,6 +24,10 @@ pages; no wallet transaction was involved in those checks.
 - Demo script rewritten around what exists (Vickrey lot where the deposit covers the second price, staged Go Dark
   swap, chain-timed close); `docs/evidence/` skeleton with the txid table format and verifier commands.
 - CI: GitHub Actions runs the Rust tests and the SDK tests and typechecks the web app on every push.
+- Signer ledger check: the viewer exposes `/ledger/payouts` (read-only token); a signer started with
+  `--ledger-url` matches every external output of a PCZT against those expected payouts by Orchard receiver and
+  exact amount, consuming each once; unknown recipients, wrong amounts and repeats are refused. The spender mirrors
+  manual payouts from the viewer so they are in the ledger first. Unit-tested; wired into the regtest FROST run.
 - Auditable lots: `auditable: true` creates a per-lot wallet account; the lot's UFVK is published on the result at
   close; deposits are swept to the operator pool at close and after settlement; `bb-auction audit` rescans with the
   key and compares ledger root, price and winners. Exercised on the testnet service: a lot got ZIP 32 account 1,

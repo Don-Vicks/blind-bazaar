@@ -35,10 +35,10 @@ if [ "$FROST" = "1" ]; then
   "$BIN" frost keygen --out "$DATA/frost" > "$DATA/keygen.log" 2>&1 || { cat "$DATA/keygen.log"; exit 1; }
   for i in 1 2; do
     FROST_TOKEN=regtest-frost "$BIN" frost signer --share "$DATA/frost/signer-$i.json" --escrow "$DATA/frost/escrow.json" \
-      --bind "127.0.0.1:880$i" --max-external-zats 500000000 > "$DATA/signer-$i.log" 2>&1 &
+      --bind "127.0.0.1:880$i" --max-external-zats 500000000 --ledger-url http://127.0.0.1:8797 --ledger-token regtest-ledger > "$DATA/signer-$i.log" 2>&1 &
     SIGNERS="$SIGNERS $!"
   done
-  export FROST_ESCROW=$DATA/frost/escrow.json FROST_SIGNERS=http://127.0.0.1:8801,http://127.0.0.1:8802,http://127.0.0.1:8803 FROST_TOKEN=regtest-frost
+  export FROST_ESCROW=$DATA/frost/escrow.json FROST_SIGNERS=http://127.0.0.1:8801,http://127.0.0.1:8802,http://127.0.0.1:8803 FROST_TOKEN=regtest-frost LEDGER_TOKEN=regtest-ledger
   wait_for 30 "signer hosts" bash -c "curl -sf http://127.0.0.1:8801/health && curl -sf http://127.0.0.1:8802/health"
   pass "frost keygen done; signers 1 and 2 up, signer 3 deliberately absent"
 fi

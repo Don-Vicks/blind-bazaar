@@ -181,6 +181,7 @@ impl Worker {
             self.mirror_auctions().await?;
             self.mirror_envelopes().await?;
             self.mirror_reveals().await?;
+            self.mirror_manual_payouts().await?;
         }
         wallet::sync::sync_once(client, &self.params, db_cache, db).await?;
         let enhanced = wallet::sync::enhance(client, &self.params, db).await?;
@@ -455,6 +456,37 @@ impl Worker {
         }
         store::set_meta(&store, "mirrored_envelope_at", &last.to_string())?;
         info!("mirrored {} envelope(s)", envelopes.len());
+        Ok(())
+    }
+
+    /// Spender: adopt operator-initiated (manual) payouts queued on the viewer, so they exist in the ledger the
+    /// signers check before the spender tries to pay them.
+    async fn mirror_manual_payouts(&self) -> Result<()> {
+        let base = self.cfg.viewer_url.as_deref().unwrap_or_default();
+        let after: i64 = {
+            let store = self.store.lock().await;
+            store::get_meta(&store, "mirrored_manual_payout_id")?.and_then(|v| v.parse().ok()).unwrap_or(0)
+        };
+        let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?;
+        let list: Vec<crate::frost::ExpectedPayout> = client
+            .get(format!("{base}/ledger/payouts?after={after}&kind=manual"))
+            .header("x-admin-token", &self.cfg.admin_token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if list.is_empty() {
+            return Ok(());
+        }
+        let store = self.store.lock().await;
+        let mut last = after;
+        for p in list {
+            last = last.max(p.id);
+            store::queue_payout(&store, p.auction_id.as_deref(), None, "manual", &p.to_address, p.value_zats, Some("viewer manual payout"), store::now())?;
+        }
+        store::set_meta(&store, "mirrored_manual_payout_id", &last.to_string())?;
+        info!("mirrored manual payouts up to id {last}");
         Ok(())
     }
 

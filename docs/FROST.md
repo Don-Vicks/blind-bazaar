@@ -47,10 +47,21 @@ checked under `rk` outside the circuit, so a threshold `ak` needs no change to p
 Signers that are unreachable are skipped; the session fails if fewer than `threshold` commit. The
 event log records which signers co-signed each payout (`cosigners` on `refund_sent`, `seller_paid`).
 
+## The ledger check: signers pay only what the rules produced
+
+With `--ledger-url` and `--ledger-token`, a signer fetches the viewer's `/ledger/payouts` before every session:
+the list of payouts the viewer derived with the viewing key alone (refunds to the addresses sealed in losing
+bids, seller payouts at the price, forfeits, and manual operator sends queued on the viewer). Every external
+output in the PCZT must match one unconsumed entry by Orchard receiver and exact amount, and signing consumes
+the entries it matched. A compromised spender can therefore neither invent a recipient nor pay a legitimate
+one twice; a compromised viewer still cannot spend. The regtest script runs both signers with the check on.
+Without the flag a signer enforces only the value and fee caps, and says so at startup.
+
 ## Trust model
 
 - A compromised spender host cannot move funds alone. It can propose transactions; the signers see
-  the real destinations and amounts from the PCZT and apply their policy.
+  the real destinations and amounts from the PCZT, and with the ledger check they sign only payments the
+  viewer's ledger named.
 - A single compromised signer cannot move funds, and cannot forge a session: FROST shares are useless
   below threshold, and the spender verifies every signature under the on-chain `rk`.
 - The viewing key is still shared by the viewer, spender and signers. Privacy of bidders against the
