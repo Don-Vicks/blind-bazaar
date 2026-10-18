@@ -160,7 +160,7 @@ export function WhyTrust() {
         ))}
       </div>
       <p className="text-[13px] text-muted-foreground">
-        The honest limit: the auction operator can read bids while a lot is open. It cannot change them or hide them from the fingerprint{frost ? ", and it cannot spend the money alone" : "; on this instance it also holds the spending key"}.
+        The honest limit: on a classic lot the auction operator can read bids while it is open (sealed-reveal lots hide them from the operator too). It cannot change them or hide them from the fingerprint{frost ? ", and it cannot spend the money alone" : "; on this instance it also holds the spending key"}.
       </p>
     </section>
   );

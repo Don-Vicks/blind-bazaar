@@ -24,6 +24,9 @@ pages; no wallet transaction was involved in those checks.
 - Demo script rewritten around what exists (Vickrey lot where the deposit covers the second price, staged Go Dark
   swap, chain-timed close); `docs/evidence/` skeleton with the txid table format and verifier commands.
 - CI: GitHub Actions runs the Rust tests and the SDK tests and typechecks the web app on every push.
+- Sealed-reveal mode: `reveal_secs` on a lot, `BB1C` commitment memos, commitment root fixed at close, reveal
+  endpoint checked against the commitment, unrevealed bids refunded in full, spender mirrors reveals, one-click
+  reveal on the status page, sell form defaults to sealed. Unit-tested (36 Rust, 12 SDK tests); no chain run yet.
 
 ## Verified working
 

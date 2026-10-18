@@ -36,6 +36,18 @@ authority is a 2-of-3 group key, the spender holds only the viewing key, and two
 inspect every transaction's destinations and amounts before co-signing (`docs/FROST.md`). Theft
 needs the spender plus a signer, or two signers.
 
+## Sealed-reveal: hiding bids from the operator too
+
+The stated limit above, that whoever holds the viewing key reads bids while a lot is open, is removed by
+sealed-reveal lots. The memo carries a commitment to the amount; the viewing key learns that a deposit arrived
+with a receipt, and nothing else. At close the commitment root is published first, so a bidder cannot change
+their mind after seeing anything, and the operator cannot drop a commitment unnoticed. Then each bidder reveals
+`(bid, salt)` with their bid key, the service checks it against the commitment, and the lot closes over the
+revealed bids with the same ledger root, pricing and proofs as a plain lot. A bidder who does not reveal gets
+the deposit back in full and cannot win, so there is no penalty beyond losing the chance to win. The cost is a
+second step for bidders and a delay equal to the reveal window; the classic mode remains for sellers who prefer a
+result the moment the lot closes.
+
 ## Cross-chain bids use an envelope, not the memo
 
 No swap rail can attach a memo to the ZEC it delivers. Go Dark therefore sends the

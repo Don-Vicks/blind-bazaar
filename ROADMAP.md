@@ -56,6 +56,7 @@ Remove the single operator who can both read bids and move funds.
 - planned: seller reputation; escrow for physical goods
 - planned: winner notifications (email, push, wallet memo) and seller dashboard
 - done: Vickrey (second price, winning bid sealed, price proven from the ledger) and private request-for-quote
+- done: sealed-reveal mode (commitment in the memo, reveal window, unrevealed bids refunded) so the operator cannot read bids before close
 - planned: Dutch format; batch markets (private order matching) on the same rails
 - planned: Go Dark receiver onboarding (in-browser 24-word wallet, Zodl/Zingo import), per-payment address
   rotation, transparent-receiver fallback with auto-shield, hosted widget CDN and npm release

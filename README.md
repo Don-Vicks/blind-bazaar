@@ -20,7 +20,7 @@ Built for ZECATHON 2026. MIT licensed.
 | No single server holds the money. The spend authority is a 2-of-3 FROST group key; signer hosts verify every output and co-sign. | Built and unit-tested. Not yet exercised on a chain. Trusted-dealer keygen; DKG not built. | `docs/FROST.md`, `cargo test -p bb-auction frost` |
 | Four formats: first price, uniform-price editions, Vickrey (winning bid stays sealed, second price proven from the ledger), request for quotes. | Real; Vickrey and RFQ exercised on the testnet service with seeded bids. | `docs/STATUS.md` |
 | Go Dark: pay or bid from Solana or Ethereum, land in shielded ZEC. | Built on live mainnet rails (Maya, NEAR Intents); quotes are real; no completed swap yet. The rail sees the payer's source address. | `docs/GO-DARK-THREAT-MODEL.md`, `/embed` |
-| Bids are hidden from the operator too. | Not built. Roadmap: encrypt bids to a time-lock or run selection inside MPC. | `ROADMAP.md` |
+| Bids are hidden from the operator too (sealed-reveal). A lot created with `reveal_secs` takes a commitment `sha256(auction|bid|salt)` in the memo instead of the amount; the commitment root is fixed at close; bidders reveal in the window; unrevealed bids are refunded in full. | Built and unit-tested (Oct 18). The reveal is one click on the status page with the bid key; it has not yet run on a chain. | `docs/PRIVACY.md`, `POST /auctions/{id}/reveals` |
 | In-browser Zcash wallet for recipients without one. | Not built. | |
 
 ## Layout
@@ -106,6 +106,15 @@ hosting site, not from the swap service.
   not pay in time the bond is returned and the request lapses. Only the winning price is ever revealed.
 
 `FORMAT=vickrey` or `FORMAT=rfq` runs the regtest end-to-end script in that format.
+
+## Sealed-reveal lots
+
+Create a lot with `reveal_secs` (60 to 604800) and bids carry `BB1C|<auction>|<commitment>|<refund>|<nonce>` with
+`commitment = sha256("<auction>|<bid_zats>|<salt>")`. The operator's viewing key sees deposits arrive and nothing
+about amounts. At close the lot enters `revealing`: a Merkle root over `(receipt, commitment)` is published, then
+bidders reveal `(bid_zats, salt)` with their bid key; each reveal is checked against the commitment. When the window
+ends, unrevealed commitments are refunded in full and cannot win, and the lot closes over the revealed bids with the
+usual ledger root, pricing and proofs. Any format except request-for-quotes can be sealed.
 
 ## How a bid works
 

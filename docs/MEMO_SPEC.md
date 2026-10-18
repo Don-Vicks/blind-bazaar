@@ -25,4 +25,10 @@ Rules:
 - Receipt = lowercase hex `sha256(nonce)`. The service publishes receipts of received
   bids; a bidder checks theirs without revealing anything.
 - Winner settlement memo: `BB1S|<auction_id>|<nonce>` with value = `bid - deposit`.
+- Sealed-reveal bid memo: `BB1C|<auction_id>|<commitment>|<refund_address>|<nonce>` where `commitment` is the
+  lowercase hex `sha256("<auction_id>|<bid_zatoshis>|<salt>")` and `salt` is 16 random bytes (32 hex) kept by the
+  bidder. Used only on lots created with `reveal_secs > 0`; a plain `BB1` on such a lot is refunded, and a `BB1C`
+  on a plain lot is refunded. The reveal is `POST /auctions/{id}/reveals {secret, bid_zats, salt}` during the
+  reveal window; it is not a chain transaction. Pinned vector: `sha256("ab|1|00") =
+  44b0ebb0eba21fe71bc5f2b2df7753b86271bf1edc7ee876d4406f1f4efff064`.
 - Keep memos under 300 bytes. Encode in ZIP-321 as base64url without padding.

@@ -16,13 +16,14 @@ const formats = [
   ["Vickrey (second price)", "The highest bid wins but pays the second-highest bid, or the reserve if there is none. The winning bid is never revealed. The price is proven by showing the runner-up's entry in the bid fingerprint.", "Bid what the item is worth to you; there is no advantage in shading your bid."],
   ["Edition (uniform price)", "Several identical units. The top N bids win and every winner pays the same price, the lowest winning bid.", "Prints, tickets, tokens."],
   ["Request for quotes", "The roles flip: the lister is a buyer with a budget. Suppliers post a bond and seal a quote. The lowest quote within budget wins; the buyer pays it; the winner gets the quote plus the bond back.", "Private procurement: nobody sees the other quotes."],
+  ["Sealed-reveal (option on any of the above)", "Bids carry a commitment, not the amount, so not even the auction knows a bid before close. After close bidders reveal within a window; whoever does not is refunded in full and cannot win.", "When bidders do not want to trust the operator with their bid while the lot is open."],
 ];
 
 const parties = [
   ["Other bidders", "That a lot exists, how many bids arrived, its result, and the list of receipts.", "Any losing bid amount, or who bid. (Vickrey publishes the second-highest amount, not who placed it.)"],
   ["Someone watching the blockchain", "Private transactions of unknown amount and origin.", "Which transactions belong to the lot."],
   ["The seller", "The winning price and the payout.", "Losing bids and losing bidders."],
-  ["The auction operator", "The bids, while a lot is open (it holds the read-only key).", "Under the escrow setup it cannot move the money alone: payouts need separate signers, each of which inspects the payment first. (A single-key instance, used for development, can.)"],
+  ["The auction operator", "On a classic lot, the bids while it is open (it holds the read-only key). On a sealed-reveal lot, only that deposits arrived.", "Under the escrow setup it cannot move the money alone: payouts need separate signers, each of which inspects the payment first. (A single-key instance, used for development, can.)"],
   ["The swap service (Go Dark)", "Where your Solana or Ethereum funds came from, and the Zcash address paid.", "The bid, which never passes through it."],
 ];
 
@@ -101,7 +102,8 @@ export default function HowPage() {
           ))}
         </div>
         <p className="max-w-[60ch] text-[14px] leading-relaxed text-muted-foreground">
-          The honest limit: the operator reads bids while a lot is open. What stops it from cheating is that it
+          The honest limit on classic lots: the operator reads bids while a lot is open (sealed-reveal lots remove
+          this; the seller chooses). What stops it from cheating is that it
           cannot alter the published fingerprint and cannot forge the proof. With the escrow setup it also cannot move
           money alone: the funds sit under a key split three ways, and two separate signers must inspect and approve
           every payout (built and unit-tested; the first on-chain run is pending). Hiding bids
