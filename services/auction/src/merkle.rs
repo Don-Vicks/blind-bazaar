@@ -71,6 +71,27 @@ fn levels(leaf_hashes: &[[u8; 32]]) -> Vec<Vec<[u8; 32]>> {
     lv
 }
 
+/// Root over sealed commitments `(receipt, commitment)` fixed at close of a sealed-reveal lot, before any
+/// reveal. Leaves are `sha256(0x02 || receipt || commitment)`; the tree shape is the same as the bid ledger.
+pub fn commit_root(entries: &[(String, String)]) -> String {
+    if entries.is_empty() {
+        return hex::encode(Sha256::digest(b""));
+    }
+    let mut v = entries.to_vec();
+    v.sort();
+    let lh: Vec<[u8; 32]> = v
+        .iter()
+        .map(|(r, c)| {
+            let mut h = Sha256::new();
+            h.update([2u8]);
+            h.update(r.as_bytes());
+            h.update(c.as_bytes());
+            h.finalize().into()
+        })
+        .collect();
+    hex::encode(levels(&lh).last().unwrap()[0])
+}
+
 /// Root of the ledger, hex. Empty ledger commits to sha256 of the empty string, matching the old
 /// plain hash so an empty auction is unchanged.
 pub fn root(entries: &[Entry]) -> String {

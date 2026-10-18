@@ -35,6 +35,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auctions/{id}/proof", get(inclusion_proof))
         .route("/auctions/{id}/fulfilment", get(winner_fulfilment))
         .route("/auctions/{id}/standing", get(standing))
+        .route("/auctions/{id}/reveals", post(reveal))
         .route("/sellers/demo", post(demo_seller))
         .route_layer(axum::middleware::from_fn_with_state(limiter, crate::ratelimit::limit));
     Router::new()
@@ -52,6 +53,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/admin/reconcile", get(admin_reconcile))
         .route("/admin/auctions", get(admin_auctions))
         .route("/admin/envelopes", get(admin_envelopes))
+        .route("/admin/reveals", get(admin_reveals))
         .route("/admin/payouts/sync", post(admin_payouts_sync))
         .route("/auctions/{id}/events", get(auction_events))
         .route("/seller/me", get(seller_me))
@@ -158,6 +160,10 @@ struct CreateAuction {
     /// `reserve_zats` is the buyer's budget, `deposit_zats` the quoter's bond, the lowest quote wins
     /// and the buyer pays it).
     format: Option<String>,
+    /// Sealed-reveal: seconds after close during which bidders reveal their amounts. Bids then carry a
+    /// commitment instead of the amount, so not even the operator reads a bid before close. 0 or absent
+    /// means bids carry the amount (readable by the operator's viewing key while the lot is open).
+    reveal_secs: Option<i64>,
 }
 
 /// Constant-time string equality for tokens.
@@ -246,6 +252,10 @@ async fn create_auction(
     if req.deposit_zats > req.reserve_zats {
         return Err(bad("deposit_zats must not exceed reserve_zats"));
     }
+    let reveal_secs = req.reveal_secs.unwrap_or(0);
+    if reveal_secs != 0 && !(60..=7 * 86_400).contains(&reveal_secs) {
+        return Err(bad("reveal_secs must be between 60 and 604800"));
+    }
     let image_url = match req.image_url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(u) if u.starts_with("https://") && u.len() < 2048 => Some(u.to_string()),
         Some(_) => return Err(bad("image_url must be an https URL")),
@@ -278,6 +288,7 @@ async fn create_auction(
             image_url: image_url.as_deref(),
             units,
             format,
+            reveal_secs,
         },
     )?;
     store::insert_event(&conn, Some(&id), "created", &serde_json::json!({ "title": req.title.trim(), "close_at": close_at }))?;
@@ -350,6 +361,7 @@ async fn post_envelope(
     let parsed = memo::parse(&req.payload).map_err(|e| bad(format!("bad payload: {e}")))?;
     let (auction_id, nonce) = match &parsed {
         memo::Parsed::Bid(b) => (b.auction_id.clone(), b.nonce.clone()),
+        memo::Parsed::Commit(c) => (c.auction_id.clone(), c.nonce.clone()),
         memo::Parsed::Settlement(s) => (s.auction_id.clone(), s.nonce.clone()),
     };
     if auction_id != id {
@@ -359,7 +371,7 @@ async fn post_envelope(
         let conn = state.store.lock().await;
         let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
         match &parsed {
-            memo::Parsed::Bid(_) if auction.status != "open" => return Err(bad("auction is not open")),
+            memo::Parsed::Bid(_) | memo::Parsed::Commit(_) if auction.status != "open" => return Err(bad("auction is not open")),
             memo::Parsed::Settlement(s) => {
                 if auction.status != "closed" {
                     return Err(bad("nothing to settle on this lot"));
@@ -422,9 +434,21 @@ struct ResultView {
     disclosure: Option<serde_json::Value>,
     /// Where the clearing price comes from: `own_bid`, `lowest_winning`, `second_bid`, `reserve`, `lowest_quote`.
     price_source: Option<&'static str>,
+    /// Sealed-reveal lots: reveal progress and the commitment root fixed at close.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sealed: Option<SealedCounts>,
     /// Vickrey: the runner-up's ledger leaf (receipt and amount) with its Merkle path, so anyone can check
     /// the price the winner pays is a bid committed at close. The runner-up's identity stays sealed.
     price_proof: Option<PriceProof>,
+}
+
+#[derive(Serialize)]
+struct SealedCounts {
+    sealed: usize,
+    revealed: usize,
+    unrevealed: usize,
+    reveal_until: Option<i64>,
+    commit_hash: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -451,6 +475,13 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
         return Err(bad("auction is still open"));
     }
     let bids = store::bids_for_auction(&conn, &id)?;
+    let sealed_counts = auction.sealed().then(|| SealedCounts {
+        sealed: bids.iter().filter(|b| b.status == "sealed").count(),
+        revealed: bids.iter().filter(|b| b.revealed_at.is_some() && b.status != "unrevealed").count(),
+        unrevealed: bids.iter().filter(|b| b.status == "unrevealed").count(),
+        reveal_until: auction.reveal_until,
+        commit_hash: auction.commit_hash.clone(),
+    });
     let winners: Vec<&store::Bid> = bids.iter().filter(|b| matches!(b.status.as_str(), "won" | "settled")).collect();
     let winner = winners.first().copied().cloned();
     let units_settled = winners.iter().filter(|b| b.status == "settled").count();
@@ -511,6 +542,7 @@ async fn result(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> A
         refunds,
         disclosure,
         price_source,
+        sealed: sealed_counts,
         price_proof,
     }))
 }
@@ -1068,6 +1100,9 @@ struct Standing {
     /// The seller's delivery note, for winners only.
     #[serde(skip_serializing_if = "Option::is_none")]
     fulfilment: Option<String>,
+    /// Sealed-reveal: when the reveal window ends (while the lot is revealing).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reveal_until: Option<i64>,
 }
 
 /// Everything one bidder needs to know about their own bid, authenticated by the bidder secret.
@@ -1079,7 +1114,11 @@ async fn standing(State(state): State<Arc<AppState>>, Path(id): Path<String>, Qu
         .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "no bid with that nonce has arrived yet".into()))?;
     let rfq = close::is_rfq(&auction.format);
     let outcome: &'static str = match bid.status.as_str() {
+        "sealed" if auction.status == "revealing" => "reveal_now",
+        "sealed" => "sealed",
+        "unrevealed" => "unrevealed",
         "valid" if auction.status == "open" => "pending",
+        "valid" if auction.status == "revealing" => "revealed",
         "valid" => "lost",
         "won" => "won",
         "settled" => "settled",
@@ -1117,5 +1156,57 @@ async fn standing(State(state): State<Arc<AppState>>, Path(id): Path<String>, Qu
         settlement,
         payouts,
         fulfilment,
+        reveal_until: if auction.status == "revealing" { auction.reveal_until } else { None },
     }))
+}
+
+#[derive(Deserialize)]
+struct RevealReq {
+    secret: String,
+    bid_zats: u64,
+    salt: String,
+}
+
+/// Reveal a sealed bid during the reveal window. The commitment in the memo must equal
+/// sha256("<auction>|<bid>|<salt>"); the secret proves the reveal comes from the bidder.
+async fn reveal(State(state): State<Arc<AppState>>, Path(id): Path<String>, Json(req): Json<RevealReq>) -> ApiResult<serde_json::Value> {
+    let nonce = nonce_param(&req.secret)?;
+    let salt = req.salt.trim().to_lowercase();
+    if !memo::is_salt(&salt) {
+        return Err(bad("salt must be 32 lowercase hex chars"));
+    }
+    if req.bid_zats == 0 {
+        return Err(bad("bid_zats must be above zero"));
+    }
+    let conn = state.store.lock().await;
+    let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
+    if !auction.sealed() {
+        return Err(bad("this lot does not use sealed bids"));
+    }
+    if auction.status != "revealing" {
+        return Err(bad(if auction.status == "open" { "the lot is still open; reveal after it closes" } else { "the reveal window has ended" }));
+    }
+    let bid = store::get_bid_by_nonce(&conn, &id, &nonce)?.ok_or_else(|| ApiError(StatusCode::NOT_FOUND, "no sealed bid with that key".into()))?;
+    if bid.status != "sealed" {
+        return Err(bad("this bid is already revealed or was not accepted"));
+    }
+    let expected = bid.commitment.clone().unwrap_or_default();
+    if memo::commitment(&id, req.bid_zats, &salt) != expected {
+        return Err(bad("bid and salt do not match the commitment in your memo"));
+    }
+    store::reveal_bid(&conn, bid.id, req.bid_zats, &salt)?;
+    store::insert_event(&conn, Some(&id), "bid_revealed", &serde_json::json!({ "receipt": bid.receipt }))?;
+    Ok(Json(serde_json::json!({ "ok": true, "receipt": bid.receipt })))
+}
+
+/// Reveals since `after`, for the spender to mirror (it re-checks every commitment itself).
+async fn admin_reveals(State(state): State<Arc<AppState>>, headers: HeaderMap, Query(q): Query<AfterQuery>) -> ApiResult<Vec<serde_json::Value>> {
+    check_admin(&state, &headers)?;
+    let conn = state.store.lock().await;
+    Ok(Json(
+        store::reveals_after(&conn, q.after, 500)?
+            .into_iter()
+            .map(|b| serde_json::json!({ "auction_id": b.auction_id, "nonce": b.nonce, "bid_zats": b.bid_zats, "salt": b.salt, "revealed_at": b.revealed_at }))
+            .collect(),
+    ))
 }

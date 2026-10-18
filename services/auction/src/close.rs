@@ -82,7 +82,6 @@ pub fn close_due(
     cfg: &CloseConfig,
     memo_key: MemoKey<'_>,
 ) -> Result<usize> {
-    let (delay_min, delay_max) = (cfg.delay_min, cfg.delay_max);
     let now = store::now();
     let mut closed = 0;
     for auction in store::due_open_auctions(store, now)? {
@@ -98,100 +97,51 @@ pub fn close_due(
             },
             None => None,
         };
+        if auction.sealed() {
+            // Sealed-reveal: fix the set of commitments now, then give bidders the reveal window.
+            // Nothing about any amount is known yet, not even to the operator.
+            let bids = store::bids_for_auction(store, &auction.id)?;
+            let commits: Vec<(String, String)> = bids
+                .iter()
+                .filter(|b| b.status == "sealed")
+                .map(|b| (b.receipt.clone().unwrap_or_default(), b.commitment.clone().unwrap_or_default()))
+                .collect();
+            let commit_hash = crate::merkle::commit_root(&commits);
+            let reveal_until = now + auction.reveal_secs;
+            store::open_reveal_window(store, &auction.id, reveal_until, &commit_hash, close_height)?;
+            store::insert_event(
+                store,
+                Some(&auction.id),
+                "reveal_open",
+                &serde_json::json!({ "sealed_bids": commits.len(), "commit_hash": commit_hash, "reveal_until": reveal_until, "close_height": close_height }),
+            )?;
+            info!("auction {}: {} sealed bids committed ({}), reveal window until {}", auction.id, commits.len(), commit_hash, reveal_until);
+            closed += 1;
+            continue;
+        }
+        close_lot(store, wallet_ro, params, network_name, cfg, memo_key, &auction, close_height)?;
+        closed += 1;
+    }
+    Ok(closed)
+}
+
+/// Sealed-reveal lots whose reveal window has ended: unrevealed commitments are refunded in full, then
+/// the lot closes over the revealed bids exactly like a plain lot.
+pub fn finalize_reveals(
+    store: &Connection,
+    wallet_ro: Option<&Connection>,
+    params: &Network,
+    network_name: &str,
+    cfg: &CloseConfig,
+    memo_key: MemoKey<'_>,
+) -> Result<usize> {
+    let now = store::now();
+    let mut done = 0;
+    for auction in store::due_revealing_auctions(store, now)? {
         let bids = store::bids_for_auction(store, &auction.id)?;
-        let valid: Vec<&store::Bid> = bids.iter().filter(|b| b.status == "valid").collect();
-
-        let ledger: Vec<crate::merkle::Entry> = valid
-            .iter()
-            .map(|b| (b.receipt.clone().unwrap_or_default(), b.bid_zats.unwrap_or(0), b.nonce.clone().unwrap_or_default()))
-            .collect();
-        let ledger_hash = crate::merkle::root(&ledger);
-
-        let ranked = rank(&valid, &auction.format, auction.reserve_zats, &[]);
-        let units = if auction.format == "uniform" { auction.units.max(1) as usize } else { 1 };
-        let winners: Vec<&store::Bid> = ranked.iter().copied().take(units).collect();
-        let clearing = match auction.format.as_str() {
-            "uniform" => winners.last().and_then(|b| b.bid_zats),
-            _ if winners.is_empty() => None,
-            f => Some(price_for(f, auction.reserve_zats, &ranked, 0).0),
-        };
-        let price_of = |position: usize| -> u64 {
-            match auction.format.as_str() {
-                "uniform" => clearing.unwrap_or(0),
-                f => price_for(f, auction.reserve_zats, &ranked, position).0,
-            }
-        };
-
-        let status = if winners.is_empty() { "no_sale" } else { "closed" };
-        let settle_by = (!winners.is_empty()).then(|| now + cfg.settlement_window_secs);
-        store::close_auction(
-            store,
-            &auction.id,
-            status,
-            winners.first().map(|b| b.id),
-            &ledger_hash,
-            settle_by,
-            clearing,
-        )?;
-        if let Some(h) = close_height {
-            store::set_auction_close_height(store, &auction.id, h)?;
-        }
-        for (i, w) in winners.iter().enumerate() {
-            store::set_bid_won(store, w.id, price_of(i), settle_by.unwrap_or(now))?;
-        }
-        store::insert_event(
-            store,
-            Some(&auction.id),
-            if winners.is_empty() { "no_sale" } else { "closed" },
-            &serde_json::json!({
-                "valid_bids": valid.len(),
-                "close_height": close_height,
-                "ledger_hash": ledger_hash,
-                "units": units,
-                "units_sold": winners.len(),
-                "format": auction.format,
-                "clearing_zats": clearing,
-                "winning_amount_zats": clearing,
-                "settle_by": settle_by,
-            }),
-        )?;
-
-        if let Some(wallet_ro) = wallet_ro {
-            let mut disclosures = Vec::new();
-            // Vickrey keeps the winning bid sealed: the price is proven from the ledger, not the memo.
-            let memo_key = if auction.format == "vickrey" { None } else { memo_key };
-            for w in &winners {
-                match disclosure::build(
-                    wallet_ro,
-                    params,
-                    network_name,
-                    &w.txid,
-                    w.output_index,
-                    memo_key.map(|k| (k, auction.reserve_zats)),
-                ) {
-                    Ok(mut d) => {
-                        if is_rfq(&auction.format) && d.reserve_zats.is_some() {
-                            d.reserve_rule = Some("at_most".into());
-                        }
-                        disclosures.push(d)
-                    }
-                    Err(e) => tracing::warn!("could not build disclosure for {} bid {}: {e:#}", auction.id, w.id),
-                }
-            }
-            if !disclosures.is_empty() {
-                let verified = disclosures.iter().filter(|d| d.verified_against_chain).count();
-                info!("auction {}: {}/{} disclosures verified against chain", auction.id, verified, disclosures.len());
-                store::set_disclosure(store, &auction.id, &serde_json::to_string(&disclosures)?)?;
-            }
-        }
-
-        let mut rng = rand::rng();
-        let winner_ids: Vec<i64> = winners.iter().map(|b| b.id).collect();
-        for b in &valid {
-            if winner_ids.contains(&b.id) {
-                continue;
-            }
-            let delay = rng.random_range(delay_min..=delay_max.max(delay_min)) as i64;
+        let mut unrevealed = 0;
+        for b in bids.iter().filter(|b| b.status == "sealed") {
+            store::set_bid_status(store, b.id, "unrevealed")?;
             let memo_text = format!("BB1R|{}", auction.id);
             store::queue_payout(
                 store,
@@ -201,32 +151,164 @@ pub fn close_due(
                 b.refund_address.as_deref().unwrap_or_default(),
                 b.value_zats,
                 Some(&memo_text),
-                now + delay,
+                now + 30,
             )?;
+            unrevealed += 1;
         }
-        // A winner whose deposit already covers the price owes nothing: settle on the spot. In an RFQ the
-        // buyer pays, so the quoter's bond never counts towards the price.
-        if !is_rfq(&auction.format) {
-            for (i, w) in winners.iter().enumerate() {
-                let price = price_of(i);
-                if price <= w.value_zats {
-                    settle_winner(store, &auction, w.id, price, w.value_zats, "deposit covers price")?;
+        store::insert_event(
+            store,
+            Some(&auction.id),
+            "reveal_closed",
+            &serde_json::json!({ "unrevealed": unrevealed, "revealed": bids.iter().filter(|b| b.status == "valid").count() }),
+        )?;
+        close_lot(store, wallet_ro, params, network_name, cfg, memo_key, &auction, auction.close_height)?;
+        done += 1;
+    }
+    Ok(done)
+}
+
+/// Close one lot over its valid bids: rank, price, publish the ledger root, queue refunds, settle any
+/// winner whose deposit already covers the price.
+#[allow(clippy::too_many_arguments)]
+fn close_lot(
+    store: &Connection,
+    wallet_ro: Option<&Connection>,
+    params: &Network,
+    network_name: &str,
+    cfg: &CloseConfig,
+    memo_key: MemoKey<'_>,
+    auction: &store::Auction,
+    close_height: Option<u32>,
+) -> Result<()> {
+    let (delay_min, delay_max) = (cfg.delay_min, cfg.delay_max);
+    let now = store::now();
+    let bids = store::bids_for_auction(store, &auction.id)?;
+    let valid: Vec<&store::Bid> = bids.iter().filter(|b| b.status == "valid").collect();
+
+    let ledger: Vec<crate::merkle::Entry> = valid
+        .iter()
+        .map(|b| (b.receipt.clone().unwrap_or_default(), b.bid_zats.unwrap_or(0), b.nonce.clone().unwrap_or_default()))
+        .collect();
+    let ledger_hash = crate::merkle::root(&ledger);
+
+    let ranked = rank(&valid, &auction.format, auction.reserve_zats, &[]);
+    let units = if auction.format == "uniform" { auction.units.max(1) as usize } else { 1 };
+    let winners: Vec<&store::Bid> = ranked.iter().copied().take(units).collect();
+    let clearing = match auction.format.as_str() {
+        "uniform" => winners.last().and_then(|b| b.bid_zats),
+        _ if winners.is_empty() => None,
+        f => Some(price_for(f, auction.reserve_zats, &ranked, 0).0),
+    };
+    let price_of = |position: usize| -> u64 {
+        match auction.format.as_str() {
+            "uniform" => clearing.unwrap_or(0),
+            f => price_for(f, auction.reserve_zats, &ranked, position).0,
+        }
+    };
+
+    let status = if winners.is_empty() { "no_sale" } else { "closed" };
+    let settle_by = (!winners.is_empty()).then(|| now + cfg.settlement_window_secs);
+    store::close_auction(
+        store,
+        &auction.id,
+        status,
+        winners.first().map(|b| b.id),
+        &ledger_hash,
+        settle_by,
+        clearing,
+    )?;
+    if let Some(h) = close_height {
+        store::set_auction_close_height(store, &auction.id, h)?;
+    }
+    for (i, w) in winners.iter().enumerate() {
+        store::set_bid_won(store, w.id, price_of(i), settle_by.unwrap_or(now))?;
+    }
+    store::insert_event(
+        store,
+        Some(&auction.id),
+        if winners.is_empty() { "no_sale" } else { "closed" },
+        &serde_json::json!({
+            "valid_bids": valid.len(),
+            "close_height": close_height,
+            "ledger_hash": ledger_hash,
+            "units": units,
+            "units_sold": winners.len(),
+            "format": auction.format,
+            "clearing_zats": clearing,
+            "winning_amount_zats": clearing,
+            "settle_by": settle_by,
+        }),
+    )?;
+
+    if let Some(wallet_ro) = wallet_ro {
+        let mut disclosures = Vec::new();
+        // Vickrey keeps the winning bid sealed: the price is proven from the ledger, not the memo.
+        let memo_key = if auction.format == "vickrey" { None } else { memo_key };
+        for w in &winners {
+            match disclosure::build(
+                wallet_ro,
+                params,
+                network_name,
+                &w.txid,
+                w.output_index,
+                memo_key.map(|k| (k, auction.reserve_zats)),
+            ) {
+                Ok(mut d) => {
+                    if is_rfq(&auction.format) && d.reserve_zats.is_some() {
+                        d.reserve_rule = Some("at_most".into());
+                    }
+                    disclosures.push(d)
                 }
+                Err(e) => tracing::warn!("could not build disclosure for {} bid {}: {e:#}", auction.id, w.id),
             }
         }
-        info!(
-            "auction {} closed ({}): {} valid bids, {} of {} units sold at {:?}, ledger {}",
-            auction.id,
-            auction.format,
-            valid.len(),
-            winners.len(),
-            units,
-            clearing,
-            ledger_hash
-        );
-        closed += 1;
+        if !disclosures.is_empty() {
+            let verified = disclosures.iter().filter(|d| d.verified_against_chain).count();
+            info!("auction {}: {}/{} disclosures verified against chain", auction.id, verified, disclosures.len());
+            store::set_disclosure(store, &auction.id, &serde_json::to_string(&disclosures)?)?;
+        }
     }
-    Ok(closed)
+
+    let mut rng = rand::rng();
+    let winner_ids: Vec<i64> = winners.iter().map(|b| b.id).collect();
+    for b in &valid {
+        if winner_ids.contains(&b.id) {
+            continue;
+        }
+        let delay = rng.random_range(delay_min..=delay_max.max(delay_min)) as i64;
+        let memo_text = format!("BB1R|{}", auction.id);
+        store::queue_payout(
+            store,
+            Some(&auction.id),
+            Some(b.id),
+            "refund",
+            b.refund_address.as_deref().unwrap_or_default(),
+            b.value_zats,
+            Some(&memo_text),
+            now + delay,
+        )?;
+    }
+    // A winner whose deposit already covers the price owes nothing: settle on the spot. In an RFQ the
+    // buyer pays, so the quoter's bond never counts towards the price.
+    if !is_rfq(&auction.format) {
+        for (i, w) in winners.iter().enumerate() {
+            let price = price_of(i);
+            if price <= w.value_zats {
+                settle_winner(store, auction, w.id, price, w.value_zats, "deposit covers price")?;
+            }
+        }
+    }
+    info!(
+        "auction {} closed ({}): {} valid bids, {} of {} units sold at {:?}, ledger {}",
+        auction.id,
+        auction.format,
+        valid.len(),
+        winners.len(),
+        units,
+        clearing,
+        ledger_hash
+    );
+    Ok(())
 }
 
 /// Record a winner's settlement: mark the bid settled, pay the seller the price, refund any excess the
@@ -413,6 +495,7 @@ mod tests {
                 image_url: None,
                 units: 1,
                 format: "first_price",
+                reveal_secs: 0,
             },
         )
         .unwrap();
@@ -439,6 +522,7 @@ mod tests {
                 image_url: None,
                 units,
                 format,
+                reveal_secs: 0,
             },
         )
         .unwrap();
@@ -466,6 +550,7 @@ mod tests {
                 receipt: Some(&receipt),
                 status,
                 source: "memo",
+                commitment: None,
             },
         )
         .unwrap()
@@ -594,7 +679,7 @@ mod tests {
             &NewAuction {
                 id: "gggggggg", title: "lot", description: "", reserve_zats: 500_000, deposit_zats: 1_000_000,
                 seller_address: UA, address: UA, diversifier_index: None, close_at: store::now() - 1,
-                seller_id: None, image_url: None, units: 1, format: "first_price",
+                seller_id: None, image_url: None, units: 1, format: "first_price", reveal_secs: 0,
             },
         )
         .unwrap();
@@ -692,6 +777,75 @@ mod tests {
         assert!(payouts.iter().any(|p| p.kind == "refund" && p.bid_id == Some(q) && p.value_zats == 1_000_000));
         assert!(payouts.iter().all(|p| p.kind != "forfeit"));
         assert_eq!(store::ledger_entries(&store, "llllllll").unwrap().len(), 1, "expired quotes stay in the ledger");
+    }
+
+    fn sealed_auction(store: &Connection, id: &str, reveal_secs: i64) {
+        store::insert_auction(
+            store,
+            &NewAuction {
+                id, title: "sealed", description: "", reserve_zats: 2_000_000, deposit_zats: 1_000_000,
+                seller_address: UA, address: UA, diversifier_index: None, close_at: store::now() - 1,
+                seller_id: None, image_url: None, units: 1, format: "first_price", reveal_secs,
+            },
+        )
+        .unwrap();
+    }
+
+    fn sealed_bid(store: &Connection, auction_id: &str, txid: &str, bid_zats: u64, salt: &str, nonce: &str) -> i64 {
+        let receipt = crate::memo::receipt(nonce);
+        let commitment = crate::memo::commitment(auction_id, bid_zats, salt);
+        store::insert_bid(
+            store,
+            &NewBid {
+                auction_id: Some(auction_id), txid, output_index: 0, pool: 4, mined_height: Some(1), value_zats: 1_000_000,
+                memo: None, bid_zats: None, refund_address: Some(UA), nonce: Some(nonce), receipt: Some(&receipt),
+                status: "sealed", source: "memo", commitment: Some(&commitment),
+            },
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn sealed_lot_commits_at_close_then_closes_over_reveals_and_refunds_the_silent() {
+        let store = store::open_in_memory().unwrap();
+        sealed_auction(&store, "ssssssss", 60);
+        let salt_a = "0000000000000000000000000000000a";
+        let salt_b = "0000000000000000000000000000000b";
+        let a = sealed_bid(&store, "ssssssss", "s1", 3_000_000, salt_a, "00000000000000s1");
+        let b = sealed_bid(&store, "ssssssss", "s2", 5_000_000, salt_b, "00000000000000s2");
+        let c = sealed_bid(&store, "ssssssss", "s3", 9_000_000, "0000000000000000000000000000000c", "00000000000000s3");
+
+        // Close: nothing is ranked yet; the commitment root is fixed and the reveal window opens.
+        assert_eq!(close_due(&store, None, &Network::Test, "test", &cfg(), None).unwrap(), 1);
+        let lot = store::get_auction(&store, "ssssssss").unwrap().unwrap();
+        assert_eq!(lot.status, "revealing");
+        assert!(lot.commit_hash.is_some());
+        assert!(lot.winner_bid_id.is_none());
+        assert!(store::payouts_for_auction(&store, "ssssssss").unwrap().is_empty(), "no money moves before reveals");
+
+        // A reveal with the wrong salt is rejected by the commitment check the API performs.
+        let wrong = crate::memo::commitment("ssssssss", 5_000_000, salt_a);
+        assert_ne!(Some(wrong.as_str()), store::get_bid(&store, b).unwrap().unwrap().commitment.as_deref());
+        // A and B reveal; C never does.
+        store::reveal_bid(&store, a, 3_000_000, salt_a).unwrap();
+        store::reveal_bid(&store, b, 5_000_000, salt_b).unwrap();
+        assert_eq!(store::get_bid(&store, b).unwrap().unwrap().status, "valid");
+
+        // Reveal window still open: nothing happens.
+        assert_eq!(finalize_reveals(&store, None, &Network::Test, "test", &cfg(), None).unwrap(), 0);
+        store.execute("UPDATE auctions SET reveal_until = ?1 WHERE id = 'ssssssss'", [store::now() - 1]).unwrap();
+        assert_eq!(finalize_reveals(&store, None, &Network::Test, "test", &cfg(), None).unwrap(), 1);
+
+        let lot = store::get_auction(&store, "ssssssss").unwrap().unwrap();
+        assert_eq!(lot.status, "closed");
+        assert_eq!(lot.winner_bid_id, Some(b), "the highest revealed bid wins; the unrevealed 0.09 does not");
+        assert_eq!(lot.clearing_zats, Some(5_000_000));
+        assert_eq!(store::get_bid(&store, c).unwrap().unwrap().status, "unrevealed");
+        let payouts = store::payouts_for_auction(&store, "ssssssss").unwrap();
+        assert!(payouts.iter().any(|p| p.kind == "refund" && p.bid_id == Some(c) && p.value_zats == 1_000_000), "silent bidder gets the deposit back");
+        assert!(payouts.iter().any(|p| p.kind == "refund" && p.bid_id == Some(a)), "loser refunded");
+        let entries = store::ledger_entries(&store, "ssssssss").unwrap();
+        assert_eq!(entries.len(), 2, "ledger covers revealed bids only");
     }
 
     #[test]

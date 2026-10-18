@@ -125,6 +125,12 @@ fn init_schema(conn: &Connection) -> Result<()> {
         "ALTER TABLE bids ADD COLUMN price_zats INTEGER",
         "ALTER TABLE bids ADD COLUMN settle_by INTEGER",
         "ALTER TABLE auctions ADD COLUMN close_height INTEGER",
+        "ALTER TABLE auctions ADD COLUMN reveal_secs INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE auctions ADD COLUMN reveal_until INTEGER",
+        "ALTER TABLE auctions ADD COLUMN commit_hash TEXT",
+        "ALTER TABLE bids ADD COLUMN commitment TEXT",
+        "ALTER TABLE bids ADD COLUMN salt TEXT",
+        "ALTER TABLE bids ADD COLUMN revealed_at INTEGER",
         "ALTER TABLE envelopes ADD COLUMN address TEXT",
         "ALTER TABLE envelopes ADD COLUMN transparent TEXT",
         "CREATE UNIQUE INDEX IF NOT EXISTS envelopes_address ON envelopes (address)",
@@ -195,6 +201,20 @@ pub struct Auction {
     /// chain, so every process that reads the chain agrees on the ledger.
     #[serde(default)]
     pub close_height: Option<u32>,
+    /// Sealed-reveal: seconds after close during which bidders reveal. 0 = bids carry the amount.
+    #[serde(default)]
+    pub reveal_secs: i64,
+    #[serde(default)]
+    pub reveal_until: Option<i64>,
+    /// Sealed-reveal: Merkle root over (receipt, commitment) fixed at close, before any reveal.
+    #[serde(default)]
+    pub commit_hash: Option<String>,
+}
+
+impl Auction {
+    pub fn sealed(&self) -> bool {
+        self.reveal_secs > 0
+    }
 }
 
 fn one() -> u32 {
@@ -206,7 +226,7 @@ fn first_price() -> String {
 
 const AUCTION_COLS: &str = "id, title, description, reserve_zats, deposit_zats, seller_address, address,
     created_at, close_at, status, closed_at, winner_bid_id, ledger_hash, settlement_txid, payout_txid,
-    settle_by, seller_id, image_url, units, format, clearing_zats, close_height";
+    settle_by, seller_id, image_url, units, format, clearing_zats, close_height, reveal_secs, reveal_until, commit_hash";
 
 fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
     Ok(Auction {
@@ -232,6 +252,9 @@ fn row_to_auction(r: &rusqlite::Row<'_>) -> rusqlite::Result<Auction> {
         format: r.get(19)?,
         clearing_zats: r.get::<_, Option<i64>>(20)?.map(|v| v as u64),
         close_height: r.get::<_, Option<i64>>(21)?.map(|v| v as u32),
+        reveal_secs: r.get::<_, Option<i64>>(22)?.unwrap_or(0),
+        reveal_until: r.get(23)?,
+        commit_hash: r.get(24)?,
     })
 }
 
@@ -249,13 +272,14 @@ pub struct NewAuction<'a> {
     pub image_url: Option<&'a str>,
     pub units: u32,
     pub format: &'a str,
+    pub reveal_secs: i64,
 }
 
 pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
     conn.execute(
         "INSERT INTO auctions (id, title, description, reserve_zats, deposit_zats, seller_address,
-            address, diversifier_index, created_at, close_at, status, seller_id, image_url, units, format)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, ?12, ?13, ?14)",
+            address, diversifier_index, created_at, close_at, status, seller_id, image_url, units, format, reveal_secs)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'open', ?11, ?12, ?13, ?14, ?15)",
         params![
             a.id,
             a.title,
@@ -270,10 +294,47 @@ pub fn insert_auction(conn: &Connection, a: &NewAuction<'_>) -> Result<()> {
             a.seller_id,
             a.image_url,
             a.units as i64,
-            a.format
+            a.format,
+            a.reveal_secs
         ],
     )?;
     Ok(())
+}
+
+/// Sealed lots whose reveal window has ended.
+pub fn due_revealing_auctions(conn: &Connection, now: i64) -> Result<Vec<Auction>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {AUCTION_COLS} FROM auctions WHERE status = 'revealing' AND reveal_until IS NOT NULL AND reveal_until <= ?1"
+    ))?;
+    let rows = stmt.query_map([now], row_to_auction)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+/// Move a sealed lot into its reveal window, fixing the commitment root and close height.
+pub fn open_reveal_window(conn: &Connection, id: &str, reveal_until: i64, commit_hash: &str, close_height: Option<u32>) -> Result<()> {
+    conn.execute(
+        "UPDATE auctions SET status = 'revealing', reveal_until = ?2, commit_hash = ?3, close_height = COALESCE(?4, close_height) WHERE id = ?1",
+        params![id, reveal_until, commit_hash, close_height.map(|h| h as i64)],
+    )?;
+    Ok(())
+}
+
+/// Record a reveal: the bid becomes a valid bid with its amount and salt.
+pub fn reveal_bid(conn: &Connection, bid_id: i64, bid_zats: u64, salt: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE bids SET bid_zats = ?2, salt = ?3, revealed_at = ?4, status = 'valid' WHERE id = ?1 AND status = 'sealed'",
+        params![bid_id, bid_zats as i64, salt, now()],
+    )?;
+    Ok(())
+}
+
+/// Reveals recorded after `after` (unix seconds), for the spender to mirror and re-verify.
+pub fn reveals_after(conn: &Connection, after: i64, limit: usize) -> Result<Vec<Bid>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {BID_COLS} FROM bids WHERE revealed_at IS NOT NULL AND revealed_at > ?1 ORDER BY revealed_at LIMIT ?2"
+    ))?;
+    let rows = stmt.query_map(params![after, limit as i64], row_to_bid)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
 pub fn get_auction(conn: &Connection, id: &str) -> Result<Option<Auction>> {
@@ -321,10 +382,14 @@ pub struct Bid {
     pub received_at: i64,
     pub price_zats: Option<u64>,
     pub settle_by: Option<i64>,
+    /// Sealed-reveal: the commitment from the memo, and the salt once revealed.
+    pub commitment: Option<String>,
+    pub salt: Option<String>,
+    pub revealed_at: Option<i64>,
 }
 
 const BID_COLS: &str = "id, auction_id, txid, output_index, pool, mined_height, value_zats, memo,
-    bid_zats, refund_address, nonce, receipt, status, source, received_at, price_zats, settle_by";
+    bid_zats, refund_address, nonce, receipt, status, source, received_at, price_zats, settle_by, commitment, salt, revealed_at";
 
 fn row_to_bid(r: &rusqlite::Row<'_>) -> rusqlite::Result<Bid> {
     Ok(Bid {
@@ -345,6 +410,9 @@ fn row_to_bid(r: &rusqlite::Row<'_>) -> rusqlite::Result<Bid> {
         received_at: r.get(14)?,
         price_zats: r.get::<_, Option<i64>>(15)?.map(|v| v as u64),
         settle_by: r.get(16)?,
+        commitment: r.get(17)?,
+        salt: r.get(18)?,
+        revealed_at: r.get(19)?,
     })
 }
 
@@ -362,13 +430,14 @@ pub struct NewBid<'a> {
     pub receipt: Option<&'a str>,
     pub status: &'a str,
     pub source: &'a str,
+    pub commitment: Option<&'a str>,
 }
 
 pub fn insert_bid(conn: &Connection, b: &NewBid<'_>) -> Result<i64> {
     conn.execute(
         "INSERT INTO bids (auction_id, txid, output_index, pool, mined_height, value_zats, memo,
-            bid_zats, refund_address, nonce, receipt, status, source, received_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            bid_zats, refund_address, nonce, receipt, status, source, received_at, commitment)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             b.auction_id,
             b.txid,
@@ -383,7 +452,8 @@ pub fn insert_bid(conn: &Connection, b: &NewBid<'_>) -> Result<i64> {
             b.receipt,
             b.status,
             b.source,
-            now()
+            now(),
+            b.commitment
         ],
     )?;
     Ok(conn.last_insert_rowid())
@@ -412,7 +482,7 @@ pub fn get_bid_by_nonce(conn: &Connection, auction_id: &str, nonce: &str) -> Res
 
 pub fn nonce_used(conn: &Connection, auction_id: &str, nonce: &str) -> Result<bool> {
     let n: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM bids WHERE auction_id = ?1 AND nonce = ?2 AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired')",
+        "SELECT COUNT(*) FROM bids WHERE auction_id = ?1 AND nonce = ?2 AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired', 'sealed', 'unrevealed')",
         params![auction_id, nonce],
         |r| r.get(0),
     )?;
@@ -437,7 +507,7 @@ pub fn get_bid(conn: &Connection, id: i64) -> Result<Option<Bid>> {
 pub fn ledger_entries(conn: &Connection, auction_id: &str) -> Result<Vec<crate::merkle::Entry>> {
     let mut stmt = conn.prepare(
         "SELECT receipt, bid_zats, nonce FROM bids WHERE auction_id = ?1
-           AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired') AND receipt IS NOT NULL AND bid_zats IS NOT NULL AND nonce IS NOT NULL",
+           AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired', 'sealed', 'unrevealed') AND receipt IS NOT NULL AND bid_zats IS NOT NULL AND nonce IS NOT NULL",
     )?;
     let rows = stmt.query_map([auction_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64, r.get::<_, String>(2)?)))?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -445,7 +515,7 @@ pub fn ledger_entries(conn: &Connection, auction_id: &str) -> Result<Vec<crate::
 
 pub fn receipts_for_auction(conn: &Connection, auction_id: &str) -> Result<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT receipt FROM bids WHERE auction_id = ?1 AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired')
+        "SELECT receipt FROM bids WHERE auction_id = ?1 AND status IN ('valid', 'won', 'settled', 'forfeited', 'expired', 'sealed', 'unrevealed')
            AND receipt IS NOT NULL
          ORDER BY receipt ASC",
     )?;
@@ -827,7 +897,7 @@ pub struct LotMoney {
 pub fn lot_money(conn: &Connection, auction_id: &str) -> Result<LotMoney> {
     let mut m = LotMoney::default();
     let (v, r, held): (i64, i64, i64) = conn.query_row(
-        "SELECT SUM(CASE WHEN status IN ('valid','won','settled','forfeited','expired') THEN 1 ELSE 0 END),
+        "SELECT SUM(CASE WHEN status IN ('valid','won','settled','forfeited','expired','sealed','unrevealed') THEN 1 ELSE 0 END),
                 SUM(CASE WHEN status IN ('malformed','wrong_deposit','duplicate_nonce','late','unknown_auction') THEN 1 ELSE 0 END),
                 COALESCE(SUM(CASE WHEN status IN ('valid','won') THEN value_zats ELSE 0 END), 0)
          FROM bids WHERE auction_id = ?1",
@@ -1019,11 +1089,11 @@ pub fn get_disclosure(conn: &Connection, id: &str) -> Result<Option<String>> {
 pub fn mirror_auction(conn: &Connection, a: &Auction) -> Result<bool> {
     let n = conn.execute(
         "INSERT OR IGNORE INTO auctions (id, title, description, reserve_zats, deposit_zats, seller_address,
-            address, created_at, close_at, status, image_url, units, format)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', ?10, ?11, ?12)",
+            address, created_at, close_at, status, image_url, units, format, reveal_secs)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'open', ?10, ?11, ?12, ?13)",
         params![
             a.id, a.title, a.description, a.reserve_zats as i64, a.deposit_zats as i64,
-            a.seller_address, a.address, a.created_at, a.close_at, a.image_url, a.units as i64, a.format
+            a.seller_address, a.address, a.created_at, a.close_at, a.image_url, a.units as i64, a.format, a.reveal_secs
         ],
     )?;
     Ok(n > 0)
@@ -1086,9 +1156,9 @@ mod money_tests {
     #[test]
     fn lot_money_sums_bids_and_payouts() {
         let c = open_in_memory().unwrap();
-        insert_auction(&c, &NewAuction { id: "mmmmmmmm", title: "t", description: "", reserve_zats: 2, deposit_zats: 1, seller_address: "u1x", address: "u1y", diversifier_index: None, close_at: 0, seller_id: Some(7), image_url: None, units: 2, format: "uniform" }).unwrap();
+        insert_auction(&c, &NewAuction { id: "mmmmmmmm", title: "t", description: "", reserve_zats: 2, deposit_zats: 1, seller_address: "u1x", address: "u1y", diversifier_index: None, close_at: 0, seller_id: Some(7), image_url: None, units: 2, format: "uniform", reveal_secs: 0 }).unwrap();
         fn mk<'a>(txid: &'a str, status: &'a str, val: u64) -> NewBid<'a> {
-            NewBid { auction_id: Some("mmmmmmmm"), txid, output_index: 0, pool: 3, mined_height: Some(1), value_zats: val, memo: None, bid_zats: Some(5), refund_address: Some("u1r"), nonce: Some("n"), receipt: Some("r"), status, source: "memo" }
+            NewBid { auction_id: Some("mmmmmmmm"), txid, output_index: 0, pool: 3, mined_height: Some(1), value_zats: val, memo: None, bid_zats: Some(5), refund_address: Some("u1r"), nonce: Some("n"), receipt: Some("r"), status, source: "memo", commitment: None }
         }
         let a = insert_bid(&c, &mk("a", "won", 100)).unwrap();
         let _b = insert_bid(&c, &mk("b", "settled", 100)).unwrap();

@@ -141,73 +141,107 @@ fn record(store: &Connection, out: &ReceivedOutput, memo_str: &str, source: &str
         receipt: None,
         status: "malformed",
         source,
+        commitment: None,
     };
 
-    match memo::parse(memo_str) {
-        Ok(Parsed::Bid(bid)) => {
-            let receipt = memo::receipt(&bid.nonce);
-            nb.bid_zats = Some(bid.bid_zats);
-            nb.refund_address = Some(&bid.refund_address);
-            nb.nonce = Some(&bid.nonce);
-            nb.receipt = Some(&receipt);
-            let auction = store::get_auction(store, &bid.auction_id)?;
-            // Late is decided by the chain, not by a clock: a bid mined in a block whose timestamp is
-            // after close_at missed the lot, wherever and whenever this process scanned it. Only when the
-            // block time is unknown does the lot's current status decide.
-            // A lot that has already closed cannot take a bid either, even if a non-monotonic block
-            // timestamp says the bid was in time: refunding it is the only safe outcome.
-            let late = |a: &store::Auction| match mined_at {
-                Some(t) => t > a.close_at || a.status != "open",
-                None => a.status != "open",
-            };
-            nb.status = match &auction {
-                None => "unknown_auction",
-                Some(a) if late(a) => "late",
-                // A wallet pays the deposit exactly. A swap rail delivers at least the deposit (it
-                // quotes with a buffer), so envelope bids may overshoot; the excess is refunded with
-                // the deposit or counted towards the price.
-                Some(a) if source == "envelope" && out.value_zats < a.deposit_zats => "wrong_deposit",
-                Some(a) if source != "envelope" && out.value_zats != a.deposit_zats => "wrong_deposit",
-                Some(a) if store::nonce_used(store, &a.id, &bid.nonce)? => "duplicate_nonce",
-                Some(a) if a.address != out.to_address.clone().unwrap_or_default() => {
-                    warn!(
-                        "bid for {} arrived at {:?}, expected {}",
-                        a.id, out.to_address, a.address
-                    );
-                    "valid"
-                }
-                Some(_) => "valid",
-            };
-            if auction.is_some() {
-                nb.auction_id = Some(&bid.auction_id);
+    // A plain bid and a sealed commitment share every check except the amount.
+    struct Entry {
+        auction_id: String,
+        nonce: String,
+        refund_address: String,
+        bid_zats: Option<u64>,
+        commitment: Option<String>,
+    }
+    let parsed = memo::parse(memo_str);
+    let entry = match &parsed {
+        Ok(Parsed::Bid(b)) => Some(Entry {
+            auction_id: b.auction_id.clone(),
+            nonce: b.nonce.clone(),
+            refund_address: b.refund_address.clone(),
+            bid_zats: Some(b.bid_zats),
+            commitment: None,
+        }),
+        Ok(Parsed::Commit(c)) => Some(Entry {
+            auction_id: c.auction_id.clone(),
+            nonce: c.nonce.clone(),
+            refund_address: c.refund_address.clone(),
+            bid_zats: None,
+            commitment: Some(c.commitment.clone()),
+        }),
+        _ => None,
+    };
+    if let Some(bid) = entry {
+        let receipt = memo::receipt(&bid.nonce);
+        nb.bid_zats = bid.bid_zats;
+        nb.refund_address = Some(&bid.refund_address);
+        nb.nonce = Some(&bid.nonce);
+        nb.receipt = Some(&receipt);
+        nb.commitment = bid.commitment.as_deref();
+        let auction = store::get_auction(store, &bid.auction_id)?;
+        // Late is decided by the chain, not by a clock: a bid mined in a block whose timestamp is
+        // after close_at missed the lot, wherever and whenever this process scanned it. Only when the
+        // block time is unknown does the lot's current status decide.
+        // A lot that has already closed cannot take a bid either, even if a non-monotonic block
+        // timestamp says the bid was in time: refunding it is the only safe outcome.
+        let late = |a: &store::Auction| match mined_at {
+            Some(t) => t > a.close_at || a.status != "open",
+            None => a.status != "open",
+        };
+        nb.status = match &auction {
+            None => "unknown_auction",
+            Some(a) if late(a) => "late",
+            // A wallet pays the deposit exactly. A swap rail delivers at least the deposit (it
+            // quotes with a buffer), so envelope bids may overshoot; the excess is refunded with
+            // the deposit or counted towards the price.
+            Some(a) if source == "envelope" && out.value_zats < a.deposit_zats => "wrong_deposit",
+            Some(a) if source != "envelope" && out.value_zats != a.deposit_zats => "wrong_deposit",
+            Some(a) if store::nonce_used(store, &a.id, &bid.nonce)? => "duplicate_nonce",
+            // A sealed lot takes commitments only: an open amount would let the operator read it, so
+            // it is refunded. A plain lot cannot take a commitment: there is no reveal window.
+            Some(a) if a.sealed() && bid.commitment.is_none() => "unsealed_bid",
+            Some(a) if !a.sealed() && bid.commitment.is_some() => "unexpected_commit",
+            Some(a) if a.address != out.to_address.clone().unwrap_or_default() => {
+                warn!(
+                    "bid for {} arrived at {:?}, expected {}",
+                    a.id, out.to_address, a.address
+                );
+                if bid.commitment.is_some() { "sealed" } else { "valid" }
             }
-            let id = store::insert_bid(store, &nb)?;
-            info!(
-                "bid {} for auction {} status {} ({} zats, {})",
-                id, bid.auction_id, nb.status, out.value_zats, out.txid
-            );
-            store::insert_event(
+            Some(_) => if bid.commitment.is_some() { "sealed" } else { "valid" },
+        };
+        if auction.is_some() {
+            nb.auction_id = Some(&bid.auction_id);
+        }
+        let id = store::insert_bid(store, &nb)?;
+        info!(
+            "bid {} for auction {} status {} ({} zats, {})",
+            id, bid.auction_id, nb.status, out.value_zats, out.txid
+        );
+        let accepted = matches!(nb.status, "valid" | "sealed");
+        store::insert_event(
+            store,
+            nb.auction_id,
+            if accepted { "bid_received" } else { "bid_rejected" },
+            &serde_json::json!({ "receipt": receipt, "status": nb.status, "source": source }),
+        )?;
+        // Anything that is not an accepted bid but has a refund address gets its deposit back.
+        if !accepted {
+            let memo_text = format!("BB1R|{}", bid.auction_id);
+            store::queue_payout(
                 store,
                 nb.auction_id,
-                if nb.status == "valid" { "bid_received" } else { "bid_rejected" },
-                &serde_json::json!({ "receipt": receipt, "status": nb.status, "source": source }),
+                Some(id),
+                "invalid_refund",
+                &bid.refund_address,
+                out.value_zats,
+                Some(&memo_text),
+                store::now() + 60,
             )?;
-            // Anything that is not a valid bid but has a refund address gets its deposit back.
-            if nb.status != "valid" {
-                let memo_text = format!("BB1R|{}", bid.auction_id);
-                store::queue_payout(
-                    store,
-                    nb.auction_id,
-                    Some(id),
-                    "invalid_refund",
-                    &bid.refund_address,
-                    out.value_zats,
-                    Some(&memo_text),
-                    store::now() + 60,
-                )?;
-            }
-            Ok(id)
         }
+        return Ok(id);
+    }
+    match parsed {
+        Ok(Parsed::Bid(_)) | Ok(Parsed::Commit(_)) => unreachable!("handled above"),
         Ok(Parsed::Settlement(s)) => {
             nb.nonce = Some(&s.nonce);
             nb.status = "settlement";

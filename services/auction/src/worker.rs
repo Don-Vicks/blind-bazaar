@@ -170,6 +170,7 @@ impl Worker {
         if self.cfg.role == Role::Spender {
             self.mirror_auctions().await?;
             self.mirror_envelopes().await?;
+            self.mirror_reveals().await?;
         }
         wallet::sync::sync_once(client, &self.params, db_cache, db).await?;
         let enhanced = wallet::sync::enhance(client, &self.params, db).await?;
@@ -217,6 +218,7 @@ impl Worker {
                 settlement_window_secs: self.cfg.settlement_window_secs,
             };
             close::close_due(&store, Some(wallet_ro), &self.params, self.network_name, &close_cfg, memo_key.as_ref())?;
+            close::finalize_reveals(&store, Some(wallet_ro), &self.params, self.network_name, &close_cfg, memo_key.as_ref())?;
             close::enforce_settlement_deadlines(&store, &close_cfg)?;
         }
 
@@ -362,6 +364,44 @@ impl Worker {
         }
         store::set_meta(&store, "mirrored_envelope_at", &last.to_string())?;
         info!("mirrored {} envelope(s)", envelopes.len());
+        Ok(())
+    }
+
+    /// Spender: adopt reveals from the viewer, re-checking each commitment against its own sealed bid.
+    async fn mirror_reveals(&self) -> Result<()> {
+        let base = self.cfg.viewer_url.as_deref().unwrap_or_default();
+        let after: i64 = {
+            let store = self.store.lock().await;
+            store::get_meta(&store, "mirrored_reveal_at")?.and_then(|v| v.parse().ok()).unwrap_or(0)
+        };
+        let client = reqwest::Client::builder().timeout(Duration::from_secs(10)).build()?;
+        #[derive(serde::Deserialize)]
+        struct R { auction_id: Option<String>, nonce: Option<String>, bid_zats: Option<u64>, salt: Option<String>, revealed_at: Option<i64> }
+        let reveals: Vec<R> = client
+            .get(format!("{base}/admin/reveals?after={after}"))
+            .header("x-admin-token", &self.cfg.admin_token)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        if reveals.is_empty() {
+            return Ok(());
+        }
+        let store = self.store.lock().await;
+        let mut last = after;
+        for r in reveals {
+            let (Some(aid), Some(nonce), Some(bid), Some(salt), Some(at)) = (r.auction_id, r.nonce, r.bid_zats, r.salt, r.revealed_at) else { continue };
+            last = last.max(at);
+            if let Some(b) = store::get_bid_by_nonce(&store, &aid, &nonce)? {
+                if b.status == "sealed" && b.commitment.as_deref() == Some(crate::memo::commitment(&aid, bid, &salt).as_str()) {
+                    store::reveal_bid(&store, b.id, bid, &salt)?;
+                } else if b.status == "sealed" {
+                    warn!("viewer sent a reveal for {aid} that does not match the commitment; ignored");
+                }
+            }
+        }
+        store::set_meta(&store, "mirrored_reveal_at", &last.to_string())?;
         Ok(())
     }
 
