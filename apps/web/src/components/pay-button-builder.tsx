@@ -3,34 +3,34 @@
 import { GoDark } from "@blind-bazaar/go-dark";
 import { looksLikeShieldedAddress, parseZec } from "@blind-bazaar/sdk";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { api } from "@/lib/api";
 import { Button, Eyebrow, Field, Mono, Panel, inputClass } from "@/components/ui";
+import { ReceiverWalletMaker } from "@/components/receiver-wallet";
+
+const subscribeNever = () => () => {};
 
 /** Configure a pay button, see it live, copy the snippet. */
 export function PayButtonBuilder({ site: siteProp }: { site: string }) {
   const health = useQuery({ queryKey: ["health"], queryFn: api.health });
-  // The snippet points at the site that serves this page unless NEXT_PUBLIC_SITE_URL pins it.
-  const [site, setSite] = useState(siteProp);
-  useEffect(() => {
-    if (!siteProp && typeof window !== "undefined") setSite(window.location.origin);
-  }, [siteProp]);
+  // The snippet points at the site that serves this page unless NEXT_PUBLIC_SITE_URL pins it. Read through an
+  // external store so server and client renders agree without an effect.
+  const origin = useSyncExternalStore(subscribeNever, () => window.location.origin, () => "");
+  const mounted = useSyncExternalStore(subscribeNever, () => true, () => false);
+  const site = siteProp || origin;
   const mainnet = health.data?.network === "main";
   const [label, setLabel] = useState("Pay 0.01 ZEC privately");
   const [amount, setAmount] = useState("0.01");
   const [mode, setMode] = useState<"fresh" | "own">("own");
   const [own, setOwn] = useState("");
   const [copied, setCopied] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
 
-  const zats = useMemo(() => {
-    try {
-      return parseZec(amount);
-    } catch {
-      return 0n;
-    }
-  }, [amount]);
+  let zats = 0n;
+  try {
+    zats = parseZec(amount);
+  } catch {
+    zats = 0n;
+  }
   const amountOk = zats >= 10_000n;
   const ownOk = mode === "own" ? looksLikeShieldedAddress(own.trim()) : true;
 
@@ -88,9 +88,14 @@ ${mode === "fresh" ? `    toEndpoint: "${site}/api/godark/address", // a fresh a
           </label>
         </fieldset>
         {mode === "own" && (
-          <Field label="Your unified address" htmlFor="pb-own" error={own && !ownOk ? "A unified address, starting with u1 or utest1." : undefined}>
-            <input id="pb-own" spellCheck={false} placeholder="u1…" className={`${inputClass} num text-[13px]`} value={own} onChange={(e) => setOwn(e.target.value)} />
-          </Field>
+          <>
+            <Field label="Your unified address" htmlFor="pb-own" error={own && !ownOk ? "A unified address, starting with u1 or utest1." : undefined}>
+              <input id="pb-own" spellCheck={false} placeholder="u1…" className={`${inputClass} num text-[13px]`} value={own} onChange={(e) => setOwn(e.target.value)} />
+            </Field>
+            {mounted && health.data && (
+              <ReceiverWalletMaker network={health.data.network === "main" ? "main" : "test"} birthday={health.data.chain_tip} onAddress={setOwn} />
+            )}
+          </>
         )}
       </Panel>
 

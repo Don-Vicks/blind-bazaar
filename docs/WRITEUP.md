@@ -35,7 +35,8 @@ the winning payment and a proof, and nothing about the losers.
   cap per transaction and per day, and co-sign.
 - The result page publishes a ZIP 311-style note-opening disclosure of the winning output, verifiable against
   any public lightwalletd. Optional email tells a bidder or seller when something needs them.
-- Go Dark: a React component and a one-tag script. Solana routes through NEAR Intents, which accepts a unified
+- Go Dark: a React component and a one-tag script. A recipient with no Zcash wallet can make one in the browser
+  (standard 24 words, same key derivation as the mobile wallets, nothing stored or sent). Solana routes through NEAR Intents, which accepts a unified
   address at quote time; Ethereum routes through Maya Protocol, which since the Ironwood upgrade only pays a
   transparent receiver, so that hop is shielded on arrival and the widget says so. A "who sees what" panel precedes every confirm. For auctions, Go Dark swaps the
   deposit to the lot's address and relays the sealed bid as an envelope, because no swap rail can attach a memo
@@ -63,8 +64,8 @@ at the mainnet NU7 height so a mid-judging upgrade cannot leave a lot half settl
 
 ## Roadmap
 
-Chain runs of the FROST escrow and batched refunds; a mainnet micro-lot and wet Go Dark swaps; in-browser
-receiver wallets; batch markets (private order matching) on the same bid-by-memo rails.
+Chain runs of the FROST escrow and batched refunds; a mainnet micro-lot and wet Go Dark swaps; batch markets
+(private order matching) on the same bid-by-memo rails.
 
 ## Tracks
 

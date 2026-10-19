@@ -173,9 +173,16 @@ and anything on mainnet. The viewer/spender split ran as two processes on the pu
 - Rate limit and origin allow-list on the Go Dark proxy; quote expiry enforced in the widget
 - Docker, Compose and Caddy deployment files
 
+## Added Oct 19 (receiver wallet in the browser)
+
+- On `/embed`, "Make a wallet in this browser": 24 BIP 39 words from `crypto.getRandomValues`, the Orchard key by
+  the same ZIP 32 path the service uses (in WebAssembly, `packages/bb-verify-wasm`), the transparent receiver by
+  BIP 44 in audited curve code, assembled into one unified address; nothing stored or sent. A native test checks
+  the derivation against `zcash_keys`, and a phrase generated in the browser gave the same addresses through
+  `bb-auction derive`. Import steps for Zodl, Zingo and YWallet with the birthday height.
+
 ## Not built yet
 
-- In-browser receiver wallet generation for Go Dark (24-word seed + unified address, Zodl/Zingo import).
 - A real swap through Go Dark on mainnet (the widget, proxy and envelope binding are built; no wet test yet).
 - Mainnet deployment: VPS, process supervision, HTTPS for the web app, `NEXT_PUBLIC_SITE_URL`, serving `go-dark.iife.js` from a CDN path.
 - Refund retry beyond 5 attempts needs a human (the operator is now mailed when that happens, when the float is low, and when the service parks itself: `OPERATOR_EMAIL`).

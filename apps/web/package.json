@@ -12,6 +12,8 @@
   "dependencies": {
     "@blind-bazaar/go-dark": "workspace:*",
     "@blind-bazaar/sdk": "workspace:*",
+    "@noble/curves": "2.0.1",
+    "@noble/hashes": "2.0.1",
     "@tanstack/react-query": "^5.90.0",
     "next": "16.4.0",
     "qrcode.react": "^4.2.0",
