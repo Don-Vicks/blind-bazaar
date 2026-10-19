@@ -206,9 +206,13 @@ impl Worker {
             }
         }
         if freeze.active {
-            let mut s = self.status.write().await;
-            s.last_sync_at = Some(store::now());
-            s.last_error = None;
+            {
+                let mut s = self.status.write().await;
+                s.last_sync_at = Some(store::now());
+                s.last_error = None;
+            }
+            let st = crate::notify::OperatorState { frozen: freeze.reason.clone(), fee_reserve_zats: self.cfg.fee_reserve_zats, ..Default::default() };
+            self.notify_pass(Some(&st)).await;
             return Ok(());
         }
         if let Some(left) = freeze.blocks_left.filter(|l| *l <= 50) {
@@ -307,13 +311,7 @@ impl Worker {
             self.report_payouts().await?;
         }
         self.deliver_events().await?;
-        {
-            let mailer = crate::notify::Mailer::from_env(self.cfg.notify_smtp_url.clone(), self.cfg.notify_from.clone());
-            if let Err(e) = crate::notify::run_pass(&self.store, mailer.as_ref(), self.cfg.site_url.trim_end_matches('/')).await {
-                warn!("notifications: {e:#}");
-            }
-        }
-        {
+        let operator_state = {
             let store = self.store.lock().await;
             let t = store::totals(&store)?;
             let mut s = self.status.write().await;
@@ -323,8 +321,34 @@ impl Worker {
                 Some(b) => b < t.payouts_pending_zats + self.cfg.fee_reserve_zats,
                 None => false,
             };
-        }
+            crate::notify::OperatorState {
+                low_balance: s.low_balance,
+                balance_zats: s.balance_zats,
+                pending_payouts_zats: s.pending_payouts_zats,
+                fee_reserve_zats: self.cfg.fee_reserve_zats,
+                dead_payouts: s.dead_payouts,
+                frozen: s.freeze.active.then(|| s.freeze.reason.clone().unwrap_or_default()),
+            }
+        };
+        self.notify_pass(Some(&operator_state)).await;
         Ok(())
+    }
+
+    /// Queue operator alerts, turn events into bidder and seller mails, send what is unsent.
+    async fn notify_pass(&self, operator: Option<&crate::notify::OperatorState>) {
+        let site = self.cfg.site_url.trim_end_matches('/');
+        if let (Some(email), Some(st)) = (self.cfg.operator_email.as_deref(), operator) {
+            let store = self.store.lock().await;
+            match store::ensure_operator_subscription(&store, email).and_then(|id| crate::notify::operator_alerts(&store, id, st, site)) {
+                Ok(n) if n > 0 => warn!("{n} operator alert(s) queued"),
+                Ok(_) => {}
+                Err(e) => warn!("operator alerts: {e:#}"),
+            }
+        }
+        let mailer = crate::notify::Mailer::from_env(self.cfg.notify_smtp_url.clone(), self.cfg.notify_from.clone());
+        if let Err(e) = crate::notify::run_pass(&self.store, mailer.as_ref(), site).await {
+            warn!("notifications: {e:#}");
+        }
     }
 
     /// Auditable lots keep deposits in their own account; once a lot closes (and again after settlement) the

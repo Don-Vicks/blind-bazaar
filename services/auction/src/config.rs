@@ -302,6 +302,11 @@ pub struct Config {
     /// Public site URL used in notification links.
     #[arg(long, env = "SITE_URL", default_value = "http://localhost:3000")]
     pub site_url: String,
+    /// Operator address for alerts: float below pending payouts plus the fee reserve, a payout that exhausted its
+    /// retries, the service parking itself. Sent through NOTIFY_SMTP_URL, or logged without it. Each alert fires
+    /// once when the condition appears and again only after it has cleared.
+    #[arg(long, env = "OPERATOR_EMAIL")]
+    pub operator_email: Option<String>,
 
     /// Blocks a deposit must have on top of it before it counts as a bid. One-block reorgs are common; two
     /// confirmations keep a deposit from entering the ledger and leaving the chain.

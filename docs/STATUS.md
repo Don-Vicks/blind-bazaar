@@ -178,7 +178,7 @@ and anything on mainnet. The viewer/spender split ran as two processes on the pu
 - In-browser receiver wallet generation for Go Dark (24-word seed + unified address, Zodl/Zingo import).
 - A real swap through Go Dark on mainnet (the widget, proxy and envelope binding are built; no wet test yet).
 - Mainnet deployment: VPS, process supervision, HTTPS for the web app, `NEXT_PUBLIC_SITE_URL`, serving `go-dark.iife.js` from a CDN path.
-- Operator balance alerts; refund retry beyond 5 attempts needs a human.
+- Refund retry beyond 5 attempts needs a human (the operator is now mailed when that happens, when the float is low, and when the service parks itself: `OPERATOR_EMAIL`).
 - Brand palette deferred. (Mobile width and light theme were checked on every page on Oct 18: no horizontal overflow at 375 px, tokens render in both schemes.)
 - Video, screenshots, forum/Discord posts, registration, final write-up numbers.
 

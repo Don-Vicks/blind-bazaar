@@ -731,6 +731,20 @@ pub fn subscriptions_for_seller(conn: &Connection, seller_id: Option<i64>) -> Re
 
 /// Bidder subscriptions on lots that reached a final state more than a week ago are deleted: the address
 /// has done its job and should not outlive it.
+/// The operator's own alert subscription: one row, kept by id in `meta`, never purged (it has no nonce).
+pub fn ensure_operator_subscription(conn: &Connection, email: &str) -> Result<i64> {
+    if let Some(id) = get_meta(conn, "operator_subscription_id")?.and_then(|v| v.parse::<i64>().ok()) {
+        let n = conn.execute("UPDATE subscriptions SET email = ?2 WHERE id = ?1", params![id, email])?;
+        if n == 1 {
+            return Ok(id);
+        }
+    }
+    conn.execute("INSERT INTO subscriptions (email, created_at) VALUES (?1, ?2)", params![email, now()])?;
+    let id = conn.last_insert_rowid();
+    set_meta(conn, "operator_subscription_id", &id.to_string())?;
+    Ok(id)
+}
+
 pub fn purge_stale_subscriptions(conn: &Connection) -> Result<usize> {
     let cutoff = now() - 7 * 86_400;
     Ok(conn.execute(

@@ -93,6 +93,58 @@ fn fmt_time(t: i64) -> String {
         .unwrap_or_default()
 }
 
+/// What the operator is told about. Edge-triggered: an alert goes out when its condition appears and not again
+/// until it has cleared, so a long outage is one mail, not one per pass.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OperatorState {
+    pub low_balance: bool,
+    pub balance_zats: Option<u64>,
+    pub pending_payouts_zats: u64,
+    pub fee_reserve_zats: u64,
+    pub dead_payouts: i64,
+    pub frozen: Option<String>,
+}
+
+/// Queue operator alerts for conditions that are newly true. Returns how many were queued.
+pub fn operator_alerts(store: &Connection, subscription_id: i64, st: &OperatorState, site: &str) -> Result<usize> {
+    let mut queued = 0;
+    let mut edge = |key: &str, now_true: bool, subject: String, body: String| -> Result<()> {
+        let was = store::get_meta(store, key)?.as_deref() == Some("1");
+        if now_true && !was {
+            store::insert_notification(store, subscription_id, 0, "operator_alert", &subject, &body)?;
+            queued += 1;
+        }
+        if now_true != was {
+            store::set_meta(store, key, if now_true { "1" } else { "0" })?;
+        }
+        Ok(())
+    };
+    edge(
+        "alert_low_balance",
+        st.low_balance,
+        "Operator float is low".into(),
+        format!(
+            "The operator wallet holds {} zatoshis; pending payouts need {} plus a fee reserve of {}. Refunds and seller payouts will wait until it is topped up.\n\n{site}/dashboard",
+            st.balance_zats.unwrap_or(0),
+            st.pending_payouts_zats,
+            st.fee_reserve_zats
+        ),
+    )?;
+    edge(
+        "alert_dead_payouts",
+        st.dead_payouts > 0,
+        format!("{} payout(s) need a human", st.dead_payouts),
+        format!("{} payout(s) exhausted their retries. Check the admin payout list, fix the cause, and retry them.\n\n{site}/dashboard", st.dead_payouts),
+    )?;
+    edge(
+        "alert_frozen",
+        st.frozen.is_some(),
+        "The service has parked itself".into(),
+        format!("Reason: {}. Nothing moves on chain until it is restarted on a build that follows the chain.\n\n{site}", st.frozen.clone().unwrap_or_default()),
+    )?;
+    Ok(queued)
+}
+
 pub struct Mailer {
     url: String,
     from: String,
@@ -172,6 +224,29 @@ mod tests {
     use crate::store::{NewAuction, NewBid};
 
     const UA: &str = "utest1phxskj2u3phwse5pql5dazp4katjgtx265pnxgputh9p6vgjpc4pt33gmwgmdmqd3gnucf7f073cxlk6c7f6gkzxu3yvgwuysyplaj24";
+
+    #[test]
+    fn operator_alerts_fire_on_the_edge_and_again_after_clearing() {
+        let s = store::open_in_memory().unwrap();
+        let id = store::ensure_operator_subscription(&s, "ops@example.test").unwrap();
+        assert_eq!(store::ensure_operator_subscription(&s, "ops2@example.test").unwrap(), id, "one row, updated in place");
+        let low = OperatorState { low_balance: true, balance_zats: Some(5), pending_payouts_zats: 100, fee_reserve_zats: 10, ..Default::default() };
+        assert_eq!(operator_alerts(&s, id, &low, "x").unwrap(), 1);
+        assert_eq!(operator_alerts(&s, id, &low, "x").unwrap(), 0, "still low: no repeat");
+        let fine = OperatorState { fee_reserve_zats: 10, ..Default::default() };
+        assert_eq!(operator_alerts(&s, id, &fine, "x").unwrap(), 0, "clearing sends nothing");
+        assert_eq!(operator_alerts(&s, id, &low, "x").unwrap(), 1, "low again: a new alert");
+        let dead_and_frozen = OperatorState { dead_payouts: 2, frozen: Some("paused by the operator".into()), ..low.clone() };
+        assert_eq!(operator_alerts(&s, id, &dead_and_frozen, "x").unwrap(), 2, "two new conditions, one mail each");
+        let pending = store::unsent_notifications(&s, 10).unwrap();
+        assert_eq!(pending.len(), 4);
+        assert!(pending.iter().all(|n| n.email == "ops2@example.test"));
+        assert!(pending.iter().any(|n| n.subject.contains("need a human")));
+        assert!(pending.iter().any(|n| n.subject.contains("parked")));
+        // The operator row survives the purge that removes stale bidder subscriptions.
+        store::purge_stale_subscriptions(&s).unwrap();
+        assert_eq!(store::unsent_notifications(&s, 10).unwrap().len(), 4);
+    }
 
     #[test]
     fn events_become_the_right_mails_for_the_right_people() {

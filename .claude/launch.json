@@ -19,6 +19,7 @@
         "DATA_DIR=./data",
         "BIND=127.0.0.1:8787",
         "SYNC_INTERVAL_SECS=10",
+        "OPERATOR_EMAIL=ops@example.test",
         "target/debug/bb-auction"
       ],
       "port": 8787
