@@ -64,7 +64,7 @@ pages; no wallet transaction was involved in those checks.
 | BB1 memo parse/encode, receipts, ledger hash | 8 Rust tests, 9 SDK tests |
 | Server ZIP-321 URI equals SDK URI | byte-for-byte match on a real auction |
 | Web: auction list, auction page, bid panel with QR, status page | checked in the browser |
-| Go Dark quote routes | live Maya quote ETH→`u1`, live 1Click dry quote USDC→`u1` |
+| Go Dark quote routes | live 1Click dry quotes SOL/USDC→`u1`; Maya quotes ETH/USDC→`t1` only since Oct 19 (refuses Orchard-only `u1`; proxy falls back and reports transparent delivery): `docs/evidence/rail-dry-quotes.md` |
 | Widget builds (ESM + IIFE) and typechecks | `packages/go-dark/dist` |
 
 ## Verified on a real chain (zeckit regtest, `scripts/regtest-e2e.sh`, Oct 13)
@@ -94,7 +94,8 @@ and anything on mainnet. The viewer/spender split ran as two processes on the pu
 |---|---|
 | Envelope matching for Go Dark bids | a swap whose destination txid matches a received note |
 | Go Dark send paths (Phantom USDC/SOL, MetaMask ETH/USDC via Maya router) | one real small swap each on mainnet |
-| Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only |
+| Shielded delivery through 1Click to a `u1` address | mainnet wet test; docs say transparent-only; `u1` accepted at quote time (dry, Oct 19) |
+| Shielded delivery through Maya | not possible today: Maya refuses Orchard-only unified addresses since NU6.3; Ethereum deliveries are transparent and shielded on arrival |
 | Memo passthrough in Zodl, Zingo, YWallet from a ZIP-321 QR | one bid from each wallet |
 
 ## Added Oct 17 evening (review fixes; unit-tested, exercised on the testnet service)

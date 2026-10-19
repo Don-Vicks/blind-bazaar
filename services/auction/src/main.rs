@@ -243,7 +243,7 @@ async fn main() -> anyhow::Result<()> {
         print!("{}", linkability::table(seed, losers_per_lot, delay_min, delay_max, window_secs, batch_max));
         return Ok(());
     }
-    if let Some(config::Cmd::Derive { seed_file, count, check, ufvk: print_ufvk }) = cfg.cmd.clone() {
+    if let Some(config::Cmd::Derive { seed_file, count, check, ufvk: print_ufvk, all_receivers }) = cfg.cmd.clone() {
         use secrecy::ExposeSecret;
         use zcash_keys::keys::UnifiedSpendingKey;
         let params = cfg.net();
@@ -255,11 +255,16 @@ async fn main() -> anyhow::Result<()> {
             println!("ufvk: {}", ufvk.encode(&params).map_err(|e| anyhow::anyhow!("{e:?}"))?);
         }
         let mut j = zip32::DiversifierIndex::new();
+        let request = if all_receivers { zcash_keys::keys::UnifiedAddressRequest::ALLOW_ALL } else { wallet::orchard_only_request() };
         for _ in 0..count {
-            let (ua, idx) = ufvk
-                .find_address(j, wallet::orchard_only_request())
-                .map_err(|e| anyhow::anyhow!("{e:?}"))?;
-            println!("{} {}", hex::encode(idx.as_bytes()), ua.encode(&params));
+            let (ua, idx) = ufvk.find_address(j, request).map_err(|e| anyhow::anyhow!("{e:?}"))?;
+            if all_receivers {
+                use zcash_keys::encoding::AddressCodec;
+                let t = ua.transparent().map(|t| t.encode(&params)).unwrap_or_default();
+                println!("{} {} transparent={t}", hex::encode(idx.as_bytes()), ua.encode(&params));
+            } else {
+                println!("{} {}", hex::encode(idx.as_bytes()), ua.encode(&params));
+            }
             j = idx;
             j.increment().map_err(|_| anyhow::anyhow!("diversifier overflow"))?;
         }

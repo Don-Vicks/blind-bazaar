@@ -180,6 +180,10 @@ pub enum Cmd {
         /// Print the unified full viewing key (for configuring a viewer process).
         #[arg(long)]
         ufvk: bool,
+        /// Derive addresses with every receiver the key has (Orchard plus transparent), and print the
+        /// transparent receiver beside each; the default is Orchard-only, as lot addresses are.
+        #[arg(long)]
+        all_receivers: bool,
     },
     /// Act as a standalone wallet: sync, print address and balance, optionally pay a ZIP-321 URI.
     /// Used for testing bids without a mobile wallet.

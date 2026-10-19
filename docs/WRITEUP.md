@@ -35,8 +35,9 @@ the winning payment and a proof, and nothing about the losers.
   cap per transaction and per day, and co-sign.
 - The result page publishes a ZIP 311-style note-opening disclosure of the winning output, verifiable against
   any public lightwalletd. Optional email tells a bidder or seller when something needs them.
-- Go Dark: a React component and a one-tag script. Ethereum routes through Maya Protocol to a unified address;
-  Solana through NEAR Intents. A "who sees what" panel precedes every confirm. For auctions, Go Dark swaps the
+- Go Dark: a React component and a one-tag script. Solana routes through NEAR Intents, which accepts a unified
+  address at quote time; Ethereum routes through Maya Protocol, which since the Ironwood upgrade only pays a
+  transparent receiver, so that hop is shielded on arrival and the widget says so. A "who sees what" panel precedes every confirm. For auctions, Go Dark swaps the
   deposit to the lot's address and relays the sealed bid as an envelope, because no swap rail can attach a memo
   to the ZEC it delivers.
 

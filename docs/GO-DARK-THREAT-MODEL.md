@@ -25,9 +25,11 @@ payer wallet (Solana or Ethereum)  →  swap rail (NEAR Intents or Maya)  →  Z
   receives its own fresh address; the rail delivers there. A memo-less deposit is matched to an envelope only by the
   address it arrived at, never by a txid a client reports, so nobody can attach a payload to someone else's money or
   claim its refund. A delivery that lands after close is recorded as late and refunded to the sealed refund address.
-- **Shielded delivery first.** Both rails are asked to deliver to the unified address. Maya accepts it. NEAR Intents
-  accepts it at quote time; if a rail rejects it, the proxy falls back to the transparent receiver of that same
-  address and tells the widget, which then says so in its "who sees what" panel.
+- **Shielded delivery first.** Both rails are asked to deliver to the unified address. NEAR Intents accepts it at
+  quote time. Maya accepted it on Oct 13 and refuses it since (its node rejects a unified address whose only
+  shielded receiver is Orchard, citing ZIP 2006), so the Ethereum path delivers to the transparent receiver today.
+  Whenever a rail rejects the unified address, the proxy falls back to the transparent receiver of that same
+  address and tells the widget, which says so in its "who sees what" panel.
 - **Auto-shield on arrival.** Any funds that land on a transparent receiver are moved into the shielded pool by the
   spender process on the next pass, before the auction logic looks at them. Transparent deliveries are matched to
   bids by the rail's destination txid, not by memo.

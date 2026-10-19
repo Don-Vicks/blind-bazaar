@@ -22,26 +22,54 @@ interface MayaQuote {
 async function quoteExactIn(asset: string, amountIn1e8: bigint, destination: string): Promise<MayaQuote> {
   const url = `${NODE}/mayachain/quote/swap?from_asset=${encodeURIComponent(asset)}&to_asset=ZEC.ZEC&amount=${amountIn1e8}&destination=${destination}`;
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Maya quote failed (${res.status}): ${await res.text()}`);
-  return (await res.json()) as MayaQuote;
+  const text = await res.text();
+  // Maya answers refusals with HTTP 200 and an `error` field.
+  let j: Partial<MayaQuote> & { error?: string } = {};
+  try {
+    j = JSON.parse(text) as typeof j;
+  } catch {
+    throw new Error(`Maya quote failed (${res.status}): ${text.slice(0, 200)}`);
+  }
+  if (!res.ok || j.error || !j.expected_amount_out) throw new Error(`Maya quote failed (${res.status}): ${j.error ?? text.slice(0, 200)}`);
+  return j as MayaQuote;
 }
 
-/** Maya quotes are exact-input, so we solve for the input that yields the wanted ZEC with a 1.5% buffer. */
+/** Maya refuses a destination it cannot pay: since NU6.3 that includes every unified address whose only
+ *  shielded receiver is Orchard ("Orchard outputs are disabled from NU6.3 (ZIP 2006)"), which is what lot and
+ *  receive addresses are. Checked Oct 19, 2026 (`scripts/rail-dry-quotes.mjs`). */
+function refusesAddress(e: unknown): boolean {
+  return /address|receiver|destination/i.test((e as Error).message ?? "");
+}
+
+/** Maya quotes are exact-input, so we solve for the input that yields the wanted ZEC with a 1.5% buffer. Tries
+ *  the unified address first; if Maya refuses it and a transparent receiver is offered, quotes to that and
+ *  reports `delivery: "transparent"` so the widget says so and the service shields on arrival. */
 export async function mayaQuote(req: QuoteRequest): Promise<Quote> {
+  try {
+    return await mayaQuoteTo(req, req.recipient, "shielded");
+  } catch (e) {
+    if (req.recipientTransparent && refusesAddress(e)) {
+      return mayaQuoteTo(req, req.recipientTransparent, "transparent");
+    }
+    throw e;
+  }
+}
+
+async function mayaQuoteTo(req: QuoteRequest, destination: string, delivery: Quote["delivery"]): Promise<Quote> {
   const asset = fromAsset(req);
   const want = BigInt(req.zecOutZats);
   // Probe with a round number, then scale.
   const probeIn = asset === "ETH.ETH" ? 1_000_000n /* 0.01 ETH in 1e8 units */ : 10_000_000_000n; /* 100 USDC */
-  const probe = await quoteExactIn(asset, probeIn, req.recipient);
+  const probe = await quoteExactIn(asset, probeIn, destination);
   const probeOut = BigInt(probe.expected_amount_out);
   if (probeOut === 0n) throw new Error("Maya returned zero output");
   let amountIn = (probeIn * want * 1015n) / (probeOut * 1000n);
   const minIn = BigInt(probe.recommended_min_amount_in);
   if (amountIn < minIn) amountIn = minIn;
-  let final = await quoteExactIn(asset, amountIn, req.recipient);
+  let final = await quoteExactIn(asset, amountIn, destination);
   for (let i = 0; i < 2 && BigInt(final.expected_amount_out) < want; i++) {
     amountIn = (amountIn * 1030n) / 1000n;
-    final = await quoteExactIn(asset, amountIn, req.recipient);
+    final = await quoteExactIn(asset, amountIn, destination);
   }
   if (BigInt(final.expected_amount_out) < want) throw new Error("Maya cannot quote the requested output");
   // Convert 1e8 units to native base units: ETH 18dp, USDC 6dp.
@@ -58,7 +86,7 @@ export async function mayaQuote(req: QuoteRequest): Promise<Quote> {
     expiresAt: final.expiry,
     etaSeconds: final.total_swap_seconds,
     trackingId: "",
-    delivery: "shielded",
+    delivery,
     maya: {
       memo: final.memo,
       router: final.router ?? "",

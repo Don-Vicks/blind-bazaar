@@ -90,6 +90,13 @@ the only reader in both paths, so the trust model is unchanged.
   `recipient=u1...`: accepted (amountIn ~123.3 USDC, withdrawFee 32,000 zat, 135 s).
   Same with `t1...`: accepted. Official docs still say transparent-only; a wet test
   with a small amount decides whether `u1` delivery is shielded.
+
+## Rails re-checked (Oct 19, 2026)
+
+- Maya now refuses the unified address (`Unified address has only an Orchard receiver; Orchard outputs are
+  disabled from NU6.3 (ZIP 2006)`) and quotes to the transparent receiver. The Ethereum path therefore delivers
+  transparently today and the widget says so. 1Click still accepts `u1` at quote time. Full table and the app
+  route results in `docs/evidence/rail-dry-quotes.md`.
 - Price reality: 0.1 ZEC is about 121 USD, so demo deposits are 0.01 ZEC or less.
 
 ## Network upgrade timing

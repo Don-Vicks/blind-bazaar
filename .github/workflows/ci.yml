@@ -22,3 +22,13 @@ jobs:
       - run: pnpm -r --filter @blind-bazaar/sdk --filter @blind-bazaar/go-dark build
       - run: pnpm --filter @blind-bazaar/sdk test
       - run: pnpm --filter web exec tsc --noEmit -p .
+  rails:
+    # Dry quotes against both Go Dark rails, no money moved. Informational: a rail changing its answer shows
+    # up here (Maya stopped accepting Orchard-only unified addresses between Oct 13 and Oct 19, 2026).
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: RECIPIENT_T=t1NjwYkyJoBrod8dG43p3eaW9qzNDKHbJkG node scripts/rail-dry-quotes.mjs
