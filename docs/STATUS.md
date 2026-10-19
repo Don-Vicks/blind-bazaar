@@ -86,7 +86,7 @@ Every money path below ran against a local Zebra regtest with lightwalletd and p
 | Late bid (arrived after close) auto-refunded | run 3, bid 2 `late` with refund sent |
 
 Not yet exercised on chain: forfeiture and second chance (unit-tested), Go Dark envelope matching, the
-viewer/spender split (compiles; needs a two-process run), and anything on testnet or mainnet.
+and anything on mainnet. The viewer/spender split ran as two processes on the public testnet on Oct 19 (lot, envelope and manual payout mirrored; the send failed only for lack of funds: `docs/evidence/testnet-two-process.md`).
 
 ## Written, not yet exercised against the chain
 

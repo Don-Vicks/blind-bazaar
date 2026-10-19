@@ -48,6 +48,39 @@
         "target/debug/bb-auction"
       ],
       "port": 8787
+    },
+    {
+      "name": "viewer",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ADMIN_TOKEN=dev-admin-token",
+        "LEDGER_TOKEN=dev-ledger-token",
+        "SYNC_INTERVAL_SECS=10",
+        "BIRTHDAY_HEIGHT=4515600",
+        "ROLE=viewer",
+        "OPERATOR_UFVK=uviewtest1n5m0yawe0yg73ek6vl6xwjd9856ruwufu00c7lqsserdqujgncjn2grmry3eenn2jgtg2r06pxxa7fhwkj3xhpllclr9hhpw9enmmejcfla89xyk56dn690038nhxmw8gjsy2zxdhlcf4xfkwjqvsklyrmxdcqlcn38t899dcrfvp23e0h34yal7gk0n9nuex2g9ufsx0hug502hupdlnyevpf0qxdptuf3uqfh8w735892fhxg3nkaxunc2gfq4wltfkrtm2f4gfqc86hyzr6nlklge43ccqvewu3gzrm0kxtwtzn7trmmz2gx8jf4x9nh5qefahh3g636vgpznvsyn99nc8w92esyhssm0phrykh9tqm00w56awcyg65tayc8us52tuc3rpmmffcwe6q8dvn5p7hsqh8g4m9358vlkl2unh3g9tak5akwnjnezresjxygw03mh8zswuku5rm4dhsdtyy2cau6fytkrwr2jrzcnzu632cng",
+        "DATA_DIR=./data/viewer",
+        "BIND=127.0.0.1:8787",
+        "target/debug/bb-auction"
+      ],
+      "port": 8787
+    },
+    {
+      "name": "spender",
+      "runtimeExecutable": "env",
+      "runtimeArgs": [
+        "ADMIN_TOKEN=dev-admin-token",
+        "LEDGER_TOKEN=dev-ledger-token",
+        "SYNC_INTERVAL_SECS=10",
+        "BIRTHDAY_HEIGHT=4515600",
+        "ROLE=spender",
+        "VIEWER_URL=http://127.0.0.1:8787",
+        "OPERATOR_SEED_FILE=./data/operator.seed",
+        "DATA_DIR=./data/spender",
+        "BIND=127.0.0.1:8788",
+        "target/debug/bb-auction"
+      ],
+      "port": 8788
     }
   ]
 }
