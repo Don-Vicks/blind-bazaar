@@ -33,17 +33,19 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/auctions/{id}/bid-uri", get(bid_uri))
         .route("/godark/receive-address", post(godark_receive_address))
         .route("/auctions/{id}/proof", get(inclusion_proof))
-        .route("/auctions/{id}/fulfilment", get(winner_fulfilment))
-        .route("/auctions/{id}/standing", get(standing))
+        .route("/auctions/{id}/fulfilment", post(winner_fulfilment))
+        .route("/auctions/{id}/standing", post(standing))
         .route("/auctions/{id}/reveals", post(reveal))
         .route("/auctions/{id}/notify", post(notify_bidder).delete(unnotify_bidder))
         .route("/sellers/demo", post(demo_seller))
+        .route("/notify/confirm", post(confirm_notify))
+        .route("/auctions", post(create_auction))
         .route_layer(axum::middleware::from_fn_with_state(limiter, crate::ratelimit::limit));
     Router::new()
         .merge(limited)
         .route("/health", get(health))
         .route("/rules", get(rules))
-        .route("/auctions", get(list_auctions).post(create_auction))
+        .route("/auctions", get(list_auctions))
         .route("/auctions/{id}", get(get_auction))
         .route("/auctions/{id}/receipts", get(receipts))
         .route("/auctions/{id}/result", get(result))
@@ -252,6 +254,14 @@ async fn create_auction(
 ) -> ApiResult<store::Auction> {
     let seller_id = authorise_seller(&state, &headers).await?;
     check_live(&state).await?;
+    if let Some(sid) = seller_id {
+        // A key can run only so many lots at once: each lot derives an address and, if auditable, a wallet account.
+        let conn = state.store.lock().await;
+        let (open, cap) = (store::open_lots_for_seller(&conn, sid)?, if store::seller_name(&conn, sid)?.as_deref() == Some("demo seller") { 5 } else { 20 });
+        if open >= cap {
+            return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, format!("this key already has {open} open lots; close one first (limit {cap})")));
+        }
+    }
     if req.title.trim().is_empty() {
         return Err(bad("title required"));
     }
@@ -275,10 +285,7 @@ async fn create_auction(
     if close_at <= store::now() {
         return Err(bad("close_at must be in the future"));
     }
-    {
-        let tip = state.status.read().await.chain_tip;
-        crate::freeze::lot_fits(state.freeze, tip, store::now(), close_at, state.settlement_window_secs).map_err(bad)?;
-    }
+
     let units = req.units.unwrap_or(1).clamp(1, 10_000);
     let format = match req.format.as_deref() {
         None => if units > 1 { "uniform" } else { "first_price" },
@@ -294,6 +301,10 @@ async fn create_auction(
     let reveal_secs = req.reveal_secs.unwrap_or(0);
     if reveal_secs != 0 && !(60..=7 * 86_400).contains(&reveal_secs) {
         return Err(bad("reveal_secs must be between 60 and 604800"));
+    }
+    {
+        let tip = state.status.read().await.chain_tip;
+        crate::freeze::lot_fits(state.freeze, tip, store::now(), close_at, reveal_secs, state.settlement_window_secs).map_err(bad)?;
     }
     let image_url = match req.image_url.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         Some(u) if u.starts_with("https://") && u.len() < 2048 => Some(u.to_string()),
@@ -1208,7 +1219,7 @@ fn nonce_param(raw: &str) -> Result<String, ApiError> {
 async fn winner_fulfilment(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-    Query(q): Query<SecretQuery>,
+    Json(q): Json<SecretQuery>,
 ) -> ApiResult<serde_json::Value> {
     let nonce = nonce_param(&q.secret)?;
     let conn = state.store.lock().await;
@@ -1249,7 +1260,8 @@ struct Standing {
 }
 
 /// Everything one bidder needs to know about their own bid, authenticated by the bidder secret.
-async fn standing(State(state): State<Arc<AppState>>, Path(id): Path<String>, Query(q): Query<SecretQuery>) -> ApiResult<Standing> {
+/// POST, not GET: the secret must not land in proxy or browser history logs as a query string.
+async fn standing(State(state): State<Arc<AppState>>, Path(id): Path<String>, Json(q): Json<SecretQuery>) -> ApiResult<Standing> {
     let nonce = nonce_param(&q.secret)?;
     let conn = state.store.lock().await;
     let auction = store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
@@ -1367,7 +1379,33 @@ async fn notify_bidder(State(state): State<Arc<AppState>>, Path(id): Path<String
     }
     let conn = state.store.lock().await;
     store::get_auction(&conn, &id)?.ok_or_else(not_found)?;
-    store::subscribe_bidder(&conn, &id, &nonce, req.email.trim())?;
+    let email = req.email.trim();
+    if store::unconfirmed_count(&conn, email)? >= 3 {
+        return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "that address has unconfirmed requests already; confirm one from your inbox first".into()));
+    }
+    let sub = store::subscribe_bidder(&conn, &id, &nonce, email)?;
+    let pending = sub.confirm_token.is_some();
+    if let Some(token) = &sub.confirm_token {
+        crate::notify::queue_confirmation(&conn, sub.id, token, &state.site_url, "your bid")?;
+    }
+    Ok(Json(serde_json::json!({ "ok": true, "confirm_pending": pending })))
+}
+
+#[derive(Deserialize)]
+struct ConfirmReq {
+    token: String,
+}
+
+/// The link in a confirmation mail lands here (through the site's /notify/confirm page).
+async fn confirm_notify(State(state): State<Arc<AppState>>, Json(req): Json<ConfirmReq>) -> ApiResult<serde_json::Value> {
+    if req.token.len() != 32 || !req.token.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(bad("bad token"));
+    }
+    let conn = state.store.lock().await;
+    let ok = store::confirm_subscription(&conn, &req.token)?;
+    if !ok {
+        return Err(ApiError(StatusCode::NOT_FOUND, "that link is not valid any more".into()));
+    }
     Ok(Json(serde_json::json!({ "ok": true })))
 }
 
@@ -1402,8 +1440,19 @@ async fn seller_notify_set(State(state): State<Arc<AppState>>, headers: HeaderMa
         }
     }
     let conn = state.store.lock().await;
-    store::subscribe_seller(&conn, sid, email)?;
-    Ok(Json(serde_json::json!({ "ok": true, "subscribed": email.is_some() })))
+    if let Some(e) = email {
+        if store::unconfirmed_count(&conn, e)? >= 3 {
+            return Err(ApiError(StatusCode::TOO_MANY_REQUESTS, "that address has unconfirmed requests already; confirm one from your inbox first".into()));
+        }
+    }
+    let sub = store::subscribe_seller(&conn, sid, email)?;
+    let pending = sub.as_ref().and_then(|s| s.confirm_token.as_ref()).is_some();
+    if let Some(s) = &sub {
+        if let Some(token) = &s.confirm_token {
+            crate::notify::queue_confirmation(&conn, s.id, token, &state.site_url, "your lots")?;
+        }
+    }
+    Ok(Json(serde_json::json!({ "ok": true, "subscribed": email.is_some(), "confirm_pending": pending })))
 }
 
 /// Reveals since `after`, for the spender to mirror (it re-checks every commitment itself).

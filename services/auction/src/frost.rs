@@ -657,14 +657,23 @@ impl SignerHost {
     }
 
     /// Match every external output to one unconsumed expected payout (same Orchard receiver, same amount).
+    /// Expected payouts an unexpired session has already matched. A second session must not match the same
+    /// payout before the first signs, or a compromised spender could get one refund signed twice by running two
+    /// sessions side by side.
+    fn reserved(&self) -> std::collections::HashSet<i64> {
+        let sessions = self.sessions.lock().unwrap();
+        sessions.values().filter(|s| s.created.elapsed() < SESSION_TTL).flat_map(|s| s.matched.iter().copied()).collect()
+    }
+
     fn match_ledger(&self, plan: &SigningPlan) -> Result<Vec<i64>> {
         let expected = self.expected.lock().unwrap();
         let consumed = self.consumed.lock().unwrap();
+        let reserved = self.reserved();
         let mut used: Vec<i64> = Vec::new();
         for (receiver, zats) in &plan.summary.external_receivers {
             let found = expected
                 .values()
-                .filter(|p| !consumed.contains(&p.id) && !used.contains(&p.id))
+                .filter(|p| !consumed.contains(&p.id) && !reserved.contains(&p.id) && !used.contains(&p.id))
                 .find(|p| p.value_zats == *zats && p.orchard_receiver_hex().as_deref() == Some(receiver.as_str()));
             match found {
                 Some(p) => used.push(p.id),
@@ -866,8 +875,13 @@ pub async fn run_signer(host: Arc<SignerHost>, bind: &str, token: Option<String>
             }
         }
     }
-    async fn health(State(st): State<St>) -> Json<serde_json::Value> {
+    /// Liveness for anyone; the policy and what has been signed only with the token.
+    async fn health(State(st): State<St>, headers: HeaderMap) -> Json<serde_json::Value> {
+        if authed(&st, &headers).is_err() {
+            return Json(serde_json::json!({ "ok": true }));
+        }
         Json(serde_json::json!({
+            "ok": true,
             "identifier": st.host.identifier(),
             "signed_sessions": st.host.signed.load(Ordering::Relaxed),
             "policy_max_external_zats": st.host.policy.max_external_zats,
@@ -1265,6 +1279,19 @@ mod tests {
         assert_eq!(hosts[0].rolling_used(), 15_000);
         // The other signer keeps its own window: it has committed to nothing yet.
         hosts[1].round1_plan("a", plan(&public, 1, 10_000)).unwrap();
+    }
+
+    #[tokio::test]
+    async fn ledger_payout_cannot_be_matched_by_two_live_sessions() {
+        let (escrow, hosts) = setup(SignerPolicy { require_ledger: true, ..SignerPolicy::default() });
+        let public = escrow.public_key_package().unwrap();
+        hosts[0].add_expected(vec![expected(7, UA_A, 10_000)]);
+        let plan = plan_paying(&public, &[(UA_A, 10_000)]);
+        hosts[0].round1_plan("first", plan.clone()).unwrap();
+        // The same payout again while the first session is live: refused, not signed twice.
+        let err = hosts[0].round1_plan("second", plan.clone()).unwrap_err();
+        assert!(err.to_string().contains("ledger"), "{err}");
+        assert!(hosts[0].audit_log().iter().any(|e| e.session == "second" && e.outcome.starts_with("refused")));
     }
 
     fn plan_ok(public: &bb_frost::PublicKeyPackage) -> SigningPlan {

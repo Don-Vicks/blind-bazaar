@@ -26,7 +26,8 @@ pages; no wallet transaction was involved in those checks.
 - CI: GitHub Actions runs the Rust tests and the SDK tests and typechecks the web app on every push.
 - Bid cards and my-bids page: a bid card file and a QR link carry the bid key (in the URL fragment) to another
   device; `/bids` lists every bid this browser holds with its standing and what needs attention.
-- Opt-in notifications: `POST /auctions/{id}/notify` (bid key + email) and `/seller/notify`; events become mails
+- Opt-in notifications (double opt-in since Oct 19: one confirmation mail, nothing else until the link is
+  clicked): `POST /auctions/{id}/notify` (bid key + email) and `/seller/notify`; events become mails
   (received, reveal open, won, lost, second chance, refund sent, lot closed, winner paid, paid) through
   `NOTIFY_SMTP_URL`, or are logged without it; addresses purged a week after the lot ends. Not yet sent through a
   real SMTP server.

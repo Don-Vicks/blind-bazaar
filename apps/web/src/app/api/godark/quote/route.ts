@@ -1,5 +1,5 @@
 import { json, preflight } from "@/lib/cors";
-import { allow, clientKey, originAllowed } from "@/lib/rate-limit";
+import { allow, clientKey, isEvmAddress, isSolanaAddress, isTransparentAddress, originAllowed, upstreamError } from "@/lib/rate-limit";
 import { getQuote, isAcceptableZcashAddress, type QuoteRequest } from "@/lib/rails";
 
 export async function POST(req: Request) {
@@ -20,10 +20,16 @@ export async function POST(req: Request) {
   if (!/^\d+$/.test(body.zecOutZats) || BigInt(body.zecOutZats) < 10_000n) {
     return json(req, { error: "zecOutZats must be at least 10000" }, { status: 400 });
   }
+  if (body.recipientTransparent !== undefined && !isTransparentAddress(body.recipientTransparent)) {
+    return json(req, { error: "recipientTransparent must be a transparent Zcash address" }, { status: 400 });
+  }
+  if (typeof body.refundTo !== "string" || !(body.chain === "solana" ? isSolanaAddress(body.refundTo) : isEvmAddress(body.refundTo))) {
+    return json(req, { error: "refundTo must be an address on the source chain" }, { status: 400 });
+  }
   try {
     return json(req, await getQuote(body), { headers: { "cache-control": "no-store" } });
   } catch (e) {
-    return json(req, { error: (e as Error).message }, { status: 502 });
+    return json(req, { error: upstreamError("quote", e) }, { status: 502 });
   }
 }
 

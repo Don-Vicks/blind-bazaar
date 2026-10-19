@@ -20,7 +20,7 @@ interface MayaQuote {
 }
 
 async function quoteExactIn(asset: string, amountIn1e8: bigint, destination: string): Promise<MayaQuote> {
-  const url = `${NODE}/mayachain/quote/swap?from_asset=${encodeURIComponent(asset)}&to_asset=ZEC.ZEC&amount=${amountIn1e8}&destination=${destination}`;
+  const url = `${NODE}/mayachain/quote/swap?from_asset=${encodeURIComponent(asset)}&to_asset=ZEC.ZEC&amount=${amountIn1e8}&destination=${encodeURIComponent(destination)}`;
   const res = await fetch(url);
   const text = await res.text();
   // Maya answers refusals with HTTP 200 and an `error` field.
@@ -97,7 +97,7 @@ async function mayaQuoteTo(req: QuoteRequest, destination: string, delivery: Quo
 }
 
 export async function mayaStatus(inboundTxid: string): Promise<StatusResponse> {
-  const res = await fetch(`${NODE}/mayachain/tx/status/${inboundTxid.replace(/^0x/, "")}`);
+  const res = await fetch(`${NODE}/mayachain/tx/status/${encodeURIComponent(inboundTxid.replace(/^0x/, ""))}`);
   if (res.status === 404) return { rail: "maya", status: "pending", destinationTxids: [], detail: "not observed yet" };
   if (!res.ok) throw new Error(`Maya status failed (${res.status})`);
   const j = (await res.json()) as {

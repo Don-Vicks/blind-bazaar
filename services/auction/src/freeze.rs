@@ -59,13 +59,14 @@ pub fn status(plan: FreezePlan, tip: Option<u32>, now: i64) -> FreezeStatus {
 }
 
 /// Whether a lot closing at `close_at` can settle before the freeze.
-pub fn lot_fits(plan: FreezePlan, tip: Option<u32>, now: i64, close_at: i64, settlement_window_secs: i64) -> Result<(), String> {
+/// `reveal_secs` is the sealed lot's reveal window (0 for classic lots): settlement starts only after it.
+pub fn lot_fits(plan: FreezePlan, tip: Option<u32>, now: i64, close_at: i64, reveal_secs: i64, settlement_window_secs: i64) -> Result<(), String> {
     let st = status(plan, tip, now);
     if st.active {
         return Err(format!("the service is {}; no new lots", st.reason.unwrap_or_default()));
     }
     if let Some(eta) = st.eta_at {
-        let needs = close_at + settlement_window_secs;
+        let needs = close_at + reveal_secs + settlement_window_secs;
         if needs > eta {
             return Err(format!(
                 "this lot would still be settling when the service freezes at block {} (about {} unix); close it at least {} seconds earlier",
@@ -85,7 +86,7 @@ mod tests {
     #[test]
     fn no_plan_means_live() {
         assert_eq!(status(FreezePlan::default(), Some(100), 0), FreezeStatus::default());
-        assert!(lot_fits(FreezePlan::default(), Some(100), 0, 10_000_000, 86_400).is_ok());
+        assert!(lot_fits(FreezePlan::default(), Some(100), 0, 10_000_000, 0, 86_400).is_ok());
     }
 
     #[test]
@@ -93,7 +94,7 @@ mod tests {
         let s = status(FreezePlan { height: Some(1_000), paused: true }, Some(10), 0);
         assert!(s.active);
         assert!(s.reason.as_deref().unwrap().contains("paused"));
-        assert!(lot_fits(FreezePlan { height: None, paused: true }, None, 0, 100, 0).is_err());
+        assert!(lot_fits(FreezePlan { height: None, paused: true }, None, 0, 100, 0, 0).is_err());
     }
 
     #[test]
@@ -115,11 +116,13 @@ mod tests {
         let plan = FreezePlan { height: Some(1_100), paused: false };
         let now = 10_000;
         // 100 blocks away: 7500 s. A lot closing in 1000 s with a 3600 s settlement window fits.
-        assert!(lot_fits(plan, Some(1_000), now, now + 1_000, 3_600).is_ok());
+        assert!(lot_fits(plan, Some(1_000), now, now + 1_000, 0, 3_600).is_ok());
         // One closing in 5000 s with the same window does not (needs 8600 > 7500).
-        let err = lot_fits(plan, Some(1_000), now, now + 5_000, 3_600).unwrap_err();
+        let err = lot_fits(plan, Some(1_000), now, now + 5_000, 0, 3_600).unwrap_err();
         assert!(err.contains("1100 seconds earlier"), "{err}");
+        // A sealed lot's reveal window comes before settlement: 1000 + 3000 reveal + 3600 = 7600 > 7500.
+        assert!(lot_fits(plan, Some(1_000), now, now + 1_000, 3_000, 3_600).is_err());
         // Once frozen, nothing fits.
-        assert!(lot_fits(plan, Some(1_100), now, now + 10, 0).is_err());
+        assert!(lot_fits(plan, Some(1_100), now, now + 10, 0, 0).is_err());
     }
 }

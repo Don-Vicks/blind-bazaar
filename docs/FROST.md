@@ -52,8 +52,8 @@ event log records which signers co-signed each payout (`cosigners` on `refund_se
 With `--ledger-url` and `--ledger-token`, a signer fetches the viewer's `/ledger/payouts` before every session:
 the list of payouts the viewer derived with the viewing key alone (refunds to the addresses sealed in losing
 bids, seller payouts at the price, forfeits, and manual operator sends queued on the viewer). Every external
-output in the PCZT must match one unconsumed entry by Orchard receiver and exact amount, and signing consumes
-the entries it matched. A compromised spender can therefore neither invent a recipient nor pay a legitimate
+output in the PCZT must match one unconsumed entry by Orchard receiver and exact amount; an entry is reserved
+from round 1 (so two sessions run side by side cannot both match it) and consumed when the session signs. A compromised spender can therefore neither invent a recipient nor pay a legitimate
 one twice; a compromised viewer still cannot spend. The regtest script runs both signers with the check on.
 Without the flag a signer enforces only the value and fee caps, and says so at startup.
 

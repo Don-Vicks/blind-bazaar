@@ -7,6 +7,7 @@ typed by hand: result and disclosure files are the API's own JSON, txids are rea
 |---|---|---|---|
 | `regtest/` | local zeckit regtest | full money loop: funding, two or three bids, close, refunds, settlement, seller payout, CLI verifier | first-price run passed Oct 13 (its output lived in a temp dir and was not kept; the quoted lines are in `docs/STATUS.md`); `UNITS=2`, `FORMAT=vickrey`, `FORMAT=rfq`, `FROST=1` written, not yet run. The next run writes here. |
 | `testnet-2xv644bv/` | Zcash testnet (NU7) | an auditable lot: its API JSON, the published viewing key, and `bb-auction audit` run against the honest result (OK, exit 0) and a tampered copy (MISMATCH, exit 2). The lot had no bids. | Oct 18 |
+| `security-review-oct19.md` | | ten findings from a code review of the week's additions, each verified and fixed the same day | Oct 19 |
 | `testnet-two-process.md` | Zcash testnet | viewer (viewing key only) and spender (seed) as two processes: lot, envelope and manual payout mirrored, ledger token enforced; the send failed only for lack of funds | Oct 19 |
 | `audit-tamper.md`, `refund-linkability.md`, `wallets.md` | | what the audit tool catches; refund timing linkability by lot density; which wallets have actually placed a bid | Oct 17-18 |
 | `testnet-<lot>/` | Zcash testnet (NU7) | public lot with real wallet bids | not yet run: needs testnet funds |

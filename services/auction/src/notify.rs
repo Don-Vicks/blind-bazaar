@@ -145,6 +145,20 @@ pub fn operator_alerts(store: &Connection, subscription_id: i64, st: &OperatorSt
     Ok(queued)
 }
 
+/// The one mail an unconfirmed address receives: a link that turns the subscription on. Nothing else is sent
+/// until it is clicked, so a stranger cannot make the operator mail a third party more than this once per
+/// subscription (and `unconfirmed_count` bounds how many subscriptions one address can be put on).
+pub fn queue_confirmation(store: &Connection, subscription_id: i64, token: &str, site: &str, what: &str) -> Result<i64> {
+    store::insert_notification(
+        store,
+        subscription_id,
+        0,
+        "confirm",
+        &format!("Confirm email updates for {what}"),
+        &format!("Someone asked Blind Bazaar to email this address about {what}. If that was you, open this link once:\n\n{site}/notify/confirm?token={token}\n\nIf not, ignore this message; nothing else will be sent."),
+    )
+}
+
 pub struct Mailer {
     url: String,
     from: String,
@@ -269,9 +283,28 @@ mod tests {
             }).unwrap());
         }
         // Winner and one loser opted in; the other loser did not. The seller opted in.
-        store::subscribe_bidder(&s, "aaaaaaaa", "00000000000000a1", "w@example.test").unwrap();
-        store::subscribe_bidder(&s, "aaaaaaaa", "00000000000000a2", "l@example.test").unwrap();
-        store::subscribe_seller(&s, sid, Some("alice@example.test")).unwrap();
+        let w = store::subscribe_bidder(&s, "aaaaaaaa", "00000000000000a1", "w@example.test").unwrap();
+        let l = store::subscribe_bidder(&s, "aaaaaaaa", "00000000000000a2", "l@example.test").unwrap();
+        let a = store::subscribe_seller(&s, sid, Some("alice@example.test")).unwrap().unwrap();
+        // Until an address confirms, only its confirmation mail may go out.
+        let confirm_id = queue_confirmation(&s, w.id, w.confirm_token.as_deref().unwrap(), "https://bb.example", "your bid").unwrap();
+        store::insert_notification(&s, w.id, 0, "bid_received", "early", "should wait").unwrap();
+        let pending = store::unsent_notifications(&s, 10).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, confirm_id);
+        assert!(pending[0].body.contains(&format!("/notify/confirm?token={}", w.confirm_token.as_deref().unwrap())));
+        assert!(!store::confirm_subscription(&s, "0000").unwrap(), "unknown token");
+        for sub in [&w, &l, &a] {
+            assert!(store::confirm_subscription(&s, sub.confirm_token.as_deref().unwrap()).unwrap());
+        }
+        assert_eq!(store::unsent_notifications(&s, 10).unwrap().len(), 2, "confirmed: the held mail is released");
+        // Re-subscribing with the same address keeps the confirmation; a new address needs a new one.
+        assert!(store::subscribe_bidder(&s, "aaaaaaaa", "00000000000000a1", "w@example.test").unwrap().confirm_token.is_none());
+        assert!(store::subscribe_bidder(&s, "aaaaaaaa", "00000000000000a1", "other@example.test").unwrap().confirm_token.is_some());
+        assert_eq!(store::unconfirmed_count(&s, "other@example.test").unwrap(), 1);
+        // Back to the confirmed address for the rest of the test.
+        s.execute("UPDATE subscriptions SET email = 'w@example.test', confirmed_at = 1, confirm_token = NULL WHERE nonce = '00000000000000a1'", []).unwrap();
+        s.execute("DELETE FROM notifications", []).unwrap();
 
         let ev = |kind: &str, payload: serde_json::Value| store::Event { id: 1, auction_id: Some("aaaaaaaa".into()), kind: kind.into(), payload, created_at: 0 };
         let closed = messages_for(&s, &ev("closed", serde_json::json!({ "clearing_zats": 3_000_000 })), "https://bb.example").unwrap();

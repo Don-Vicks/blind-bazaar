@@ -181,7 +181,8 @@ export const api = {
   setFulfilment: (key: string, id: string, note: string) =>
     request<{ ok: boolean }>(`/seller/lots/${id}/fulfilment`, { method: "POST", headers: { "x-seller-key": key }, body: JSON.stringify({ note }) }),
   fulfilment: (id: string, secret: string) =>
-    request<{ note: string | null; updated_at: number | null }>(`/auctions/${id}/fulfilment?secret=${encodeURIComponent(secret)}`),
+    request<{ note: string | null; updated_at: number | null }>(`/auctions/${id}/fulfilment`, { method: "POST", body: JSON.stringify({ secret }) }),
+  confirmNotify: (token: string) => request<{ ok: boolean }>("/notify/confirm", { method: "POST", body: JSON.stringify({ token }) }),
   notify: (id: string, secret: string, email: string) =>
     request<{ ok: boolean }>(`/auctions/${id}/notify`, { method: "POST", body: JSON.stringify({ secret, email }) }),
   unnotify: (id: string, secret: string) =>
@@ -191,7 +192,8 @@ export const api = {
     request<{ ok: boolean; subscribed: boolean }>("/seller/notify", { method: "POST", headers: { "x-seller-key": key }, body: JSON.stringify({ email }) }),
   reveal: (id: string, secret: string, bidZats: bigint, salt: string) =>
     request<{ ok: boolean; receipt: string }>(`/auctions/${id}/reveals`, { method: "POST", body: JSON.stringify({ secret, bid_zats: Number(bidZats), salt }) }),
-  standing: (id: string, secret: string) => request<Standing>(`/auctions/${id}/standing?secret=${encodeURIComponent(secret)}`),
+  // The bid key travels in a POST body, never a query string that proxies and browsers would log.
+  standing: (id: string, secret: string) => request<Standing>(`/auctions/${id}/standing`, { method: "POST", body: JSON.stringify({ secret }) }),
   postEnvelope: (id: string, body: Record<string, unknown>) =>
     request<{ ok: boolean; receipt: string }>(`/auctions/${id}/envelopes`, {
       method: "POST",

@@ -338,6 +338,7 @@ async fn main() -> anyhow::Result<()> {
         trust_proxy: cfg.trust_proxy,
         freeze: freeze::FreezePlan { height: cfg.freeze_height, paused: cfg.paused },
         allow_any_deposit: cfg.allow_any_deposit,
+        site_url: cfg.site_url.trim_end_matches('/').to_string(),
         settlement_window_secs: cfg.settlement_window_secs,
         store,
         wallet: tx,

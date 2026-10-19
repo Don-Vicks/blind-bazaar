@@ -64,6 +64,8 @@ pub struct AppState {
     pub freeze: crate::freeze::FreezePlan,
     /// Accept deposits off the standard menu (`denom.rs`). Off by default: an unusual deposit marks its refunds.
     pub allow_any_deposit: bool,
+    /// Public site URL for links in confirmation mails.
+    pub site_url: String,
     pub settlement_window_secs: i64,
     pub store: Arc<Mutex<Connection>>,
     pub wallet: mpsc::Sender<WalletCmd>,

@@ -138,6 +138,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
          )",
         "CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_bidder ON subscriptions (auction_id, nonce)",
         "CREATE UNIQUE INDEX IF NOT EXISTS subscriptions_seller ON subscriptions (seller_id)",
+        "ALTER TABLE subscriptions ADD COLUMN confirm_token TEXT",
+        "ALTER TABLE subscriptions ADD COLUMN confirmed_at INTEGER",
         "CREATE TABLE IF NOT EXISTS notifications (
             id INTEGER PRIMARY KEY,
             subscription_id INTEGER NOT NULL,
@@ -661,33 +663,82 @@ pub struct Payout {
 // ---- notifications ----
 
 /// A bidder asks to be told about one bid (keyed by its nonce), or a seller about all their lots.
-pub fn subscribe_bidder(conn: &Connection, auction_id: &str, nonce: &str, email: &str) -> Result<()> {
+fn confirm_token() -> String {
+    let raw: [u8; 16] = rand::random();
+    hex::encode(raw)
+}
+
+/// Outcome of a subscribe call: the subscription id and, when the address still has to be confirmed, the token
+/// to mail. A re-subscribe with the same address keeps an existing confirmation; a new address needs a new one.
+pub struct Subscribed {
+    pub id: i64,
+    pub confirm_token: Option<String>,
+}
+
+pub fn subscribe_bidder(conn: &Connection, auction_id: &str, nonce: &str, email: &str) -> Result<Subscribed> {
+    let token = confirm_token();
     conn.execute(
-        "INSERT INTO subscriptions (auction_id, nonce, email, created_at) VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT (auction_id, nonce) DO UPDATE SET email = excluded.email",
-        params![auction_id, nonce, email, now()],
+        "INSERT INTO subscriptions (auction_id, nonce, email, created_at, confirm_token) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT (auction_id, nonce) DO UPDATE SET
+            confirm_token = CASE WHEN subscriptions.email = excluded.email AND subscriptions.confirmed_at IS NOT NULL THEN NULL ELSE excluded.confirm_token END,
+            confirmed_at = CASE WHEN subscriptions.email = excluded.email THEN subscriptions.confirmed_at ELSE NULL END,
+            email = excluded.email",
+        params![auction_id, nonce, email, now(), token],
     )?;
-    Ok(())
+    subscribed_state(conn, "SELECT id, confirm_token, confirmed_at FROM subscriptions WHERE auction_id = ?1 AND nonce = ?2", params![auction_id, nonce])
+}
+
+fn subscribed_state(conn: &Connection, sql: &str, p: impl rusqlite::Params) -> Result<Subscribed> {
+    let (id, token, confirmed): (i64, Option<String>, Option<i64>) = conn.query_row(sql, p, |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+    Ok(Subscribed { id, confirm_token: if confirmed.is_some() { None } else { token } })
+}
+
+/// Confirm a subscription by its token. Returns false when no unconfirmed subscription holds it.
+pub fn confirm_subscription(conn: &Connection, token: &str) -> Result<bool> {
+    Ok(conn.execute(
+        "UPDATE subscriptions SET confirmed_at = ?2, confirm_token = NULL WHERE confirm_token = ?1 AND confirmed_at IS NULL",
+        params![token, now()],
+    )? > 0)
+}
+
+/// Subscriptions for one address that still await confirmation. Bounds how many confirmation mails a stranger
+/// can send to someone else's inbox.
+pub fn unconfirmed_count(conn: &Connection, email: &str) -> Result<i64> {
+    Ok(conn.query_row("SELECT COUNT(*) FROM subscriptions WHERE email = ?1 AND confirmed_at IS NULL", [email], |r| r.get(0))?)
+}
+
+pub fn seller_name(conn: &Connection, seller_id: i64) -> Result<Option<String>> {
+    Ok(conn.query_row("SELECT name FROM sellers WHERE id = ?1", [seller_id], |r| r.get(0)).optional()?)
+}
+
+/// Open lots a seller has listed; the operator (seller 0) is not counted.
+pub fn open_lots_for_seller(conn: &Connection, seller_id: i64) -> Result<i64> {
+    Ok(conn.query_row("SELECT COUNT(*) FROM auctions WHERE seller_id = ?1 AND status IN ('open', 'sealed')", [seller_id], |r| r.get(0))?)
 }
 
 pub fn unsubscribe_bidder(conn: &Connection, auction_id: &str, nonce: &str) -> Result<bool> {
     Ok(conn.execute("DELETE FROM subscriptions WHERE auction_id = ?1 AND nonce = ?2", params![auction_id, nonce])? > 0)
 }
 
-pub fn subscribe_seller(conn: &Connection, seller_id: i64, email: Option<&str>) -> Result<()> {
+pub fn subscribe_seller(conn: &Connection, seller_id: i64, email: Option<&str>) -> Result<Option<Subscribed>> {
     match email {
         Some(e) => {
+            let token = confirm_token();
             conn.execute(
-                "INSERT INTO subscriptions (seller_id, email, created_at) VALUES (?1, ?2, ?3)
-                 ON CONFLICT (seller_id) DO UPDATE SET email = excluded.email",
-                params![seller_id, e, now()],
+                "INSERT INTO subscriptions (seller_id, email, created_at, confirm_token) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (seller_id) DO UPDATE SET
+                    confirm_token = CASE WHEN subscriptions.email = excluded.email AND subscriptions.confirmed_at IS NOT NULL THEN NULL ELSE excluded.confirm_token END,
+                    confirmed_at = CASE WHEN subscriptions.email = excluded.email THEN subscriptions.confirmed_at ELSE NULL END,
+                    email = excluded.email",
+                params![seller_id, e, now(), token],
             )?;
+            Ok(Some(subscribed_state(conn, "SELECT id, confirm_token, confirmed_at FROM subscriptions WHERE seller_id = ?1", [seller_id])?))
         }
         None => {
             conn.execute("DELETE FROM subscriptions WHERE seller_id = ?1", [seller_id])?;
+            Ok(None)
         }
     }
-    Ok(())
 }
 
 pub fn seller_has_subscription(conn: &Connection, seller_id: i64) -> Result<bool> {
@@ -739,7 +790,8 @@ pub fn ensure_operator_subscription(conn: &Connection, email: &str) -> Result<i6
             return Ok(id);
         }
     }
-    conn.execute("INSERT INTO subscriptions (email, created_at) VALUES (?1, ?2)", params![email, now()])?;
+    // The operator configured the address themselves: no confirmation round.
+    conn.execute("INSERT INTO subscriptions (email, created_at, confirmed_at) VALUES (?1, ?2, ?2)", params![email, now()])?;
     let id = conn.last_insert_rowid();
     set_meta(conn, "operator_subscription_id", &id.to_string())?;
     Ok(id)
@@ -786,7 +838,7 @@ pub struct PendingNotification {
 pub fn unsent_notifications(conn: &Connection, limit: usize) -> Result<Vec<PendingNotification>> {
     let mut stmt = conn.prepare(
         "SELECT n.id, s.email, n.subject, n.body FROM notifications n JOIN subscriptions s ON s.id = n.subscription_id
-         WHERE n.sent_at IS NULL ORDER BY n.id ASC LIMIT ?1",
+         WHERE n.sent_at IS NULL AND (s.confirmed_at IS NOT NULL OR n.kind = 'confirm') ORDER BY n.id ASC LIMIT ?1",
     )?;
     let rows = stmt.query_map([limit as i64], |r| Ok(PendingNotification { id: r.get(0)?, email: r.get(1)?, subject: r.get(2)?, body: r.get(3)? }))?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
