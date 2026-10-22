@@ -16,7 +16,9 @@ export const GoDark: React.FC = () => (
         </Reveal>
         <Reveal delay={8}>
           <div style={{ fontFamily: fonts.serif, fontSize: type.h2, lineHeight: 1.12, color: dark.fg }}>
-            Pay or bid from Solana or Ethereum. <span style={{ fontStyle: "italic", color: dark.accent }}>Land in shielded ZEC.</span>
+            Pay or bid from Solana or Ethereum.
+            <br />
+            <span style={{ fontStyle: "italic", color: dark.accent }}>Land in shielded ZEC.</span>
           </div>
         </Reveal>
         <Hairline delay={24} width={200} style={{ margin: "40px 0" }} />
@@ -31,7 +33,7 @@ export const GoDark: React.FC = () => (
         label="/embed  ·  Go Dark"
         width={940}
         height={760}
-        pageScale={1.15}
+        pageScale={1.08}
         delay={10}
         fallback={{
           title: "Go Dark",
