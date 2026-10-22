@@ -275,6 +275,7 @@ impl Worker {
             };
             close::close_due(&store, Some(wallet_ro), &self.params, self.network_name, &close_cfg, memo_key.as_ref())?;
             close::finalize_reveals(&store, Some(wallet_ro), &self.params, self.network_name, &close_cfg, memo_key.as_ref())?;
+            close::backfill_disclosures(&store, wallet_ro, &self.params, self.network_name, memo_key.as_ref())?;
             close::enforce_settlement_deadlines(&store, &close_cfg)?;
         }
 

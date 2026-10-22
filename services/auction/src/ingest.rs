@@ -81,7 +81,17 @@ pub fn block_time(wallet: &Connection, height: u32) -> Result<Option<i64>> {
 
 /// Height of the last scanned block whose timestamp is at or before `close_at`, and whether a later
 /// block has been scanned (so the close is final). `None` if no block at or before `close_at` is known.
-pub fn close_height_for(wallet: &Connection, close_at: i64) -> Result<Option<(u32, bool)>> {
+pub fn close_height_for(wallet: &Connection, close_at: i64, now: i64) -> Result<Option<(u32, bool)>> {
+    // A chain whose newest block is dated more than a week before the close cannot be used as a clock
+    // (the zeckit regtest devnet stamps every block with one fixed time). Close by the wall clock then,
+    // a minute after close_at, and record the tip as the close height.
+    let (tip, tip_time): (Option<i64>, Option<i64>) =
+        wallet.query_row("SELECT MAX(height), MAX(time) FROM blocks", [], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    if let (Some(tip), Some(t)) = (tip, tip_time) {
+        if t + 7 * 86_400 < close_at {
+            return Ok(Some((tip as u32, now >= close_at + 60)));
+        }
+    }
     let last: Option<i64> = wallet
         .query_row("SELECT MAX(height) FROM blocks WHERE time <= ?1", [close_at], |r| r.get(0))
         .optional()?
@@ -406,6 +416,27 @@ mod tests {
     const UA: &str = "utest1phxskj2u3phwse5pql5dazp4katjgtx265pnxgputh9p6vgjpc4pt33gmwgmdmqd3gnucf7f073cxlk6c7f6gkzxu3yvgwuysyplaj24";
 
     /// A stand-in for the wallet database: just the two tables the re-check reads.
+    #[test]
+    fn close_height_uses_the_clock_when_the_chain_has_no_usable_block_times() {
+        let w = fake_wallet();
+        // A devnet that stamps every block with one fixed time from 2011.
+        for h in 100..=110 {
+            w.execute("INSERT INTO blocks (height, time) VALUES (?1, 1297153002)", [h]).unwrap();
+        }
+        let close_at = 1_792_000_000;
+        assert_eq!(close_height_for(&w, close_at, close_at + 10).unwrap(), Some((110, false)), "not yet: a minute of grace");
+        assert_eq!(close_height_for(&w, close_at, close_at + 61).unwrap(), Some((110, true)), "closed by the clock at the tip");
+        // A real chain: the block after close_at decides, whatever the clock says.
+        let real = fake_wallet();
+        for (h, t) in [(200, close_at - 150), (201, close_at - 75), (202, close_at + 10)] {
+            real.execute("INSERT INTO blocks (height, time) VALUES (?1, ?2)", [h as i64, t]).unwrap();
+        }
+        assert_eq!(close_height_for(&real, close_at, close_at + 3_600).unwrap(), Some((201, true)));
+        let waiting = fake_wallet();
+        waiting.execute("INSERT INTO blocks (height, time) VALUES (300, ?1)", [close_at - 10]).unwrap();
+        assert_eq!(close_height_for(&waiting, close_at, close_at + 3_600).unwrap(), Some((300, false)), "no block after close_at yet");
+    }
+
     fn fake_wallet() -> Connection {
         let w = Connection::open_in_memory().unwrap();
         w.execute_batch(

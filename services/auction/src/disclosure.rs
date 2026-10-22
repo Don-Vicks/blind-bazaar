@@ -236,8 +236,12 @@ pub fn build(
     let txid = txid_internal_bytes(txid_display)?;
     let row = wallet_ro
         .query_row(
+            // Since NU6.3 a note received through an Orchard receiver lands in the Ironwood pool and its own
+            // table; the columns are the same, so read both.
             "SELECT n.value, n.rho, n.rseed, n.note_version, n.memo, a.address, t.raw, t.mined_height
-             FROM orchard_received_notes n
+             FROM (SELECT transaction_id, action_index, value, rho, rseed, note_version, memo, address_id FROM orchard_received_notes
+                   UNION ALL
+                   SELECT transaction_id, action_index, value, rho, rseed, note_version, memo, address_id FROM ironwood_received_notes) n
              JOIN transactions t ON t.id_tx = n.transaction_id
              LEFT JOIN addresses a ON a.id = n.address_id
              WHERE t.txid = ?1 AND n.action_index = ?2",

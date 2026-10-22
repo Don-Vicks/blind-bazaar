@@ -712,6 +712,15 @@ pub fn seller_name(conn: &Connection, seller_id: i64) -> Result<Option<String>> 
 }
 
 /// Open lots a seller has listed; the operator (seller 0) is not counted.
+/// Closed lots that sold something but carry no disclosure yet.
+pub fn closed_auctions_without_disclosure(conn: &Connection) -> Result<Vec<Auction>> {
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {AUCTION_COLS} FROM auctions WHERE status IN ('closed', 'paid', 'unsettled') AND clearing_zats IS NOT NULL AND (disclosure IS NULL OR disclosure = '') ORDER BY closed_at DESC LIMIT 20"
+    ))?;
+    let rows = stmt.query_map([], row_to_auction)?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
 pub fn open_lots_for_seller(conn: &Connection, seller_id: i64) -> Result<i64> {
     Ok(conn.query_row("SELECT COUNT(*) FROM auctions WHERE seller_id = ?1 AND status IN ('open', 'sealed')", [seller_id], |r| r.get(0))?)
 }

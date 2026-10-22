@@ -1,0 +1,29 @@
+{
+  "name": "@blind-bazaar/video",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Remotion compositions for the ZECATHON submission: promo, demo, vertical cut and stills.",
+  "scripts": {
+    "studio": "remotion studio",
+    "render:promo": "remotion render Promo out/promo.mp4 --codec h264 --crf 18 --concurrency 1 --timeout 120000",
+    "render:demo": "remotion render Demo out/demo.mp4 --codec h264 --crf 18 --concurrency 1 --timeout 120000",
+    "render:vertical": "remotion render PromoVertical out/promo-vertical.mp4 --codec h264 --crf 18 --concurrency 1 --timeout 120000",
+    "stills": "remotion still Promo out/promo-thumb.png --frame 75 --width 1280 --height 720 --scale 0.6667 && remotion still Demo out/demo-thumb.png --frame 75 --width 1280 --height 720 --scale 0.6667",
+    "render": "pnpm render:promo && pnpm render:demo && pnpm render:vertical && pnpm stills",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.538",
+    "@remotion/google-fonts": "4.0.538",
+    "@remotion/sfx": "4.0.538",
+    "@remotion/transitions": "4.0.538",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "remotion": "4.0.538"
+  },
+  "devDependencies": {
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

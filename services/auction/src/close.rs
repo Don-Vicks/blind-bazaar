@@ -103,7 +103,7 @@ pub fn close_due(
         // Close only once the chain has moved past close_at: every bid that can be in the ledger is
         // then mined and scanned, and any process reading the same chain closes on the same set.
         let close_height = match wallet_ro {
-            Some(w) => match crate::ingest::close_height_for(w, auction.close_at)? {
+            Some(w) => match crate::ingest::close_height_for(w, auction.close_at, now)? {
                 Some((h, true)) => Some(h),
                 _ => {
                     tracing::debug!("auction {}: waiting for a block after close_at before closing", auction.id);
@@ -902,4 +902,29 @@ mod tests {
         assert!(store::requeue_payout(&store, id).unwrap());
         assert_eq!(store::due_payouts(&store, store::now() + 1, 5).unwrap().len(), 1);
     }
+}
+
+/// Closed lots whose winning disclosure could not be built at close (the note was not yet enhanced, or an
+/// older build did not read the Ironwood table) get another try on every pass until one verifies.
+pub fn backfill_disclosures(store: &Connection, wallet_ro: &Connection, params: &Network, network_name: &str, memo_key: MemoKey<'_>) -> Result<usize> {
+    let mut built = 0;
+    for auction in store::closed_auctions_without_disclosure(store)? {
+        let winners: Vec<store::Bid> = store::bids_for_auction(store, &auction.id)?.into_iter().filter(|b| b.status == "won" || b.status == "settled").collect();
+        if winners.is_empty() {
+            continue;
+        }
+        let mut disclosures = Vec::new();
+        for w in &winners {
+            match disclosure::build(wallet_ro, params, network_name, &w.txid, w.output_index, memo_key.map(|k| (k, auction.reserve_zats))) {
+                Ok(d) => disclosures.push(d),
+                Err(e) => tracing::debug!("disclosure for {} bid {} still not buildable: {e:#}", auction.id, w.id),
+            }
+        }
+        if disclosures.len() == winners.len() {
+            store::set_disclosure(store, &auction.id, &serde_json::to_string(&disclosures)?)?;
+            info!("auction {}: disclosure built after close ({} winner(s))", auction.id, disclosures.len());
+            built += 1;
+        }
+    }
+    Ok(built)
 }
