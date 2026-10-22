@@ -82,6 +82,16 @@
         "target/debug/bb-auction"
       ],
       "port": 8788
+    },
+    {
+      "name": "regtest",
+      "runtimeExecutable": "zeckit",
+      "runtimeArgs": [
+        "up",
+        "--backend",
+        "lwd"
+      ],
+      "port": 8080
     }
   ]
 }

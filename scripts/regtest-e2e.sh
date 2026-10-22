@@ -61,7 +61,7 @@ fund() { # fund <address> <zec> ; the faucet syncs between requests, so retry a 
 }
 fund "$OP" 20.0
 pass "faucet funded the operator"
-wait_for 240 "operator balance" bash -c "curl -sf $API/health | grep -Eq '\"balance_zats\":[1-9]'"
+wait_for 240 "operator balance" bash -c "curl -sf -H 'x-admin-token: regtest-admin' $API/health | grep -Eq '\"balance_zats\":[1-9]'"
 pass "operator sees funds"
 
 # The operator funds the bidders itself: first exercise of the send path.
