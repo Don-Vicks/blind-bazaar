@@ -132,7 +132,7 @@ and anything on mainnet. The viewer/spender split ran as two processes on the pu
   the bond and lapses the request. Disclosures carry `reserve_rule: at_most` so both verifiers read "within
   budget". 2 close tests. `scripts/regtest-e2e.sh FORMAT=vickrey|rfq` written, not yet run (regtest devnet).
 
-## Added Oct 17 (FROST escrow; unit-tested, chain run pending)
+## Added Oct 17 (FROST escrow; signed on regtest Oct 22: `docs/evidence/regtest/frost.md`)
 
 - 2-of-3 FROST custody for the spender: `packages/bb-frost` (RedPallas re-randomized FROST, 3 tests),
   `bb-auction frost keygen|show|signer`, escrow account imported from the group viewing key with no spending key,
