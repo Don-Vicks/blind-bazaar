@@ -713,9 +713,18 @@ pub fn seller_name(conn: &Connection, seller_id: i64) -> Result<Option<String>> 
 
 /// Open lots a seller has listed; the operator (seller 0) is not counted.
 /// Closed lots that sold something but carry no disclosure yet.
+#[cfg(test)]
+mod backfill_query_test {
+    #[test]
+    fn closed_auctions_without_disclosure_query_matches_the_schema() {
+        let s = super::open_in_memory().unwrap();
+        assert!(super::closed_auctions_without_disclosure(&s).unwrap().is_empty());
+    }
+}
+
 pub fn closed_auctions_without_disclosure(conn: &Connection) -> Result<Vec<Auction>> {
     let mut stmt = conn.prepare(&format!(
-        "SELECT {AUCTION_COLS} FROM auctions WHERE status IN ('closed', 'paid', 'unsettled') AND clearing_zats IS NOT NULL AND (disclosure IS NULL OR disclosure = '') ORDER BY closed_at DESC LIMIT 20"
+        "SELECT {AUCTION_COLS} FROM auctions WHERE status IN ('closed', 'paid', 'unsettled') AND clearing_zats IS NOT NULL AND (disclosure_json IS NULL OR disclosure_json = '') ORDER BY closed_at DESC LIMIT 20"
     ))?;
     let rows = stmt.query_map([], row_to_auction)?;
     Ok(rows.collect::<Result<Vec<_>, _>>()?)

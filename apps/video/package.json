@@ -8,7 +8,7 @@
     "render:promo": "remotion render Promo out/promo.mp4 --codec h264 --crf 18 --concurrency 1 --timeout 120000",
     "render:demo": "remotion render Demo out/demo.mp4 --codec h264 --crf 18 --concurrency 1 --timeout 120000",
     "render:vertical": "remotion render PromoVertical out/promo-vertical.mp4 --codec h264 --crf 18 --concurrency 1 --timeout 120000",
-    "stills": "remotion still Promo out/promo-thumb.png --frame 75 --width 1280 --height 720 --scale 0.6667 && remotion still Demo out/demo-thumb.png --frame 75 --width 1280 --height 720 --scale 0.6667",
+    "stills": "remotion still Promo out/promo-thumb.png --frame 100 --scale 0.6667 && remotion still Demo out/demo-thumb.png --frame 100 --scale 0.6667",
     "render": "pnpm render:promo && pnpm render:demo && pnpm render:vertical && pnpm stills",
     "typecheck": "tsc --noEmit"
   },
