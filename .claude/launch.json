@@ -92,6 +92,18 @@
         "lwd"
       ],
       "port": 8080
+    },
+    {
+      "name": "web-3001",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "web",
+        "dev",
+        "--port",
+        "3001"
+      ],
+      "port": 3001
     }
   ]
 }
