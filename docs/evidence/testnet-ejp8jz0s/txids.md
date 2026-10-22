@@ -11,7 +11,7 @@ tampered copy of the result was caught. Reserve 0.02 TAZ, deposit 0.01 TAZ, reve
 |---|---|---|---|---|
 | 1 | 20:05 | bid A: commitment to 0.03 TAZ, 0.01 deposit | 59ec5bba2a68480f4456a728059db45623c7e9285c9b6e81301c9cc2863e431b (block 4,530,073) | the memo carries a hash, not an amount |
 | 2 | 20:07 | bid B: commitment to 0.025 TAZ, 0.01 deposit | 3bf92156f95bedca7b85d6f99a3301c610fdc16ad9890a16a9c2bb58e9072e2b (block 4,530,076) | second sealed bid |
-| 3 | 20:20 | close by the chain; commitments fixed; reveal window opens | `commit_hash` in `lot.json` | the set of bids is fixed before any amount is known |
+| 3 | 20:20 | close by the chain at block 4,530,107; commitments fixed; reveal window opens | `commit_hash` 88b2377b8e7adddb575b8225e9ecdb86ef9f009fc37c52753395b07a32317549 | the set of bids is fixed before any amount is known |
 | 4 | 20:21 | both bidders reveal (`POST /auctions/{id}/reveals` with bid key, amount, salt) | receipts d8999b38… and 6e81a7be… | reveals must match the committed hash |
 | 5 | 20:31 | window ends; result: A wins at 0.03 | `ledger_hash` cc67e1ddb780137c783c99687d1f295deb7a42a84b25d37a9fcde2043d64d17c | ranking over revealed amounts only |
 | 6 | 20:31 | lot account swept to the operator (auditable lots keep deposits in their own account) | payout 10, kind `sweep` | the only spend an auditor sees from the lot's key |

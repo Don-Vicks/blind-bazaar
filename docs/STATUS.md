@@ -51,6 +51,8 @@ pages; no wallet transaction was involved in those checks.
 - Refund batching: refunds due in the same window (`REFUND_WINDOW_SECS`) from any lot go out as one transaction
   with up to `REFUND_BATCH_MAX` outputs; `bb-auction simulate-refunds` measures timing linkability for naive versus
   batched sending (`docs/evidence/refund-linkability.md`). Unit-tested; no chain run of a batched refund yet.
+- Sealed-reveal and auditable lots ran on the public testnet with real wallet bids on Oct 22 (lot ejp8jz0s:
+  commitments, reveal, close, audit MATCH from the published key, tampered result caught).
 - Sealed-reveal mode: `reveal_secs` on a lot, `BB1C` commitment memos, commitment root fixed at close, reveal
   endpoint checked against the commitment, unrevealed bids refunded in full, spender mirrors reveals, one-click
   reveal on the status page, sell form defaults to sealed. Unit-tested (36 Rust, 12 SDK tests); no chain run yet.
