@@ -40,7 +40,7 @@ export const ProofCards: React.FC = () => (
       </div>
       <Reveal delay={110}>
         <div style={{ fontFamily: fonts.sans, fontSize: 30, color: dark.muted, marginTop: 40, lineHeight: 1.35 }}>
-          Built and unit-tested. The FROST escrow and sealed-reveal lots have not yet signed on a chain; the audit tool has not yet run on a lot with real wallet bids.
+          All four ran on a chain on Oct 22: sealed-reveal and the audit on the public testnet with real wallet bids; the FROST escrow co-signing every payout on a local regtest chain. No mainnet lot yet.
         </div>
       </Reveal>
     </AbsoluteFill>
