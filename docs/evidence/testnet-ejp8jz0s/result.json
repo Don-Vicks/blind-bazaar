@@ -1,10 +1,10 @@
 {
     "auction_id": "ejp8jz0s",
-    "status": "closed",
+    "status": "paid",
     "format": "first_price",
     "units": 1,
     "units_sold": 1,
-    "units_settled": 0,
+    "units_settled": 1,
     "clearing_zats": 3000000,
     "winning_amount_zats": 3000000,
     "winning_txid": "59ec5bba2a68480f4456a728059db45623c7e9285c9b6e81301c9cc2863e431b",
@@ -13,11 +13,11 @@
     ],
     "ledger_hash": "cc67e1ddb780137c783c99687d1f295deb7a42a84b25d37a9fcde2043d64d17c",
     "valid_bid_count": 2,
-    "refund_latency_secs": null,
-    "refunds_sent": 0,
-    "refunds_pending": 1,
-    "settlement_txid": null,
-    "payout_txid": null,
+    "refund_latency_secs": 339,
+    "refunds_sent": 1,
+    "refunds_pending": 0,
+    "settlement_txid": "17cbb1e036c5ae5cc2178e3c9f24102489844fbce0ae42fe09bee1535961cea6",
+    "payout_txid": "73b78f72b17b0ead0ac3ee245f471bb08ff594677a6e37725cc4f9d13722ebd5",
     "refunds": [
         {
             "kind": "sweep",
@@ -26,8 +26,18 @@
         },
         {
             "kind": "refund",
+            "status": "sent",
+            "txid": "28f196cd6bcc938ef2872b7d80005b95cfda7828f5918ab9164250052413b07f"
+        },
+        {
+            "kind": "sweep",
             "status": "queued",
             "txid": null
+        },
+        {
+            "kind": "seller",
+            "status": "sent",
+            "txid": "73b78f72b17b0ead0ac3ee245f471bb08ff594677a6e37725cc4f9d13722ebd5"
         }
     ],
     "disclosure": [

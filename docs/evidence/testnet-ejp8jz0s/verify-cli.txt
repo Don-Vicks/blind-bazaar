@@ -1,0 +1,4 @@
+ok   action 1 of 59ec5bba2a68480f4456a728059db45623c7e9285c9b6e81301c9cc2863e431b (ironwood pool): 1000000 zatoshis to utest16ncsujeg0fjf2e
+     cmx 7c37512b98b2ad8af190907e54f0816a242fe6440964ef119d8132dcb5c5e819
+OK: all 1 disclosure(s) match the chain
+exit code: 0

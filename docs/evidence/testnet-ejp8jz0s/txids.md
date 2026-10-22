@@ -14,9 +14,10 @@ tampered copy of the result was caught. Reserve 0.02 TAZ, deposit 0.01 TAZ, reve
 | 3 | 20:20 | close by the chain at block 4,530,107; commitments fixed; reveal window opens | `commit_hash` 88b2377b8e7adddb575b8225e9ecdb86ef9f009fc37c52753395b07a32317549 | the set of bids is fixed before any amount is known |
 | 4 | 20:21 | both bidders reveal (`POST /auctions/{id}/reveals` with bid key, amount, salt) | receipts d8999b38… and 6e81a7be… | reveals must match the committed hash |
 | 5 | 20:31 | window ends; result: A wins at 0.03 | `ledger_hash` cc67e1ddb780137c783c99687d1f295deb7a42a84b25d37a9fcde2043d64d17c | ranking over revealed amounts only |
-| 6 | 20:31 | lot account swept to the operator (auditable lots keep deposits in their own account) | payout 10, kind `sweep` | the only spend an auditor sees from the lot's key |
+| 6 | 20:31 | lot account swept to the operator (auditable lots keep deposits in their own account) | 9c5ffe254bddabb99d812a0fe9dd0697698b02856ff1ed1ce48e8693ada4cd8b | the only spend an auditor sees from the lot's key |
 | 7 | 20:32 | winner pays the 0.02 balance by memo | 17cbb1e036c5ae5cc2178e3c9f24102489844fbce0ae42fe09bee1535961cea6 | settlement matched to the winning nonce |
-| 8 | | seller payout and loser refund | see `result.json` (`payout_txid`, `refunds_sent`) once sent | |
+| 8 | 20:36 | seller paid 0.03 | 73b78f72b17b0ead0ac3ee245f471bb08ff594677a6e37725cc4f9d13722ebd5 | payout to the seller's own wallet |
+| 9 | 20:37 | loser refunded 0.01 after the random delay | 28f196cd6bcc938ef2872b7d80005b95cfda7828f5918ab9164250052413b07f | the refund goes to the address sealed in the losing commitment memo |
 
 ## The audit, from the chain alone
 
