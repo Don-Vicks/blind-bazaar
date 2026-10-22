@@ -1,0 +1,15 @@
+lot ejp8jz0s: deposit 1000000 reserve 2000000 format first_price close_at 1792700418
+scanning from 4530063 with https://testnet.zec.rocks:443 …
+scanned to Some(4530142); 0 transactions enhanced for memos
+  59ec5bba2a68480f valid h=Some(4530073) value=1000000 bid=3000000 d8999b381b7e
+  3bf92156f95bedca valid h=Some(4530076) value=1000000 bid=2500000 6e81a7be83ab
+2 received outputs, 2 bids read, 0 rejected, 2 valid
+recomputed from the chain:
+  ledger root  cc67e1ddb780137c783c99687d1f295deb7a42a84b25d37a9fcde2043d64d17c
+  clearing     Some(3000000)
+  winner       59ec5bba2a68480f4456a728059db45623c7e9285c9b6e81301c9cc2863e431b (receipt d8999b381b7e2f305f4df4ac3bb230c59b4dda62096e665246bf7c5933152f4d)
+  ledger root  MATCH  chain=cc67e1ddb780137c783c99687d1f295deb7a42a84b25d37a9fcde2043d64d17c  published=cc67e1ddb780137c783c99687d1f295deb7a42a84b25d37a9fcde2043d64d17c
+  clearing     MISMATCH  chain=Some(3000000)  published=Some(2500000)
+  winners      MISMATCH  chain=59ec5bba2a68480f4456a728059db45623c7e9285c9b6e81301c9cc2863e431b  published=3bf92156f95bedca7b85d6f99a3301c610fdc16ad9890a16a9c2bb58e9072e2b
+FAIL: the published result does not match the chain
+exit code: 2

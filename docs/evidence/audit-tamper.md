@@ -44,10 +44,13 @@ comparison catches each of these published results:
 | Sealed lot: a reveal whose amount does not match its commitment | that bid is `bad_reveal`, not counted |
 | Sealed lot: no reveals published | every bid `unrevealed` |
 
-## What this does not cover
+## Oct 22: a lot with real bids
 
-- A lot with real wallet bids on a public chain: the testnet lot above was empty. The unit tests use the same
-  judge and comparison code on simulated outputs; a funded testnet lot would close the gap.
+Sealed, auditable testnet lot `ejp8jz0s` (`docs/evidence/testnet-ejp8jz0s/`): two commitment bids from an
+independent wallet, both revealed; the audit from the published key read both from the chain and matched root,
+price and winner; a tampered result naming the runner-up at its own price was caught (MISMATCH, exit 2).
+
+## What this does not cover
 - An operator who withholds the viewing key: the tool cannot run. The key is published on the result page at
   close; a lot whose result page shows no key is not auditable, and the page says so.
 - Bids the operator refuses to count because they were "late" when the chain says otherwise: the tool reads mined
