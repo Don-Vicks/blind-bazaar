@@ -56,8 +56,9 @@ delivers to a transparent receiver we rotate addresses per payment, shield at on
 
 ## What is proven, and what is not
 
-The full money loop ran on a local regtest chain. The formats, sealed-reveal, auditable lots and notifications
-ran against the public testnet. The FROST spend path, distributed key generation and batched refunds are
+The full money loop ran on the public testnet twice (a classic lot and a sealed, auditable lot: independent
+wallet bids, chain close, refund, settlement, payout, disclosure verified, audit from the published key) and on
+a local regtest chain across the formats. The FROST spend path, distributed key generation and batched refunds are
 unit-tested but have not yet signed on a chain. Only the bundled command-line wallet has placed a bid; no Go Dark
 swap has yet moved real money. The README's honesty table keeps this list current, and the service parks itself
 at the mainnet NU7 height so a mid-judging upgrade cannot leave a lot half settled.

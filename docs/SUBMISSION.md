@@ -21,11 +21,13 @@ Deadline Oct 28, 2026 23:59 UTC. Target: submit Oct 27. Fields marked `TODO` are
 1. Public testnet lot `jck1vba7`: two shielded bids from an independent wallet, closed by the chain, loser
    refunded, winner settled, seller paid. Every txid in `docs/evidence/testnet-jck1vba7/txids.md`, checkable on
    any testnet explorer; the result page shows the proof and the note-opening disclosure.
-2. The disclosure verifier against a public lightwalletd:
+2. Public testnet lot `ejp8jz0s`: sealed-reveal and auditable; the audit from the published key matches the
+   result and a tampered copy is caught (`docs/evidence/testnet-ejp8jz0s/`).
+3. The disclosure verifier against a public lightwalletd:
    `bb-auction --network test --lightwalletd-url https://testnet.zec.rocks:443 --verify-disclosure disclosure.json`.
-3. The audit tool catching a forged result: `docs/evidence/audit-tamper.md` (MISMATCH, exit 2).
-4. The regtest money loop across formats and the FROST escrow: `docs/evidence/regtest/`.
-5. `cargo test -p bb-frost -p bb-auction -p bb-verify-wasm` and the CI badge: everything green.
+4. The audit tool catching a forged result: `docs/evidence/audit-tamper.md` (MISMATCH, exit 2).
+5. The regtest money loop across formats and the FROST escrow: `docs/evidence/regtest/`.
+6. `cargo test -p bb-frost -p bb-auction -p bb-verify-wasm` and the CI badge: everything green.
 
 ## Honesty, in one paragraph (paste if asked "what does not work")
 
