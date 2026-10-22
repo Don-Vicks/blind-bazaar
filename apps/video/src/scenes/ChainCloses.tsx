@@ -3,7 +3,7 @@ import { AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig } from "remo
 import { Backdrop } from "../components/Backdrop";
 import { Hairline } from "../components/Hairline";
 import { Reveal } from "../components/Reveal";
-import { dark, fonts, TX, type } from "../theme";
+import { CLOSE_BLOCK, dark, fonts, TX, type } from "../theme";
 
 // "The chain closes it, not our clock." and the bid A txid typing out by string slicing.
 export const ChainCloses: React.FC = () => {
@@ -47,6 +47,11 @@ export const ChainCloses: React.FC = () => {
         <Reveal delay={104}>
           <div style={{ fontFamily: fonts.sans, fontSize: type.bodySmall, color: dark.muted, marginTop: 36, maxWidth: 1200, lineHeight: 1.35 }}>
             an ordinary shielded transaction: no amount, no sender, no memo
+          </div>
+        </Reveal>
+        <Reveal delay={150}>
+          <div style={{ fontFamily: fonts.sans, fontSize: type.label, color: dark.muted, marginTop: 20, lineHeight: 1.35 }}>
+            Lot closed at block {CLOSE_BLOCK}, the first block after its close time. Zcash testnet.
           </div>
         </Reveal>
       </AbsoluteFill>

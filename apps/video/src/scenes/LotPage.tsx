@@ -15,6 +15,7 @@ export const LotPage: React.FC = () => (
         width={1500}
         height={780}
         delay={0}
+        pan={520}
         fallback={{
           title: `Lot ${LOT}`,
           lines: ["First price. Reserve 0.02 TAZ, deposit 0.01 TAZ.", "Two receipts: bids from an independent wallet.", "Closed by the chain."],

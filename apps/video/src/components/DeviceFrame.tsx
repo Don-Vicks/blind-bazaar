@@ -12,6 +12,7 @@ type Props = {
   pageScale?: number; // the page is laid out at width/pageScale and scaled up for readability
   delay?: number;
   drift?: boolean; // 1-2% scale drift across the scene so the page never sits still
+  pan?: number; // page pixels to pan down over the scene (slow slide; sticky headers scroll away)
   fallback: PageFallback;
   style?: React.CSSProperties;
 };
@@ -27,6 +28,7 @@ export const DeviceFrame: React.FC<Props> = ({
   pageScale = 1.25,
   delay = 0,
   drift = true,
+  pan = 0,
   fallback,
   style,
 }) => {
@@ -45,7 +47,12 @@ export const DeviceFrame: React.FC<Props> = ({
   const innerW = Math.round(width / pageScale);
   // The page viewport is taller than the visible area so a fixed badge at its bottom (the Next dev
   // indicator) is clipped away.
-  const innerH = Math.round((height - BAR) / pageScale) + 72;
+  const innerH = Math.round((height - BAR) / pageScale) + pan + 72;
+  const scrollY = interpolate(frame, [20, durationInFrames - 20], [0, pan], {
+    easing: Easing.inOut(Easing.sin),
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
 
   return (
     <div
@@ -91,7 +98,7 @@ export const DeviceFrame: React.FC<Props> = ({
               width: innerW,
               height: innerH,
               border: 0,
-              transform: `scale(${pageScale})`,
+              transform: `translateY(${-scrollY * pageScale}px) scale(${pageScale})`,
               transformOrigin: "top left",
               backgroundColor: light.bg,
             }}

@@ -72,6 +72,7 @@ const DEMO: Scene[] = [
     el: (
       <PageScene
         path="/"
+        pan={420}
         label="blind bazaar  ·  Zcash testnet"
         seed={2}
         captions={[
@@ -88,6 +89,7 @@ const DEMO: Scene[] = [
     el: (
       <PageScene
         path={`/a/${LOT}`}
+        pan={520}
         label={`/a/${LOT}  ·  Zcash testnet`}
         seed={3}
         captions={[
@@ -104,6 +106,7 @@ const DEMO: Scene[] = [
     el: (
       <PageScene
         path={`/a/${LOT}/status`}
+        pan={480}
         label={`/a/${LOT}/status`}
         seed={4}
         captions={[
@@ -131,6 +134,7 @@ const DEMO: Scene[] = [
     el: (
       <PageScene
         path={`/a/${LOT}/result`}
+        pan={520}
         label={`/a/${LOT}/result`}
         seed={5}
         captions={[
@@ -147,6 +151,7 @@ const DEMO: Scene[] = [
     el: (
       <PageScene
         path={`/a/${LOT}/verify`}
+        pan={120}
         label={`/a/${LOT}/verify`}
         seed={0}
         captions={[
@@ -162,8 +167,8 @@ const DEMO: Scene[] = [
     el: (
       <SettlementCard
         captions={[
-          { at: 10, text: "The loser's deposit comes back as a private payment after a random delay; the winner pays the balance; the seller is paid." },
-          { at: 190, text: "On the chain these are ordinary shielded transactions. The full loop ran on regtest." },
+          { at: 10, text: "The winner paid the 0.02 balance by memo; the seller was paid 0.03; the loser's deposit came back after a random delay." },
+          { at: 190, text: "On the chain these are three ordinary shielded transactions. All of it on Zcash testnet." },
         ]}
       />
     ),
@@ -174,6 +179,7 @@ const DEMO: Scene[] = [
     el: (
       <PageScene
         path="/embed"
+        pan={80}
         label="/embed  ·  Go Dark"
         seed={1}
         captions={[
@@ -190,6 +196,7 @@ const DEMO: Scene[] = [
     el: (
       <PageScene
         path="/how"
+        pan={400}
         label="/how"
         seed={2}
         captions={[
