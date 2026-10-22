@@ -1,0 +1,87 @@
+[
+    {
+        "id": 52,
+        "auction_id": "jck1vba7",
+        "kind": "created",
+        "payload": {
+            "close_at": 1792697578,
+            "title": "Public testnet run: signed print"
+        },
+        "created_at": 1792696378
+    },
+    {
+        "id": 53,
+        "auction_id": "jck1vba7",
+        "kind": "bid_received",
+        "payload": {
+            "receipt": "b8b8cbf4dede3405df551b146ab4d848a538bf8cf40041d4b1d48b05bc9d8fe8",
+            "source": "memo",
+            "status": "valid"
+        },
+        "created_at": 1792696508
+    },
+    {
+        "id": 54,
+        "auction_id": "jck1vba7",
+        "kind": "bid_received",
+        "payload": {
+            "receipt": "2fc6b2799062c76563eeb5d910dce5cb30dfa73da080f2402c72610dfe41ec5e",
+            "source": "memo",
+            "status": "valid"
+        },
+        "created_at": 1792696638
+    },
+    {
+        "id": 55,
+        "auction_id": "jck1vba7",
+        "kind": "closed",
+        "payload": {
+            "clearing_zats": 3000000,
+            "close_height": 4530003,
+            "format": "first_price",
+            "ledger_hash": "0c7a31c9f5e36cd45fe992f800e62dba3967d5ddc8278fd9f99c56efd201123c",
+            "settle_by": 1792784098,
+            "units": 1,
+            "units_sold": 1,
+            "valid_bids": 2,
+            "winning_amount_zats": 3000000
+        },
+        "created_at": 1792697698
+    },
+    {
+        "id": 56,
+        "auction_id": "jck1vba7",
+        "kind": "settled",
+        "payload": {
+            "price_zats": 3000000,
+            "source": "f258e33378d2396dcedaf9d81fa23636ca1a0fa5de0bd56067505eaf153030b1"
+        },
+        "created_at": 1792697918
+    },
+    {
+        "id": 57,
+        "auction_id": "jck1vba7",
+        "kind": "seller_paid",
+        "payload": {
+            "batch_size": 1,
+            "cosigners": [],
+            "payout_id": 9,
+            "txid": "9c4e120d6a122d1add32454293c56bb991f5df467f4312263cc5bce7a27950b1",
+            "value_zats": 3000000
+        },
+        "created_at": 1792698000
+    },
+    {
+        "id": 58,
+        "auction_id": "jck1vba7",
+        "kind": "refund_sent",
+        "payload": {
+            "batch_size": 1,
+            "cosigners": [],
+            "payout_id": 8,
+            "txid": "0e2f2de7b397568c3e918ed9e503ae3b1a7e15dec2f4408897e652bb6faa99d6",
+            "value_zats": 1000000
+        },
+        "created_at": 1792698487
+    }
+]

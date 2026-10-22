@@ -1,0 +1,53 @@
+{
+    "auction_id": "jck1vba7",
+    "status": "paid",
+    "format": "first_price",
+    "units": 1,
+    "units_sold": 1,
+    "units_settled": 1,
+    "clearing_zats": 3000000,
+    "winning_amount_zats": 3000000,
+    "winning_txid": "e3a1be8fcab994d6ac90c5e239d78cac19c7c8d532e03b6bd1e8bb4005ee1557",
+    "winning_txids": [
+        "e3a1be8fcab994d6ac90c5e239d78cac19c7c8d532e03b6bd1e8bb4005ee1557"
+    ],
+    "ledger_hash": "0c7a31c9f5e36cd45fe992f800e62dba3967d5ddc8278fd9f99c56efd201123c",
+    "valid_bid_count": 2,
+    "refund_latency_secs": 789,
+    "refunds_sent": 1,
+    "refunds_pending": 0,
+    "settlement_txid": "f258e33378d2396dcedaf9d81fa23636ca1a0fa5de0bd56067505eaf153030b1",
+    "payout_txid": "9c4e120d6a122d1add32454293c56bb991f5df467f4312263cc5bce7a27950b1",
+    "refunds": [
+        {
+            "kind": "refund",
+            "status": "sent",
+            "txid": "0e2f2de7b397568c3e918ed9e503ae3b1a7e15dec2f4408897e652bb6faa99d6"
+        },
+        {
+            "kind": "seller",
+            "status": "sent",
+            "txid": "9c4e120d6a122d1add32454293c56bb991f5df467f4312263cc5bce7a27950b1"
+        }
+    ],
+    "disclosure": [
+        {
+            "action_index": 0,
+            "cmx": "1ccba1b378b7d2eef220368dddd15294ede833a98fc20ffc4ee65e4809ae8f2a",
+            "memo": null,
+            "network": "test",
+            "note_version": 3,
+            "orchard_receiver": "853ffbe18d6cf4f0f33ae16e21c24d4779ce895dfd7104572ddaca36857703a0b9f5abb0d427ab2230e799",
+            "pool": "ironwood",
+            "recipient_address": "utest1zz93g27qu9awwp6wjnqzrzzy27p4j2pn6fp2cv2gs2wdfhx9ck3t9ky9kqq0c0v27hdp5wt2klnl4qsyjkcn2hc9y7rnvfg8yylg7yca",
+            "rho": "fc191631d592729e86eeb8c65e905b43d917e3d412990a7110a1a1b66c269020",
+            "rseed": "1f02d60099995e473a9b3574ab1f3612acda73a6c1f2440638ae482ff1568b6c",
+            "txid": "e3a1be8fcab994d6ac90c5e239d78cac19c7c8d532e03b6bd1e8bb4005ee1557",
+            "value_zats": 1000000,
+            "verified_against_chain": true,
+            "version": "bb-note-opening-1"
+        }
+    ],
+    "price_source": "own_bid",
+    "price_proof": null
+}

@@ -6,10 +6,10 @@ import { Reveal } from "../components/Reveal";
 import { dark, fonts, type } from "../theme";
 
 const CARDS = [
-  { eyebrow: "Vickrey", text: "Vickrey price proven with a Merkle path" },
-  { eyebrow: "Sealed-reveal", text: "Sealed-reveal: the operator cannot read bids early" },
-  { eyebrow: "Audit", text: "Audit tool: recomputes a lot from the chain, says MISMATCH when a result is forged" },
-  { eyebrow: "Custody", text: "2-of-3 FROST escrow: no single server holds the money" },
+  { eyebrow: "01", text: "Vickrey price proven with a Merkle path" },
+  { eyebrow: "02", text: "Sealed-reveal: the operator cannot read bids early" },
+  { eyebrow: "03", text: "Audit tool: recomputes a lot from the chain, says MISMATCH when a result is forged" },
+  { eyebrow: "04", text: "2-of-3 FROST escrow: no single server holds the money" },
 ];
 
 // Four proof cards in a 2x2 grid, 14 frames apart, with the honest footnote.

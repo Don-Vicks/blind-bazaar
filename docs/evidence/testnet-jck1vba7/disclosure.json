@@ -1,0 +1,18 @@
+[
+ {
+  "action_index": 0,
+  "cmx": "1ccba1b378b7d2eef220368dddd15294ede833a98fc20ffc4ee65e4809ae8f2a",
+  "memo": null,
+  "network": "test",
+  "note_version": 3,
+  "orchard_receiver": "853ffbe18d6cf4f0f33ae16e21c24d4779ce895dfd7104572ddaca36857703a0b9f5abb0d427ab2230e799",
+  "pool": "ironwood",
+  "recipient_address": "utest1zz93g27qu9awwp6wjnqzrzzy27p4j2pn6fp2cv2gs2wdfhx9ck3t9ky9kqq0c0v27hdp5wt2klnl4qsyjkcn2hc9y7rnvfg8yylg7yca",
+  "rho": "fc191631d592729e86eeb8c65e905b43d917e3d412990a7110a1a1b66c269020",
+  "rseed": "1f02d60099995e473a9b3574ab1f3612acda73a6c1f2440638ae482ff1568b6c",
+  "txid": "e3a1be8fcab994d6ac90c5e239d78cac19c7c8d532e03b6bd1e8bb4005ee1557",
+  "value_zats": 1000000,
+  "verified_against_chain": true,
+  "version": "bb-note-opening-1"
+ }
+]

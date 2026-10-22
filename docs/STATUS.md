@@ -196,7 +196,8 @@ Testnet activated NU7 at height 4,465,026 (around Oct 6). The stable librustzcas
 as a placeholder, so they cannot parse any testnet transaction since then (`invalid consensus branch id
 0x77190ad9`). The service now builds against the Oct 6 pre-release line (`zcash_client_backend 0.25.0-pre.1`,
 `zcash_protocol 0.11.0-pre.0`, `orchard 0.16`, `rand 0.10`), which carries the real NU7 branch id and testnet
-height. Mainnet NU7 is expected around Nov 5, after the deadline, so the mainnet demo runs on NU6.3 rules with the
+height. On Oct 22 the full money loop ran on the public testnet (lot jck1vba7, `docs/evidence/testnet-jck1vba7/`), which
+also showed that post-NU6.3 receipts live in the Ironwood table (disclosure builder fixed). Mainnet NU7 is expected around Nov 5, after the deadline, so the mainnet demo runs on NU6.3 rules with the
 same binary. Because judging may run past activation, the service has a freeze: `FREEZE_HEIGHT` (the announced
 activation height) parks it at that block (no sync, no closes, no spends; write endpoints answer 503; results,
 proofs and standings stay readable; the site shows a "Paused" notice), and lots whose close plus settlement window

@@ -10,7 +10,7 @@ import { dark, fonts, type } from "../theme";
 export const GoDark: React.FC = () => (
   <Backdrop seed={5}>
     <AbsoluteFill style={{ flexDirection: "row", alignItems: "center", padding: "0 120px", gap: 72 }}>
-      <div style={{ width: 640, flexShrink: 0 }}>
+      <div style={{ width: 720, flexShrink: 0 }}>
         <Reveal delay={0}>
           <div style={{ fontFamily: fonts.mono, fontSize: type.label, color: dark.accent, marginBottom: 24 }}>Go Dark</div>
         </Reveal>
@@ -29,7 +29,7 @@ export const GoDark: React.FC = () => (
       <DeviceFrame
         path="/embed"
         label="/embed  ·  Go Dark"
-        width={1000}
+        width={940}
         height={760}
         pageScale={1.15}
         delay={10}

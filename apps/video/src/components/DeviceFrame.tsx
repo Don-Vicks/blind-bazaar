@@ -43,7 +43,9 @@ export const DeviceFrame: React.FC<Props> = ({
       })
     : 1;
   const innerW = Math.round(width / pageScale);
-  const innerH = Math.round((height - BAR) / pageScale);
+  // The page viewport is taller than the visible area so a fixed badge at its bottom (the Next dev
+  // indicator) is clipped away.
+  const innerH = Math.round((height - BAR) / pageScale) + 72;
 
   return (
     <div

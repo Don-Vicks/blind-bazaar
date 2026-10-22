@@ -28,9 +28,10 @@ export const Caption: React.FC<Props> = ({ items, height = 160 }) => {
       }}
     >
       {items.map((it, i) => {
-        const next = items[i + 1]?.at ?? Number.POSITIVE_INFINITY;
+        const next = items[i + 1]?.at;
         const fadeIn = interpolate(frame, [it.at, it.at + 14], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-        const fadeOut = interpolate(frame, [next - 10, next], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+        const fadeOut =
+          next === undefined ? 1 : interpolate(frame, [next - 10, next], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
         const y = interpolate(frame, [it.at, it.at + 14], [10, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
         const opacity = Math.min(fadeIn, fadeOut);
         if (opacity <= 0) return null;

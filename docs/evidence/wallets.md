@@ -6,7 +6,7 @@ Which wallets have actually placed a bid by paying a Blind Bazaar ZIP-321 URI wi
 | Wallet | Network | Memo from a ZIP-321 QR | Tested | Notes |
 |---|---|---|---|---|
 | `bb-auction wallet` (bundled, `zcash_client_backend`) | regtest | yes | yes, Oct 13 (full money loop, `scripts/regtest-e2e.sh`) | A separate seed from the operator; this is the wallet the evidence runs use. |
-| `bb-auction wallet` | testnet | yes | not yet: the operator wallet holds no testnet ZEC and the public faucets were down on Oct 17-18 | Command below. |
+| `bb-auction wallet` | testnet | yes | yes, Oct 22: two bids on lot jck1vba7, refund, settlement and payout all on chain (`docs/evidence/testnet-jck1vba7/`) | Command below. |
 | Zodl (formerly Zashi), iOS/Android | mainnet | expected (ZIP-321 with memo) | no | No public testnet build. Needs the mainnet lot. |
 | Zingo | mainnet, testnet | expected | no | Testnet build must carry the NU7 branch id (activated Oct 6) or it cannot send. |
 | YWallet | mainnet, testnet | expected | no | Same NU7 caveat on testnet. |

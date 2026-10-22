@@ -10,7 +10,7 @@ typed by hand: result and disclosure files are the API's own JSON, txids are rea
 | `security-review-oct19.md` | | ten findings from a code review of the week's additions, each verified and fixed the same day | Oct 19 |
 | `testnet-two-process.md` | Zcash testnet | viewer (viewing key only) and spender (seed) as two processes: lot, envelope and manual payout mirrored, ledger token enforced; the send failed only for lack of funds | Oct 19 |
 | `audit-tamper.md`, `refund-linkability.md`, `wallets.md` | | what the audit tool catches; refund timing linkability by lot density; which wallets have actually placed a bid | Oct 17-18 |
-| `testnet-<lot>/` | Zcash testnet (NU7) | public lot with real wallet bids | not yet run: needs testnet funds |
+| `testnet-jck1vba7/` | Zcash testnet (NU7) | the full money loop on a public chain: two bids from an independent wallet, chain close, settlement, seller payout, refund, disclosure verified by the CLI against a public node | Oct 22 |
 | `mainnet-<lot>/` | Zcash mainnet | public micro-lot, published txids | not yet run |
 | `go-dark/` | Solana or Ethereum → Zcash mainnet | one completed swap per rail with the delivery txid and delivery mode | not yet run |
 
