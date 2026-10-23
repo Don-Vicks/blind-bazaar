@@ -7,14 +7,24 @@ Deadline Oct 28, 2026 23:59 UTC. Target: submit Oct 27. Fields marked `TODO` are
 - **Name:** Blind Bazaar + Go Dark
 - **One line:** Sealed-bid auctions where every bid is a shielded Zcash payment with the bid inside its encrypted
   memo, plus a pay button that lets anyone on Solana or Ethereum pay or bid in shielded ZEC.
-- **Tracks:** Private markets (primary). Also cross-chain (Go Dark) and core and tooling (bid SDK, audit and
-  disclosure verifiers). Ask the organisers whether one entry may list several tracks before submitting.
-- **Repository:** https://github.com/Don-Vicks/blind-bazaar (make it public before submitting: Settings →
-  General → Danger zone → Change visibility; the secret scan on Oct 22 found nothing tracked that should not be).
+- **Track:** Private Markets (the form allows one).
+- **Repository:** https://github.com/Don-Vicks/blind-bazaar (public since Oct 22).
 - **Live instance:** TODO (see `docs/DEPLOY.md`; the demo runs on Zcash testnet).
-- **Video:** TODO, three minutes, script in `docs/DEMO_SCRIPT.md`.
+- **Video:** two minutes (the form's limit): `apps/video/out/demo.mp4`; promo `apps/video/out/promo.mp4` for the socials.
 - **Team:** Victor Shallangwa, solo.
 - **Write-up:** `docs/WRITEUP.md` (under 800 words). Paste as the description.
+
+## Description for the form (2000 characters max, exactly what the form asks: what it does, why it does not leak, what is real, what is a mock)
+
+```
+Blind Bazaar is a sealed-bid auction house on Zcash. A bid is one shielded payment: the bidder pays the lot's deposit to a fresh unified address and the bid amount rides inside the encrypted memo. The service reads bids with a viewing key; the first block after the close time decides the close; losers get their deposit back privately after a random delay; the winner settles by memo; the seller is paid; the result page publishes a note-opening disclosure of the winning payment anyone can check against the chain. Formats: first price, editions, Vickrey (second price proven with a Merkle path), request for quotes. Go Dark is the side door: a pay button turning SOL, USDC or ETH into shielded ZEC so people without ZEC can pay or bid.
+
+Why it does not leak: every step on chain is a shielded transaction with no amount, sender or memo visible; receipts are hashes; the ledger root is committed at close; refunds are batched and delayed; deposits come from a fixed menu so an amount never marks a lot. Sealed-reveal lots put only a commitment in the memo, so even the operator cannot read bids early; auditable lots publish the lot's own viewing key at close and a CLI tool recomputes the result from the chain and flags a forged one. Spending authority is a 2-of-3 FROST group key: signer hosts check every output against the ledger and co-sign; no single server holds the money.
+
+What is real: two complete lots on the public Zcash testnet (a classic one and a sealed, auditable one) with bids from an independent wallet, chain close, refund, settlement, payout and verified disclosures, every txid in docs/evidence; five regtest runs across the formats and the FROST escrow, all green; 60+ tests, CI.
+
+What is not: no mainnet lot; no bid yet from a mobile wallet (only the bundled CLI wallet); Go Dark quotes are live but no swap has moved real money, and Maya only pays a transparent receiver since Ironwood, which the widget says. On classic lots the operator reads bids while a lot is open.
+```
 
 ## What a judge can verify in five minutes
 

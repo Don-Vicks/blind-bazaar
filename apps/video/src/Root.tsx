@@ -63,11 +63,11 @@ const VERTICAL: Scene[] = [
   { d: 228, el: <EndCard /> },
 ];
 
-// Demo, 150 s: the take table from docs/DEMO_SCRIPT.md with live pages and captions.
+// Demo, 120 s (the submission form's limit): the take table from docs/DEMO_SCRIPT.md with live pages and captions.
 const DEMO: Scene[] = [
   { d: 240, el: <TitleCard /> },
   {
-    d: 390,
+    d: 330,
     premount: PREMOUNT,
     el: (
       <PageScene
@@ -97,23 +97,6 @@ const DEMO: Scene[] = [
           { at: 230, text: "These two bids came from a wallet that is not ours." },
         ]}
         fallback={{ title: `Lot ${LOT}`, lines: ["First price. Reserve 0.02 TAZ, deposit 0.01 TAZ.", "Two receipts from an independent wallet.", "Closed by the chain."] }}
-      />
-    ),
-  },
-  {
-    d: 390,
-    premount: PREMOUNT,
-    el: (
-      <PageScene
-        path={`/a/${LOT}/status`}
-        pan={480}
-        label={`/a/${LOT}/status`}
-        seed={4}
-        captions={[
-          { at: 10, text: "Receipts are sha256 of the bidder's nonce: a bidder sees \"bid received\" without revealing anything." },
-          { at: 200, text: "A Merkle root over every valid bid is published before any refund; each bidder verifies their own leaf." },
-        ]}
-        fallback={{ title: "Status", lines: ["Two receipts.", "Ledger root published at close.", "Each bidder verifies their own leaf."] }}
       />
     ),
   },
@@ -156,7 +139,7 @@ const DEMO: Scene[] = [
         seed={0}
         captions={[
           { at: 10, text: "Anyone can rebuild the winning payment's commitment from the published opening and check it against the chain." },
-          { at: 210, text: "Nothing about the loser is revealed." },
+          { at: 210, text: "Nothing about the loser is revealed. Four formats run on these rails: first price, editions, Vickrey, request for quotes." },
         ]}
         fallback={{ title: "Verify", lines: ["Recompute the note commitment in the browser.", "Compare it with the chain.", "Nothing about the loser is revealed."] }}
       />
@@ -174,7 +157,7 @@ const DEMO: Scene[] = [
     ),
   },
   {
-    d: 450,
+    d: 330,
     premount: PREMOUNT,
     el: (
       <PageScene
@@ -191,23 +174,7 @@ const DEMO: Scene[] = [
     ),
   },
   {
-    d: 330,
-    premount: PREMOUNT,
-    el: (
-      <PageScene
-        path="/how"
-        pan={400}
-        label="/how"
-        seed={2}
-        captions={[
-          { at: 10, text: "Four formats on the same rails: first price, editions, Vickrey, request for quotes. Sealed-reveal lots keep bids from the operator until reveal." },
-        ]}
-        fallback={{ title: "How it works", lines: ["First price, editions, Vickrey, request for quotes.", "Sealed-reveal: commitments the operator cannot open early."] }}
-      />
-    ),
-  },
-  {
-    d: 510,
+    d: 480,
     el: (
       <HonestyTable
         captions={[
@@ -217,7 +184,7 @@ const DEMO: Scene[] = [
       />
     ),
   },
-  { d: 378, el: <EndCard /> },
+  { d: 372, el: <EndCard /> },
 ];
 
 export const RemotionRoot: React.FC = () => (
