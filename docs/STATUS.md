@@ -51,6 +51,9 @@ pages; no wallet transaction was involved in those checks.
 - Refund batching: refunds due in the same window (`REFUND_WINDOW_SECS`) from any lot go out as one transaction
   with up to `REFUND_BATCH_MAX` outputs; `bb-auction simulate-refunds` measures timing linkability for naive versus
   batched sending (`docs/evidence/refund-linkability.md`). Unit-tested; no chain run of a batched refund yet.
+- A public tender (request for quotes) ran end to end on the public testnet on Oct 23 (lot 08t6ynq2: two sealed
+  quotes, chain close, lowest wins, the buyer pays by memo from its own wallet, supplier paid quote plus bond,
+  losing bond returned): `docs/evidence/testnet-08t6ynq2/`.
 - Sealed-reveal and auditable lots ran on the public testnet with real wallet bids on Oct 22 (lot ejp8jz0s:
   commitments, reveal, close, audit MATCH from the published key, tampered result caught).
 - Sealed-reveal mode: `reveal_secs` on a lot, `BB1C` commitment memos, commitment root fixed at close, reveal

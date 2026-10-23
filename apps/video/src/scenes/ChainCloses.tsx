@@ -27,7 +27,7 @@ export const ChainCloses: React.FC = () => {
         </Reveal>
         <Hairline delay={14} width={vertical ? 200 : 260} style={{ margin: vertical ? "40px 0" : "48px 0" }} />
         <Reveal delay={24}>
-          <div style={{ fontFamily: fonts.mono, fontSize: type.label, color: dark.accent, marginBottom: 18 }}>bid A · txid</div>
+          <div style={{ fontFamily: fonts.mono, fontSize: type.label, color: dark.accent, marginBottom: 18 }}>winning quote · txid</div>
         </Reveal>
         <div
           style={{
@@ -51,7 +51,7 @@ export const ChainCloses: React.FC = () => {
         </Reveal>
         <Reveal delay={150}>
           <div style={{ fontFamily: fonts.sans, fontSize: type.label, color: dark.muted, marginTop: 20, lineHeight: 1.35 }}>
-            Lot closed at block {CLOSE_BLOCK}, the first block after its close time. Zcash testnet.
+            Tender closed at block {CLOSE_BLOCK}, the first block after its close time. Zcash testnet.
           </div>
         </Reveal>
       </AbsoluteFill>

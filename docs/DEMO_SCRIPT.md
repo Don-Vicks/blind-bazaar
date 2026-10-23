@@ -1,7 +1,9 @@
-# Demo script (3 minutes, Zcash testnet)
+# Demo script (2 minutes, Zcash testnet; the form's limit)
 
-One sealed lot on the public testnet, start to finish: two bids from an independent wallet, the chain closes
-it, the result is proven, the loser is refunded, the winner settles, the seller is paid. Everything shown exists
+One sealed tender on the public testnet, start to finish: two quotes from an independent supplier wallet, the
+chain closes it, the lowest quote wins and is proven, the buyer pays it, the supplier is paid, the losing bond
+comes back and the losing quote is never revealed (the rendered version is `apps/video/out/demo.mp4`, built
+from tender 08t6ynq2). Everything shown exists
 today; the lines say what is private and what is not. There is no mainnet money in this build, so Go Dark is
 shown with live quotes and the browser wallet, not a wet swap, and the script says so.
 

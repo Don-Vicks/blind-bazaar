@@ -93,10 +93,10 @@ const DEMO: Scene[] = [
         label={`/a/${LOT}  ·  Zcash testnet`}
         seed={3}
         captions={[
-          { at: 10, text: "No contract. The lot is a fresh shielded address. Each bid is one private payment with the bid inside its encrypted memo." },
-          { at: 230, text: "These two bids came from a wallet that is not ours." },
+          { at: 10, text: "A tender: 40 hours of Rust review, budget 0.05 TAZ. The round is a fresh shielded address. Each quote is one private payment with the price inside its encrypted memo." },
+          { at: 230, text: "These two quotes came from a supplier wallet that is not ours. The buyer sees two receipts, never the prices." },
         ]}
-        fallback={{ title: `Lot ${LOT}`, lines: ["First price. Reserve 0.02 TAZ, deposit 0.01 TAZ.", "Two receipts from an independent wallet.", "Closed by the chain."] }}
+        fallback={{ title: `Tender ${LOT}`, lines: ["Budget 0.05 TAZ, bond 0.01 TAZ.", "Two quotes from an independent wallet.", "Closed by the chain."] }}
       />
     ),
   },
@@ -121,10 +121,10 @@ const DEMO: Scene[] = [
         label={`/a/${LOT}/result`}
         seed={5}
         captions={[
-          { at: 10, text: "A wins and pays 0.03 TAZ. The ledger root was committed at close; the losing bid stays sealed, even from the seller." },
+          { at: 10, text: "The lowest quote wins: 0.025 TAZ. The ledger root was committed at close; the losing quote stays sealed, even from the buyer." },
           { at: 250, text: "The result publishes a note-opening disclosure of the winning payment and the close height." },
         ]}
-        fallback={{ title: "Result", lines: ["Winner pays 0.03 TAZ.", "Ledger root committed at close.", "Winning payment disclosed; the losing bid stays sealed."] }}
+        fallback={{ title: "Result", lines: ["Lowest quote wins: 0.025 TAZ.", "Ledger root committed at close.", "Winning payment disclosed; the losing quote stays sealed."] }}
       />
     ),
   },
@@ -150,7 +150,7 @@ const DEMO: Scene[] = [
     el: (
       <SettlementCard
         captions={[
-          { at: 10, text: "The winner paid the 0.02 balance by memo; the seller was paid 0.03; the loser's deposit came back after a random delay." },
+          { at: 10, text: "The buyer paid the winning quote by memo; the supplier was paid quote plus bond; the losing supplier's bond came back after a random delay." },
           { at: 190, text: "On the chain these are three ordinary shielded transactions. All of it on Zcash testnet." },
         ]}
       />

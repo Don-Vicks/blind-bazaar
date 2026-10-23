@@ -6,11 +6,11 @@ import { Hairline } from "../components/Hairline";
 import { Reveal } from "../components/Reveal";
 import { dark, fonts, TX, type } from "../theme";
 
-// From docs/evidence/testnet-jck1vba7/txids.md, rows 4 to 6.
+// From docs/evidence/testnet-08t6ynq2/txids.md: what happens after a tender closes.
 const STEPS = [
-  { n: "04", title: "The winner pays the 0.02 balance", body: "settlement by memo, matched to the winning bid's nonce", txid: TX.settlement },
-  { n: "05", title: "The seller is paid 0.03", body: "payout to the seller's own wallet", txid: TX.payout },
-  { n: "06", title: "The loser is refunded 0.01", body: "after the random delay, to the address sealed in the losing memo", txid: TX.refund },
+  { n: "04", title: "The buyer pays the winning 0.025 quote", body: "settlement by memo, matched to the winning quote's nonce", txid: TX.settlement },
+  { n: "05", title: "The supplier is paid 0.035: quote plus bond", body: "payout to the address sealed in the winning memo", txid: TX.payout },
+  { n: "06", title: "The losing supplier's 0.01 bond comes back", body: "after the random delay, to the address sealed in the losing memo; its quote is never revealed", txid: TX.refund },
 ];
 
 // After the close: three shielded transactions on testnet. These pages are operator-only, so a composed card.

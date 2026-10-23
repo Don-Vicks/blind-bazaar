@@ -18,12 +18,12 @@ export const LotPage: React.FC = () => (
         pan={520}
         fallback={{
           title: `Lot ${LOT}`,
-          lines: ["First price. Reserve 0.02 TAZ, deposit 0.01 TAZ.", "Two receipts: bids from an independent wallet.", "Closed by the chain."],
+          lines: ["Tender. Budget 0.05 TAZ, bond 0.01 TAZ.", "Two receipts: quotes from an independent wallet.", "Closed by the chain."],
         }}
       />
       <Reveal delay={26} style={{ marginTop: 44 }}>
         <div style={{ fontFamily: fonts.sans, fontSize: type.bodySmall, color: dark.muted, textAlign: "center" }}>
-          Lot {LOT} on Zcash testnet. Two sealed bids from an independent wallet.
+          Tender {LOT} on Zcash testnet. Two sealed quotes from an independent supplier wallet.
         </div>
       </Reveal>
     </AbsoluteFill>

@@ -33,16 +33,19 @@ What is not: no mainnet round; no bid yet from a mobile wallet (only the bundled
 
 ## What a judge can verify in five minutes
 
-1. Public testnet lot `jck1vba7`: two shielded bids from an independent wallet, closed by the chain, loser
+1. Public testnet tender `08t6ynq2`: two sealed quotes from an independent supplier wallet, chain close, the
+   lowest quote wins, the buyer pays it by memo, supplier paid quote plus bond, losing bond returned, the losing
+   quote never revealed. `docs/evidence/testnet-08t6ynq2/txids.md`.
+2. Public testnet lot `jck1vba7`: two shielded bids from an independent wallet, closed by the chain, loser
    refunded, winner settled, seller paid. Every txid in `docs/evidence/testnet-jck1vba7/txids.md`, checkable on
    any testnet explorer; the result page shows the proof and the note-opening disclosure.
-2. Public testnet lot `ejp8jz0s`: sealed-reveal and auditable; the audit from the published key matches the
+3. Public testnet lot `ejp8jz0s`: sealed-reveal and auditable; the audit from the published key matches the
    result and a tampered copy is caught (`docs/evidence/testnet-ejp8jz0s/`).
-3. The disclosure verifier against a public lightwalletd:
+4. The disclosure verifier against a public lightwalletd:
    `bb-auction --network test --lightwalletd-url https://testnet.zec.rocks:443 --verify-disclosure disclosure.json`.
-4. The audit tool catching a forged result: `docs/evidence/audit-tamper.md` (MISMATCH, exit 2).
-5. The regtest money loop across formats and the FROST escrow: `docs/evidence/regtest/`.
-6. `cargo test -p bb-frost -p bb-auction -p bb-verify-wasm` and the CI badge: everything green.
+5. The audit tool catching a forged result: `docs/evidence/audit-tamper.md` (MISMATCH, exit 2).
+6. The regtest money loop across formats and the FROST escrow: `docs/evidence/regtest/`.
+7. `cargo test -p bb-frost -p bb-auction -p bb-verify-wasm` and the CI badge: everything green.
 
 ## Honesty, in one paragraph (paste if asked "what does not work")
 

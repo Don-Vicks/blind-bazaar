@@ -59,16 +59,16 @@ export const type = {
 export const site = process.env.REMOTION_SITE_URL ?? "http://localhost:3001";
 export const useIframe = process.env.REMOTION_NO_IFRAME !== "1";
 
-export const LOT = "jck1vba7";
+export const LOT = "08t6ynq2";
 
-// From docs/evidence/testnet-jck1vba7/txids.md.
+// From docs/evidence/testnet-08t6ynq2/txids.md (the public tender).
 export const TX = {
-  bidA: "e3a1be8fcab994d6ac90c5e239d78cac19c7c8d532e03b6bd1e8bb4005ee1557",
-  bidB: "60af4ab5863d5b5d7e49402fd9fe6f957b1afad33d8a3e0bb3c895dd07b13ba6",
-  settlement: "f258e33378d2396dcedaf9d81fa23636ca1a0fa5de0bd56067505eaf153030b1",
-  payout: "9c4e120d6a122d1add32454293c56bb991f5df467f4312263cc5bce7a27950b1",
-  refund: "0e2f2de7b397568c3e918ed9e503ae3b1a7e15dec2f4408897e652bb6faa99d6",
+  bidA: "9fdd59ef7e32aedca48a0d987046bfa5938c9428f254a086a9bee6d96c0b7c30", // winning quote, 0.025
+  bidB: "532390f3b988b1e1d11fa7323a118a0cc025654936a5927d95cdf386db4a05f7", // losing quote, 0.03
+  settlement: "3632a5ccb1fcf77a89f3cdff6302bb963170c2ae6302827fe448e1d8fc4f4817", // the buyer pays the winning quote
+  payout: "64a30a9ecbb12e08a81f96b50909edfeb7471a42c51ac9040d55d47d7ce93a39", // supplier: quote plus bond
+  refund: "58186ba83646c2462027c1bf93b3b85cd666ea9a29358d660c77a799338e7e2f", // losing supplier's bond
 };
-export const CLOSE_BLOCK = "4,530,003";
+export const CLOSE_BLOCK = "4,532,675";
 
 export const REPO = "github.com/Don-Vicks/blind-bazaar";

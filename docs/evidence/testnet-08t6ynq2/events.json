@@ -1,0 +1,87 @@
+[
+    {
+        "id": 72,
+        "auction_id": "08t6ynq2",
+        "kind": "created",
+        "payload": {
+            "close_at": 1792764662,
+            "title": "Tender: 40 hours of Rust security review"
+        },
+        "created_at": 1792763762
+    },
+    {
+        "id": 73,
+        "auction_id": "08t6ynq2",
+        "kind": "bid_received",
+        "payload": {
+            "receipt": "e3e5c83ba4d021ebea534cf0455f90bb6ca2e84fbf5901eba548529346799a57",
+            "source": "memo",
+            "status": "valid"
+        },
+        "created_at": 1792763919
+    },
+    {
+        "id": 74,
+        "auction_id": "08t6ynq2",
+        "kind": "bid_received",
+        "payload": {
+            "receipt": "13ec685dc6c3dd3c51cc1ed856a538cff72ee65cd7b0991de5bb2262263bc463",
+            "source": "memo",
+            "status": "valid"
+        },
+        "created_at": 1792763919
+    },
+    {
+        "id": 75,
+        "auction_id": "08t6ynq2",
+        "kind": "closed",
+        "payload": {
+            "clearing_zats": 2500000,
+            "close_height": 4532675,
+            "format": "rfq",
+            "ledger_hash": "eaa3f922da80427be09a68ad5c352c33d748a691942172844976961731d14d4b",
+            "settle_by": 1792851106,
+            "units": 1,
+            "units_sold": 1,
+            "valid_bids": 2,
+            "winning_amount_zats": 2500000
+        },
+        "created_at": 1792764706
+    },
+    {
+        "id": 76,
+        "auction_id": "08t6ynq2",
+        "kind": "settled",
+        "payload": {
+            "price_zats": 2500000,
+            "source": "3632a5ccb1fcf77a89f3cdff6302bb963170c2ae6302827fe448e1d8fc4f4817"
+        },
+        "created_at": 1792764889
+    },
+    {
+        "id": 77,
+        "auction_id": "08t6ynq2",
+        "kind": "seller_paid",
+        "payload": {
+            "batch_size": 1,
+            "cosigners": [],
+            "payout_id": 15,
+            "txid": "64a30a9ecbb12e08a81f96b50909edfeb7471a42c51ac9040d55d47d7ce93a39",
+            "value_zats": 3500000
+        },
+        "created_at": 1792764964
+    },
+    {
+        "id": 78,
+        "auction_id": "08t6ynq2",
+        "kind": "refund_sent",
+        "payload": {
+            "batch_size": 1,
+            "cosigners": [],
+            "payout_id": 14,
+            "txid": "58186ba83646c2462027c1bf93b3b85cd666ea9a29358d660c77a799338e7e2f",
+            "value_zats": 1000000
+        },
+        "created_at": 1792765046
+    }
+]

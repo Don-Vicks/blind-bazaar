@@ -1,0 +1,53 @@
+{
+    "auction_id": "08t6ynq2",
+    "status": "paid",
+    "format": "rfq",
+    "units": 1,
+    "units_sold": 1,
+    "units_settled": 1,
+    "clearing_zats": 2500000,
+    "winning_amount_zats": 2500000,
+    "winning_txid": "9fdd59ef7e32aedca48a0d987046bfa5938c9428f254a086a9bee6d96c0b7c30",
+    "winning_txids": [
+        "9fdd59ef7e32aedca48a0d987046bfa5938c9428f254a086a9bee6d96c0b7c30"
+    ],
+    "ledger_hash": "eaa3f922da80427be09a68ad5c352c33d748a691942172844976961731d14d4b",
+    "valid_bid_count": 2,
+    "refund_latency_secs": 340,
+    "refunds_sent": 1,
+    "refunds_pending": 0,
+    "settlement_txid": "3632a5ccb1fcf77a89f3cdff6302bb963170c2ae6302827fe448e1d8fc4f4817",
+    "payout_txid": "64a30a9ecbb12e08a81f96b50909edfeb7471a42c51ac9040d55d47d7ce93a39",
+    "refunds": [
+        {
+            "kind": "refund",
+            "status": "sent",
+            "txid": "58186ba83646c2462027c1bf93b3b85cd666ea9a29358d660c77a799338e7e2f"
+        },
+        {
+            "kind": "seller",
+            "status": "sent",
+            "txid": "64a30a9ecbb12e08a81f96b50909edfeb7471a42c51ac9040d55d47d7ce93a39"
+        }
+    ],
+    "disclosure": [
+        {
+            "action_index": 1,
+            "cmx": "75bf82231d9f36ff67fd3a5bf6b68b2ce00b88573318789c8f94dbfe3599c731",
+            "memo": null,
+            "network": "test",
+            "note_version": 3,
+            "orchard_receiver": "8df7fbbc7434975ee0bd4d38b2f2609345ca6919c0b2b2c11de0147e4ae3119a5e423056f7acedf8e8f4b1",
+            "pool": "ironwood",
+            "recipient_address": "utest1l6e6a8z0gvq7mwr3at0jzyqd930n7wdercr37k5wamxnyhn9jvttlaeg5sz6taj5l28yt8pdfxdpx8rxkl9ygmpq7w7cqdktq5fnzfvn",
+            "rho": "a3a4b52523085cb00753b98f06b43e36c2cabb4ac74d9ef61ba44b62a5d92f0c",
+            "rseed": "0fad244c2d175aa3e5226554d6ff898525c4ff4761de93bffd79eb6d34cbe250",
+            "txid": "9fdd59ef7e32aedca48a0d987046bfa5938c9428f254a086a9bee6d96c0b7c30",
+            "value_zats": 1000000,
+            "verified_against_chain": true,
+            "version": "bb-note-opening-1"
+        }
+    ],
+    "price_source": "lowest_quote",
+    "price_proof": null
+}
