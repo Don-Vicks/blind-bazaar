@@ -1,8 +1,8 @@
 # Blind Bazaar + Go Dark — ZECATHON write-up
 
-**One sentence.** Blind Bazaar is a sealed-bid auction house where every bid is a shielded Zcash payment with the
-bid inside its encrypted memo; Go Dark is the pay button that lets anyone on Solana or Ethereum enter it, or pay
-any site, without holding a transparent coin.
+**One sentence.** Blind Bazaar runs sealed-bid tenders and auctions on Zcash where every bid is one shielded
+payment with the amount inside its encrypted memo, so the losing bids are never revealed to anyone; Go Dark is the
+pay button that lets a supplier or bidder on Solana or Ethereum take part without holding a transparent coin.
 
 ## Why Zcash, and only Zcash
 

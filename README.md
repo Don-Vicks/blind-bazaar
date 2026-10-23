@@ -1,8 +1,10 @@
 # Blind Bazaar + Go Dark
 
-**Blind Bazaar** is a sealed-bid auction house on Zcash. Every bid is a shielded transaction whose encrypted memo
-carries the bid. No smart contract: the chain is the mailbox, the viewing key is the inbox, and one operator wallet
-refunds losers and settles the winner. Losing bids are never revealed; the winning transaction is provable.
+**Blind Bazaar** runs sealed-bid rounds on Zcash: tenders, where suppliers quote and the lowest quote wins, and
+auctions, where bidders bid and the highest wins. Every bid is one shielded transaction whose encrypted memo
+carries the amount. No smart contract: the chain is the mailbox, the viewing key is the inbox, the chain closes the
+round. Losing bids are never revealed to anyone; on a sealed round not even the operator can read them early; the
+winning transaction is provable and an auditable round can be recomputed from the chain by anyone.
 
 **Go Dark** is the front door: an embeddable button that turns SOL, USDC or ETH from Phantom or MetaMask into
 shielded ZEC at a unified address, and can carry a sealed bid along with it.

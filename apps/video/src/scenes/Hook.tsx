@@ -17,13 +17,13 @@ export const Hook: React.FC = () => {
         <div style={{ maxWidth: vertical ? 940 : 1640 }}>
           <Reveal delay={6}>
             <div style={{ fontFamily: fonts.serif, fontSize: size, lineHeight: 1.12, color: dark.fg }}>
-              Every auction on Ethereum publishes every bid forever.
+              Leaked bids rig tenders. Public chains publish every bid forever.
             </div>
           </Reveal>
           <Hairline delay={20} width={vertical ? 200 : 260} style={{ margin: vertical ? "40px 0" : "44px 0" }} />
           <Reveal delay={32}>
             <div style={{ fontFamily: fonts.serif, fontStyle: "italic", fontSize: size, lineHeight: 1.12, color: dark.accent }}>
-              This one publishes the winner, and a proof.
+              Here, only the winner is ever revealed. With a proof.
             </div>
           </Reveal>
         </div>

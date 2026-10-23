@@ -6,9 +6,9 @@ import { Reveal } from "../components/Reveal";
 import { dark, fonts, type } from "../theme";
 
 const LINES = [
-  "A bid is one shielded Zcash payment.",
+  "A quote or a bid is one shielded Zcash payment.",
   "The amount travels inside the encrypted memo.",
-  "Nobody sees the losers. Not even the seller.",
+  "Nobody sees the losers. Not the buyer, not the seller.",
 ];
 
 // Three statements, one at a time, each given room to be read.

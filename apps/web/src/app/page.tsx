@@ -25,17 +25,17 @@ export default function Home() {
     <div className="flex flex-col gap-20 sm:gap-28">
       <section className="grid gap-10 sm:grid-cols-12 sm:gap-10">
         <div className="sm:col-span-7 min-w-0">
-          <Eyebrow className="rise">Private auctions on Zcash</Eyebrow>
+          <Eyebrow className="rise">Sealed bids on Zcash, for tenders and auctions</Eyebrow>
           <h1 className="serif rise rise-2 mt-4 text-[48px] leading-[0.98] sm:text-[80px]">
-            Sell to the highest bid.
+            Every bid sealed.
             <br />
-            <span className="italic text-muted-foreground">Nobody sees the others.</span>
+            <span className="italic text-muted-foreground">Only the winner is ever revealed.</span>
           </h1>
           <p className="rise rise-3 mt-8 max-w-[48ch] text-[17px] leading-[1.6] text-muted-foreground">
-            Blind Bazaar is an auction house where bids are private. A bidder pays a deposit from a Zcash wallet with
-            the bid hidden inside the payment. When the auction closes, the highest bid wins, everyone else gets their
-            deposit back, and nobody, not even the seller, ever learns the losing bids. The result is published with a
-            proof anyone can check against the Zcash chain.
+            Post a tender with a budget, or a lot with a reserve. Each bid is one shielded Zcash payment with the
+            amount sealed inside it. The chain closes the round, the best bid wins, everyone else gets their deposit
+            back, and nobody, not the buyer, not the seller, not the operator on a sealed round, ever learns the losing
+            bids. The result carries a proof anyone can check against the Zcash chain.
           </p>
           <div className="rise rise-4 mt-8">
             <NetworkNotice />

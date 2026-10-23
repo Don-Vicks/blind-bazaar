@@ -73,21 +73,21 @@ export function NetworkNotice({ compact = false }: { compact?: boolean }) {
 export function StartHere() {
   const cards = [
     {
-      title: "I want to bid",
+      title: "I want to bid or quote",
       lines: [
-        "Open a lot and type your bid and a refund address.",
+        "Open a lot or a tender and type your bid, or your quote, and a refund address.",
         "Scan the QR with a Zcash wallet and pay the deposit. Your bid rides inside that payment, encrypted.",
-        "Keep your receipt. If you lose, the deposit comes back to you privately.",
+        "Keep your receipt. If you lose, the deposit comes back to you privately, and nobody learns your number.",
       ],
       href: "/#open",
       cta: "See open lots",
     },
     {
-      title: "I want to sell",
+      title: "I want to sell, or buy by tender",
       lines: [
-        "Sign in with a seller key and list a lot: title, reserve, deposit, how long it runs.",
-        "Bidders pay to a fresh address created for your lot. You see how many bids, never the amounts.",
-        "At close you learn the winning price. Once the winner pays, you are paid, privately.",
+        "Sign in with a seller key and list a lot with a reserve, or a tender with a budget.",
+        "Bids arrive at a fresh address made for your round. You see how many, never the amounts.",
+        "At close you learn the winning price or quote. Settlement and payout are private payments.",
       ],
       href: "/dashboard",
       cta: "Open the seller dashboard",
