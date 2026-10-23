@@ -10,7 +10,7 @@ Deadline Oct 28, 2026 23:59 UTC. Target: submit Oct 27. Fields marked `TODO` are
 - **Track:** Private Markets (the form allows one).
 - **Repository:** https://github.com/Don-Vicks/blind-bazaar (public since Oct 22).
 - **Live instance:** the web app and API run on the builder's machine behind an ngrok tunnel; the address changes
-  whenever the tunnel restarts (Oct 23: https://90ec-2605-59c1-1a68-6710-a42e-ad03-3854-c43.ngrok-free.app).
+  whenever the tunnel restarts (Oct 23: https://558d-2605-59c1-1a68-6710-a87f-eaf-df6e-ceb1.ngrok-free.app).
   Before submitting, claim the one free static domain in the ngrok dashboard (Domains) and start the tunnel with
   `ngrok http 3002 --url=<that domain>`, or deploy to a VPS per `docs/DEPLOY.md`. Local recipe: launch config
   `auction` (API on 8787) plus `web-public` (web on 3002 with `NEXT_PUBLIC_BB_API=/bb`, which forwards `/bb/*` to
