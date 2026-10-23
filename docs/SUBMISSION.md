@@ -9,7 +9,12 @@ Deadline Oct 28, 2026 23:59 UTC. Target: submit Oct 27. Fields marked `TODO` are
   memo, plus a pay button that lets anyone on Solana or Ethereum pay or bid in shielded ZEC.
 - **Track:** Private Markets (the form allows one).
 - **Repository:** https://github.com/Don-Vicks/blind-bazaar (public since Oct 22).
-- **Live instance:** TODO (see `docs/DEPLOY.md`; the demo runs on Zcash testnet).
+- **Live instance:** the web app and API run on the builder's machine behind an ngrok tunnel; the address changes
+  whenever the tunnel restarts (Oct 23: https://90ec-2605-59c1-1a68-6710-a42e-ad03-3854-c43.ngrok-free.app).
+  Before submitting, claim the one free static domain in the ngrok dashboard (Domains) and start the tunnel with
+  `ngrok http 3002 --url=<that domain>`, or deploy to a VPS per `docs/DEPLOY.md`. Local recipe: launch config
+  `auction` (API on 8787) plus `web-public` (web on 3002 with `NEXT_PUBLIC_BB_API=/bb`, which forwards `/bb/*` to
+  the API and blocks admin routes); `scripts/preflight.sh <url>` must be all green.
 - **Video:** two minutes (the form's limit): `apps/video/out/demo.mp4`; promo `apps/video/out/promo.mp4` for the socials.
 - **Team:** Victor Shallangwa, solo.
 - **Write-up:** `docs/WRITEUP.md` (under 800 words). Paste as the description.
