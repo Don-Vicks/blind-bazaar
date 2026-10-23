@@ -26,7 +26,7 @@ Blind Bazaar runs sealed-bid rounds on Zcash: tenders, where a buyer posts a job
 
 Why it does not leak: every step on chain is a shielded transaction with no amount, sender or memo visible; receipts are hashes; the ledger root is committed at close; refunds are batched and delayed; deposits come from a fixed menu so an amount never marks a round. Sealed-reveal rounds put only a commitment in the memo, so even the operator cannot read bids early; auditable rounds publish the round's viewing key at close and a CLI tool recomputes the result from the chain and flags a forged one. Spending authority is a 2-of-3 FROST group key: signer hosts check every output against the ledger and co-sign; no single server holds the money.
 
-What is real: three complete rounds on the public Zcash testnet (a tender, an auction, a sealed auditable auction) with bids from an independent wallet, chain close, refund, settlement, payout, verified disclosures, every txid in docs/evidence; five regtest runs across the formats and the FROST escrow, all green; 60+ tests, CI.
+What is real: three complete rounds on the public Zcash testnet (a tender, an auction, a sealed auditable auction) with bids from an independent wallet, chain close, refund, settlement, payout, verified disclosures, every txid in docs/evidence; five regtest runs across the formats and the FROST escrow, all green; 60+ tests.
 
 What is not: no mainnet round; no bid yet from a mobile wallet (only the bundled CLI wallet); Go Dark quotes are live but no swap has moved real money, and Maya only pays a transparent receiver since Ironwood, which the widget says. On classic rounds the operator reads bids while a round is open.
 ```
